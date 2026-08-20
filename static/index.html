@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FUCK Ozon</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <form id="loginForm" class="panel login-card">
+      <div class="logo big">FO</div><h1>FUCK Ozon</h1><p class="muted">单管理员数据分析</p>
+      <label>管理员密码<input id="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary" type="submit">登录</button><p id="loginError" class="error"></p>
+    </form>
+  </div>
+  <div id="shell" class="shell hidden">
+    <aside>
+      <div class="brand"><span class="logo">FO</span><strong>FUCK Ozon</strong></div>
+      <label class="shop-label">当前店铺<select id="shopSelect"><option value="0">两店铺合并（人民币）</option></select></label>
+      <nav id="nav">
+        <button data-page="overview" class="active">总览</button><button data-page="orders">订单</button>
+        <button data-page="risk">SKU风险分析</button><button data-page="timeliness">发货与配送时效</button>
+        <button data-page="finance">财务利润</button><button data-page="returns">退货与投诉</button>
+        <button data-page="premium">Premium分析</button><button data-page="stock">库存</button>
+        <button data-page="prices">价格与佣金</button><button data-page="questions">买家问答</button>
+        <button data-page="transfer">数据导入/导出</button><button data-page="sync">独立同步中心</button>
+        <button data-page="rules">商品匹配规则</button><button data-page="settings">系统设置</button>
+      </nav>
+      <div class="aside-actions"><button id="themeButton">切换主题</button><button id="logoutButton">退出</button></div>
+    </aside>
+    <main>
+      <header><div><p class="eyebrow">OZON SELLER ANALYTICS</p><h1 id="pageTitle">总览</h1></div><span id="dataThrough" class="pill">数据截止：暂无</span></header>
+      <div id="notice" role="status"></div>
+
+      <section id="overview" class="page active">
+        <div class="cards">
+          <article class="metric peach"><span>有效订单数</span><strong id="totalOrders">0</strong><small>不同订单号</small></article>
+          <article class="metric mint"><span>有效货件数</span><strong id="totalPieces">0</strong><small>商品数量合计</small></article>
+          <article class="metric lavender"><span>发货后取消订单</span><strong id="cancelOrders">0</strong><small>按订单数</small></article>
+          <article class="metric blue"><span>SKU取消率</span><strong id="cancelRate">0%</strong><small>按货件数</small></article>
+        </div>
+        <div class="panel"><div class="panel-title"><h2>渠道概览</h2><span class="muted">剔除发货前取消</span></div>
+          <div class="table-wrap"><table><thead><tr><th>渠道</th><th class="num">订单数</th><th class="num">货件数</th><th class="risk-col">发货后取消货件</th></tr></thead><tbody id="channelRows"></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="orders" class="page">
+        <div class="toolbar"><input id="orderSearch" type="search" placeholder="搜索订单号、SKU或商品名称"><select id="channelFilter"><option value="">全部渠道</option><option>FBP</option><option>realFBS</option><option>WHD</option></select><button id="searchButton" class="primary">查询</button></div>
+        <div id="orderList" class="order-list"></div><div class="pager"><button id="prevPage">上一页</button><span id="pageInfo"></span><button id="nextPage">下一页</button></div>
+      </section>
+
+      <section id="risk" class="page"><div class="panel"><div class="panel-title"><h2>SKU风险</h2><span class="muted">比率分母为有效货件数</span></div><div class="table-wrap"><table><thead><tr><th>店铺 / 渠道</th><th>SKU</th><th class="num">有效货件</th><th class="risk-col">取消率</th><th class="risk-col">未取货率</th><th class="risk-col">通关失败率</th></tr></thead><tbody id="riskRows"></tbody></table></div></div></section>
+
+      <section id="transfer" class="page"><div class="grid2">
+        <form id="importForm" class="panel"><h2>数据导入</h2><p class="muted">CSV只补充API缺失数据；导入前必须确认店铺和渠道。</p><label>店铺<select id="importShop" required></select></label><label>数据类型<select id="importKind"><option>FBP</option><option>realFBS</option><option>WHD</option><option value="mabang">马帮订单成本</option></select></label><label>文件<input id="importFile" type="file" accept=".csv,.xlsx" required></label><button class="primary" type="submit">导入</button></form>
+        <div class="panel"><h2>AI导出</h2><p class="muted">UTF-8 JSONL；不含密钥、密码、母订单号或买家联系方式。</p><button id="exportOrders" class="primary">导出订单 JSONL</button></div></div>
+        <div class="panel"><h2>最近导入</h2><div class="table-wrap"><table><thead><tr><th>店铺</th><th>类型</th><th>文件</th><th class="num">行数</th><th>导入时间</th></tr></thead><tbody id="importRows"></tbody></table></div></div>
+      </section>
+
+      <section id="sync" class="page"><div class="panel"><h2>独立同步中心</h2><p class="muted">每个按钮只调用本模块；没有“同步全部”，页面打开也不会自动同步。</p><div class="toolbar"><label>开始日期<input id="syncFrom" type="date"></label><label>结束日期<input id="syncTo" type="date"></label></div><div id="syncButtons" class="sync-grid"></div></div><div class="panel"><h2>拉取记录</h2><div class="table-wrap"><table><thead><tr><th>店铺</th><th>模块</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead><tbody id="syncRows"></tbody></table></div></div></section>
+
+      <section id="settings" class="page"><form id="shopForm" class="panel narrow"><h2>店铺名称</h2><p class="muted">改名只影响展示，不改变店铺ID与数据归属。</p><label>店铺1<input id="shop1" required></label><label>店铺2<input id="shop2" required></label><button class="primary">保存</button></form></section>
+
+      <section id="timeliness" class="page placeholder"></section><section id="finance" class="page placeholder"></section>
+      <section id="returns" class="page placeholder"></section><section id="premium" class="page placeholder"></section>
+      <section id="stock" class="page placeholder"></section><section id="prices" class="page placeholder"></section>
+      <section id="questions" class="page placeholder"></section><section id="rules" class="page placeholder"></section>
+    </main>
+  </div>
+  <script src="/static/app.js?v=20260820"></script>
+</body></html>
