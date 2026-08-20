@@ -22,7 +22,7 @@ from .ozon import ANALYTICS_METRICS, _env, default_range, sync_module
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
-SYNC_MODULES = {"orders", "finance", "returns", "premium", "stock", "prices", "questions"}
+SYNC_MODULES = {"orders", "finance", "returns", "premium", "stock", "prices"}
 
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -386,31 +386,6 @@ def prices(shop_id: int = 0, page: int = 1, size: int = 50):
     through = max((item["observed_at"] for item in items), default=None)
     return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
             "total": total, "page": page, "size": size, "data_through": through}
-
-
-@app.get("/api/questions")
-def questions(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id)
-    page, size = _paging(page, size)
-    with connect() as db:
-        totals = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,
-          COUNT(*) records,SUM(json_extract(r.payload,'$.answers_count')>0) answered
-          FROM question_records r JOIN shops s ON s.id=r.shop_id{where}
-          GROUP BY r.shop_id ORDER BY r.shop_id""", args)]
-        total = db.execute(f"SELECT COUNT(*) FROM question_records r{where}", args).fetchone()[0]
-        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.payload
-          FROM question_records r JOIN shops s ON s.id=r.shop_id{where}
-          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
-        through = db.execute(f"SELECT MAX(r.occurred_at) FROM question_records r{where}", args).fetchone()[0]
-    items = []
-    for row in records:
-        payload = json.loads(row["payload"])
-        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
-                      "published_at": row["occurred_at"], "sku": payload.get("sku"),
-                      "status": payload.get("status"), "text": payload.get("text"),
-                      "answers_count": payload.get("answers_count"), "question_link": payload.get("question_link")})
-    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
-            "page": page, "size": size, "data_through": through}
 
 
 @app.post("/api/import/{kind}")

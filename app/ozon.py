@@ -22,7 +22,6 @@ MODULE_TABLES = {
     "premium": ("analytics_records",),
     "stock": ("stock_snapshots",),
     "prices": ("price_snapshots",),
-    "questions": ("question_records",),
 }
 STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
@@ -289,26 +288,11 @@ def _sync_snapshot(shop_id, path, table):
     return {"records": len(records), "snapshot_at": observed}
 
 
-def sync_questions(shop_id, start, end):
-    records = _cursor_pages(shop_id, "/v1/question/list",
-                            {"filter": {"date_from": _utc(start), "date_to": _utc(end)}, "limit": 100},
-                            "questions", "last_id", "last_id")
-    records = [record for record in records if start <= datetime.fromisoformat(record["published_at"].replace("Z", "+00:00")).astimezone(BEIJING) <= end]
-    fetched = _stamp()
-    with transaction() as db:
-        for record in records:
-            db.execute("""INSERT INTO question_records VALUES(?,?,?,?,?)
-              ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,payload=excluded.payload,fetched_at=excluded.fetched_at
-            """, (shop_id, _key(record, "id"), record.get("published_at"), _json(record), fetched))
-    return {"records": len(records)}
-
-
 def sync_module(module, shop_id, start=None, end=None):
     start, end = (start, end) if start and end else default_range()
     functions = {"orders": sync_orders, "finance": sync_finance, "returns": sync_returns,
                  "premium": sync_premium, "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots"),
-                 "prices": lambda s, _a, _b: _sync_snapshot(s, "/v5/product/info/prices", "price_snapshots"),
-                 "questions": sync_questions}
+                 "prices": lambda s, _a, _b: _sync_snapshot(s, "/v5/product/info/prices", "price_snapshots")}
     if module not in functions:
         raise ValueError("未知同步模块")
     return functions[module](shop_id, start, end)

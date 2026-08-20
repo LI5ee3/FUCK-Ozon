@@ -21,7 +21,7 @@
         <button data-page="risk">SKU风险分析</button><button data-page="timeliness">发货与配送时效</button>
         <button data-page="finance">财务利润</button><button data-page="returns">退货与投诉</button>
         <button data-page="premium">Premium分析</button><button data-page="stock">库存</button>
-        <button data-page="prices">价格与佣金</button><button data-page="questions">买家问答</button>
+        <button data-page="prices">价格与佣金</button>
         <button data-page="transfer">数据导入/导出</button><button data-page="sync">独立同步中心</button>
         <button data-page="rules">商品匹配规则</button><button data-page="settings">系统设置</button>
       </nav>
@@ -72,10 +72,8 @@
 
       <section id="prices" class="page"><div id="pricesSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>最新价格与佣金快照</h2><span class="muted">每个店铺只展示最近一次拉取</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>货号</th><th>Product ID</th><th class="num">当前价</th><th class="num">营销价</th><th class="num">净价</th><th class="num">最低价</th><th class="num">FBO佣金</th><th class="num">FBS佣金</th><th>活动</th></tr></thead><tbody id="pricesRows"></tbody></table></div><div class="pager"><button id="pricesPrev">上一页</button><span id="pricesInfo"></span><button id="pricesNext">下一页</button></div></div></section>
 
-      <section id="questions" class="page"><div id="questionsSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>买家问答</h2><span class="muted">仅展示已拉取的问题与回答数量</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>发布时间</th><th>SKU</th><th>状态</th><th>问题</th><th class="num">回答数</th></tr></thead><tbody id="questionsRows"></tbody></table></div><div class="pager"><button id="questionsPrev">上一页</button><span id="questionsInfo"></span><button id="questionsNext">下一页</button></div></div></section>
-
       <section id="rules" class="page"><div class="panel"><h2>当前商品匹配规则</h2><p class="muted">系统按店铺、订单号和 SKU 识别同一商品行；API 数据优先，CSV 只补充 API 缺失字段。当前没有需要人工维护的匹配规则。</p><div class="table-wrap"><table><thead><tr><th>对象</th><th>唯一标识</th><th>合并规则</th></tr></thead><tbody><tr><td>订单</td><td>店铺 + 订单号</td><td>API 状态与渠道优先</td></tr><tr><td>订单商品</td><td>店铺 + 订单号 + SKU</td><td>同一文件内数量先合计，再幂等写入</td></tr><tr><td>马帮成本</td><td>店铺 + 订单号</td><td>按订单总成本匹配，不自动分摊 SKU</td></tr></tbody></table></div></div></section>
     </main>
   </div>
-  <script src="/static/app.js?v=20260820-4"></script>
+  <script src="/static/app.js?v=20260820-5"></script>
 </body></html>

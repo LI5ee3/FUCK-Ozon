@@ -116,11 +116,8 @@ def init_db():
           observed_at TEXT NOT NULL, payload TEXT NOT NULL,
           PRIMARY KEY(shop_id,record_key,observed_at)
         );
-        CREATE TABLE IF NOT EXISTS question_records (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
-          occurred_at TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
-          PRIMARY KEY(shop_id,record_key)
-        );
+        DROP TABLE IF EXISTS question_records;
+        DELETE FROM sync_runs WHERE module='questions';
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);
