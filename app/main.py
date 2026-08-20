@@ -16,13 +16,14 @@ from openpyxl.utils.exceptions import InvalidFileException
 from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
+from .dingtalk import configured as dingtalk_configured, send_sync_failure, start_scheduler, stop_scheduler
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import ANALYTICS_METRICS, _env, default_range, sync_module
+from .ozon import _env, default_range, sync_module
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
-SYNC_MODULES = {"orders", "finance", "returns", "premium", "stock", "prices"}
+SYNC_MODULES = {"orders", "finance", "returns", "stock", "prices"}
 
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -31,6 +32,12 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown():
+    stop_scheduler()
 
 
 def _secret():
@@ -112,6 +119,43 @@ async def update_shops(request: Request):
         db.execute("UPDATE shops SET name=? WHERE id=1", (names[0],))
         db.execute("UPDATE shops SET name=? WHERE id=2", (names[1],))
     return {"ok": True}
+
+
+def _dingtalk_settings():
+    with connect() as db:
+        row = dict(db.execute("SELECT * FROM notification_settings WHERE id=1").fetchone())
+        last = db.execute("""SELECT stats_date,status,sent_at,error FROM notification_runs
+          WHERE kind='daily' ORDER BY stats_date DESC LIMIT 1""").fetchone()
+    row["daily_enabled"] = bool(row["daily_enabled"])
+    row["weekdays"] = [int(value) for value in row["weekdays"].split(",") if value]
+    row["configured"] = dingtalk_configured()
+    row["last_run"] = dict(last) if last else None
+    return row
+
+
+@app.get("/api/dingtalk/settings")
+def dingtalk_settings():
+    return _dingtalk_settings()
+
+
+@app.put("/api/dingtalk/settings")
+async def update_dingtalk_settings(request: Request):
+    body = await request.json()
+    push_time = str(body.get("push_time", "")).strip()
+    try:
+        push_time = datetime.strptime(push_time, "%H:%M").strftime("%H:%M")
+        weekdays = sorted({int(value) for value in body.get("weekdays", [])})
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "钉钉推送时间或星期无效") from error
+    if any(value not in range(1, 8) for value in weekdays):
+        raise HTTPException(400, "钉钉推送星期无效")
+    enabled = bool(body.get("daily_enabled"))
+    if enabled and not weekdays:
+        raise HTTPException(400, "启用昨日汇总时至少选择一天")
+    with transaction() as db:
+        db.execute("UPDATE notification_settings SET daily_enabled=?,push_time=?,weekdays=? WHERE id=1",
+                   (int(enabled), push_time, ",".join(map(str, weekdays))))
+    return _dingtalk_settings()
 
 
 def _shop_clause(shop_id):
@@ -291,43 +335,6 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
             "page": page, "size": size, "data_through": through}
 
 
-@app.get("/api/premium")
-def premium(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id)
-    page, size = _paging(page, size)
-    metric_indexes = {name: ANALYTICS_METRICS.index(name) for name in
-                      ("revenue", "ordered_units", "returns", "cancellations", "delivered_units")}
-    with connect() as db:
-        totals = [dict(row) for row in db.execute(f"""
-          SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,COUNT(*) records,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['revenue']}]') AS REAL)),0) revenue,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['ordered_units']}]') AS REAL)),0) ordered_units,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['delivered_units']}]') AS REAL)),0) delivered_units,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['returns']}]') AS REAL)),0) returns,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['cancellations']}]') AS REAL)),0) cancellations
-          FROM analytics_records r JOIN shops s ON s.id=r.shop_id{where}
-          GROUP BY r.shop_id ORDER BY r.shop_id
-        """, args)]
-        total = db.execute(f"SELECT COUNT(*) FROM analytics_records r{where}", args).fetchone()[0]
-        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,
-          r.occurred_at,r.payload FROM analytics_records r JOIN shops s ON s.id=r.shop_id{where}
-          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
-        through = db.execute(f"SELECT MAX(r.occurred_at) FROM analytics_records r{where}", args).fetchone()[0]
-    items = []
-    for row in records:
-        payload = json.loads(row["payload"])
-        dimensions, metrics = payload.get("dimensions") or [], payload.get("metrics") or []
-        sku_dimension = next((d for d in dimensions if str(d.get("id", "")) != str(row["occurred_at"])), {})
-        value = lambda name: metrics[metric_indexes[name]] if len(metrics) > metric_indexes[name] else None
-        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"], "currency": row["currency"],
-                      "day": row["occurred_at"], "sku": sku_dimension.get("id"),
-                      "product_name": sku_dimension.get("name"), "revenue": value("revenue"),
-                      "ordered_units": value("ordered_units"), "delivered_units": value("delivered_units"),
-                      "returns": value("returns"), "cancellations": value("cancellations")})
-    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
-            "page": page, "size": size, "data_through": through}
-
-
 def _latest_snapshots(db, table, shop_id):
     where, args = _record_clause(shop_id, "r")
     return db.execute(f"""SELECT r.shop_id,s.name shop_name,r.observed_at,r.payload FROM {table} r
@@ -444,6 +451,10 @@ async def sync(module: str, request: Request, shop_id: int):
         with transaction() as db:
             db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),status='failed',error=? WHERE id=?""",
                        (message, run_id))
+        try:
+            await run_in_threadpool(send_sync_failure, shop_id, module, start, end, message)
+        except Exception:
+            pass
         raise HTTPException(502, message) from error
     with transaction() as db:
         db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),

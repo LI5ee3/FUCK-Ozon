@@ -8,6 +8,9 @@ __pycache__/
 htmlcov/
 tests/
 SYNC_VALIDATION.md
+启动本地看板.command
+.local-dashboard/
+design-qa.md
 .DS_Store
 FBP.csv
 realFBS.csv

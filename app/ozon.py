@@ -19,7 +19,6 @@ MODULE_TABLES = {
     "orders": ("orders", "order_items", "order_api_records"),
     "finance": ("finance_records",),
     "returns": ("return_records",),
-    "premium": ("analytics_records",),
     "stock": ("stock_snapshots",),
     "prices": ("price_snapshots",),
 }
@@ -27,12 +26,6 @@ STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
     "awaiting_deliver": "等待发运", "awaiting_packaging": "待备货",
 }
-ANALYTICS_METRICS = [
-    "revenue", "ordered_units", "hits_view_search", "hits_view_pdp",
-    "hits_tocart_search", "hits_tocart_pdp", "session_view_search",
-    "session_view_pdp", "conv_tocart_search", "conv_tocart_pdp",
-    "returns", "cancellations", "delivered_units", "position_category",
-]
 _request_lock = threading.Lock()
 _last_request = 0.0
 
@@ -248,36 +241,6 @@ def sync_returns(shop_id, start, end):
     return {"records": len(records)}
 
 
-def sync_premium(shop_id, start, end):
-    records, offset, limit = [], 0, 1000
-    while True:
-        payload = {"date_from": start.date().isoformat(), "date_to": end.date().isoformat(),
-                   "metrics": ANALYTICS_METRICS, "dimension": ["day", "sku"],
-                   "filters": [], "sort": [], "limit": limit, "offset": offset}
-        batch = ((_post(shop_id, "/v1/analytics/data", payload).get("result") or {}).get("data") or [])
-        records.extend(batch)
-        if len(batch) < limit:
-            break
-        offset += limit
-    fetched = _stamp()
-    with transaction() as db:
-        for record in records:
-            dimensions = record.get("dimensions") or []
-            occurred = None
-            for dimension in dimensions:
-                value = str(dimension.get("id", ""))
-                try:
-                    datetime.strptime(value, "%Y-%m-%d")
-                    occurred = value
-                    break
-                except ValueError:
-                    continue
-            db.execute("""INSERT INTO analytics_records VALUES(?,?,?,?,?)
-              ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,payload=excluded.payload,fetched_at=excluded.fetched_at
-            """, (shop_id, _key(record), occurred, _json(record), fetched))
-    return {"records": len(records), "metrics": len(ANALYTICS_METRICS)}
-
-
 def _sync_snapshot(shop_id, path, table):
     records = _cursor_pages(shop_id, path, {"filter": {"visibility": "ALL"}, "limit": 1000}, "items")
     observed = _stamp()
@@ -291,7 +254,7 @@ def _sync_snapshot(shop_id, path, table):
 def sync_module(module, shop_id, start=None, end=None):
     start, end = (start, end) if start and end else default_range()
     functions = {"orders": sync_orders, "finance": sync_finance, "returns": sync_returns,
-                 "premium": sync_premium, "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots"),
+                 "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots"),
                  "prices": lambda s, _a, _b: _sync_snapshot(s, "/v5/product/info/prices", "price_snapshots")}
     if module not in functions:
         raise ValueError("未知同步模块")

@@ -101,11 +101,6 @@ def init_db():
           occurred_at TEXT, posting_number TEXT, sku TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
           PRIMARY KEY(shop_id,record_key)
         );
-        CREATE TABLE IF NOT EXISTS analytics_records (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
-          occurred_at TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
-          PRIMARY KEY(shop_id,record_key)
-        );
         CREATE TABLE IF NOT EXISTS stock_snapshots (
           shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
           observed_at TEXT NOT NULL, payload TEXT NOT NULL,
@@ -117,7 +112,20 @@ def init_db():
           PRIMARY KEY(shop_id,record_key,observed_at)
         );
         DROP TABLE IF EXISTS question_records;
-        DELETE FROM sync_runs WHERE module='questions';
+        DROP TABLE IF EXISTS analytics_records;
+        DELETE FROM sync_runs WHERE module IN ('questions','premium');
+        CREATE TABLE IF NOT EXISTS notification_settings (
+          id INTEGER PRIMARY KEY CHECK(id=1),
+          daily_enabled INTEGER NOT NULL DEFAULT 0 CHECK(daily_enabled IN (0,1)),
+          push_time TEXT NOT NULL DEFAULT '09:00',
+          weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7'
+        );
+        INSERT OR IGNORE INTO notification_settings VALUES(1,0,'09:00','1,2,3,4,5,6,7');
+        CREATE TABLE IF NOT EXISTS notification_runs (
+          kind TEXT NOT NULL, stats_date TEXT NOT NULL, status TEXT NOT NULL,
+          attempted_at TEXT NOT NULL, sent_at TEXT, error TEXT,
+          PRIMARY KEY(kind,stats_date)
+        );
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);

@@ -5,7 +5,7 @@ FUCK Ozon 是一个面向 Ozon 卖家的双店铺、单管理员数据分析网�
 ## 主要功能
 
 - 两个 Ozon 店铺独立管理或合并查看。
-- 订单、财务、退货、Premium 分析、库存和价格六个独立 API 拉取模块。
+- 订单、财务、退货、库存和价格五个独立 API 拉取模块。
 - FBP、realFBS、WHD 三种履约模式分类统计。
 - Ozon CSV 订单导入和马帮 XLSX 订单成本导入。
 - 总览、订单卡片、SKU 风险、JSONL 订单导出和深色主题。
@@ -64,6 +64,8 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
+DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
+DINGTALK_SECRET=钉钉机器人加签Secret
 ```
 
 不要在密钥两侧添加引号，也不要把 `.env` 发送给他人或提交到 Git。
@@ -132,6 +134,8 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
+DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
+DINGTALK_SECRET=钉钉机器人加签Secret
 ```
 
 macOS/Linux 继续执行：
@@ -153,6 +157,15 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 然后访问 [http://127.0.0.1:8000](http://127.0.0.1:8000)。首次启动会在 `data/` 目录创建 SQLite 数据库和会话密钥。
+
+## 钉钉机器人
+
+在 `.env` 中填写 `DINGTALK_WEBHOOK_URL`；机器人启用了加签时同时填写 `DINGTALK_SECRET`。重启服务后进入“钉钉机器人”页面，可启用昨日取消订单汇总，并设置北京时间和推送星期。
+
+- 任一独立同步失败后立即发送通知，不受定时汇总开关限制。
+- 昨日汇总只读取数据库，不会自动拉取订单。
+- 同一统计日期成功发送后不会重复发送。
+- Webhook 和 Secret 不保存到 SQLite，也不会返回前端。
 
 ## 首次使用
 
