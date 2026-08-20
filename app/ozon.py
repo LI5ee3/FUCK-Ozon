@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MODULE_TABLES = {
     "orders": ("orders", "order_items", "order_api_records"),
     "finance": ("finance_records",),
-    "returns": ("return_records",),
+    "returns": ("return_records", "rfbs_return_records"),
     "stock": ("stock_snapshots",),
 }
 STATUS_ZH = {
@@ -30,6 +30,31 @@ RETURN_STATUS_ZH = {
     "На складе": "已到仓库",
     "Едет на склад": "退回仓库途中",
     "Списали товар": "商品已核销",
+}
+RFBS_RETURN_STATUS_ZH = {
+    "Rejected": "已拒绝",
+    "PartialCompensationReturnedByOzon": "Ozon 已向买家部分赔偿",
+    "Cancelled": "买家已取消",
+    "ReleasedByProvider": "合作方已放行",
+    "RejectedByOzon": "Ozon 已拒绝退货",
+    "CancelledDisputeNotOpen": "已拒绝，未发起争议",
+    "UtilizedByOzon": "Ozon 已销毁",
+    "ArrivedAtWarehouse": "已到仓库",
+    "PartialCompensationReturned": "已部分退款",
+    "MoneyReturned": "已退款",
+    "AwaitingProcessing": "等待处理",
+    "OnSellerApproval": "待卖家审核",
+    "OnWayToOzon": "退回 Ozon 途中",
+    "UtilizedByProvider": "合作方已销毁",
+    "ApprovedOnPreModerationByOzon": "Ozon 已批准",
+    "CheckingStatus": "状态确认中",
+    "PassedToPartner": "已交给合作方",
+    "Approved": "卖家已批准",
+    "OnWay": "运输中",
+    "UtilizingByOzon": "Ozon 销毁中",
+    "CrmRejected": "Ozon 已拒绝",
+    "OnSellerClarificationAfterPartialCompensation": "部分退款后待卖家说明",
+    "Solved": "已说明",
 }
 FINANCE_OPERATION_ZH = {
     "Оплата эквайринга": "收单服务费",
@@ -278,9 +303,28 @@ def sync_finance(shop_id, start, end):
     return {"records": len({_key(record, "operation_id") for record in records}), "fetched": len(records)}
 
 
+def _rfbs_return_pages(shop_id, start, end):
+    base = {"filter": {"created_at": {"from": _utc(start), "to": _utc(end)}}, "limit": 100}
+    records, last_id = [], 0
+    for _ in range(200):
+        body = _post(shop_id, "/v2/returns/rfbs/list", {**base, "last_id": last_id})
+        batch = body.get("returns") or []
+        if isinstance(batch, dict):
+            batch = [batch]
+        records.extend(batch)
+        if not batch or body.get("has_next") is False or ("has_next" not in body and len(batch) < base["limit"]):
+            return records
+        next_id = body.get("last_id") or batch[-1].get("return_id")
+        if next_id in (None, "") or str(next_id) == str(last_id):
+            raise RuntimeError("/v2/returns/rfbs/list: 分页游标缺失或未前进")
+        last_id = next_id
+    raise RuntimeError("/v2/returns/rfbs/list: 分页超过安全上限")
+
+
 def sync_returns(shop_id, start, end):
     payload = {"filter": {"logistic_return_date": {"time_from": _utc(start), "time_to": _utc(end)}}, "limit": 100}
     records = _cursor_pages(shop_id, "/v1/returns/list", payload, "returns", "last_id", "")
+    rfbs_records = _rfbs_return_pages(shop_id, start, end)
     fetched = _stamp()
     with transaction() as db:
         for record in records:
@@ -289,7 +333,28 @@ def sync_returns(shop_id, start, end):
               ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,posting_number=excluded.posting_number,sku=excluded.sku,payload=excluded.payload,fetched_at=excluded.fetched_at
             """, (shop_id, _key(record, "id"), logistic.get("return_date") or logistic.get("final_moment"),
                   record.get("posting_number"), str(product.get("sku") or ""), _json(record), fetched))
-    return {"records": len(records)}
+        saved = 0
+        for record in rfbs_records:
+            return_number = str(record.get("return_number") or "").strip()
+            if not return_number:
+                continue
+            return_id = record.get("return_id")
+            if return_id in (None, ""):
+                raise RuntimeError("/v2/returns/rfbs/list: 退货申请缺少 return_id")
+            product, state = record.get("product") or {}, record.get("state") or {}
+            status_raw = state.get("state") or state.get("group_state") or ""
+            status_name = state.get("state_name") or state.get("money_return_state_name") or status_raw
+            db.execute("""INSERT INTO rfbs_return_records VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(shop_id,return_id) DO UPDATE SET
+                return_number=excluded.return_number,created_at=excluded.created_at,
+                posting_number=excluded.posting_number,offer_id=excluded.offer_id,sku=excluded.sku,
+                product_name=excluded.product_name,status_raw=excluded.status_raw,
+                status_name=excluded.status_name,payload=excluded.payload,fetched_at=excluded.fetched_at
+            """, (shop_id, return_id, return_number, record.get("created_at"), record.get("posting_number"),
+                  product.get("offer_id"), str(product.get("sku") or ""), product.get("name") or "",
+                  status_raw, status_name, _json(record), fetched))
+            saved += 1
+    return {"records": len(records) + saved, "cancellations": len(records), "return_requests": saved}
 
 
 def _sync_snapshot(shop_id, path, table):

@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,stock:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,rfbsReturns:1,stock:1}};
 const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",finance:"财务利润",returns:"退货与投诉",stock:"库存",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",finance:"财务",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -75,10 +75,19 @@ async function loadFinance() {
 }
 async function loadReturns() {
   const data=await api(`/api/returns?shop_id=${state.shop}&page=${state.pages.returns}`);
-  summary("returns",[["退货记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.quantity,0)} 件`,`共 ${num(s.records,0)} 条记录`])]);
+  $("#returnsCount").textContent=data.total;
+  summary("returns",[["取消记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.quantity,0)} 件`,`共 ${num(s.records,0)} 条记录`])]);
   $("#returnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.occurred_at)}</td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td><td class="num">${num(r.quantity,0)}</td><td><span class="cell-text" title="${esc(r.reason)}">${cell(r.reason)}</span></td><td>${cell(r.status||r.type)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
   pager("returns",data,loadReturns);
 }
+async function loadRfbsReturns() {
+  const data=await api(`/api/rfbs-returns?shop_id=${state.shop}&page=${state.pages.rfbsReturns}`);
+  $("#rfbsReturnsCount").textContent=data.total;
+  summary("rfbsReturns",[["退货申请",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.records,0)} 条申请`])]);
+  $("#rfbsReturnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.created_at)}</td><td>${cell(r.return_number)}</td><td>${cell(r.status_name||r.status_raw)}</td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td></tr>`).join("") || '<tr><td colspan="6" class="muted">暂无退货申请。</td></tr>';
+  pager("rfbsReturns",data,loadRfbsReturns);
+}
+const loadReturnPage=()=>Promise.all([loadReturns(),loadRfbsReturns()]);
 async function loadStock() {
   const data=await api(`/api/stock?shop_id=${state.shop}&page=${state.pages.stock}`);
   summary("stock",[["最新商品",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.present,0)} 可用`,`商品 ${num(s.products,0)} · 预留 ${num(s.reserved,0)}`])]);
@@ -91,7 +100,8 @@ async function loadImports() {
 }
 async function loadSync() {
   const rows=await api("/api/sync");
-  $("#syncRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(syncNames[r.module]||r.module)}</td><td>${r.status==='failed'?'失败':r.status==='success'?'成功':'进行中'}</td><td>${bj(r.started_at)}</td><td class="error">${esc(r.error||'')}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">暂无拉取记录。</td></tr>';
+  $("#syncRows").innerHTML=rows.map(r=>{const total=Math.max(1,Number(r.progress_total||1)),done=Number(r.progress_done||0),percent=Math.round(done/total*100),status=r.status==='failed'?'失败':r.status==='success'?'成功':'进行中';return `<tr><td>${esc(r.shop_name)}</td><td>${esc(syncNames[r.module]||r.module)}</td><td><div>${status} · ${done}/${total} · ${percent}%${r.records?` · ${num(r.records,0)} 条`:''}</div><div class="sync-progress" role="progressbar" aria-label="${esc(syncNames[r.module]||r.module)}拉取进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>${r.status==='running'&&r.current_from?`<small class="muted">当前：${esc(r.current_from.slice(0,10))} — ${esc(r.current_to.slice(0,10))}</small>`:''}</td><td>${bj(r.started_at)}</td><td class="error">${esc(r.error||'')}</td></tr>`}).join("") || '<tr><td colspan="5" class="muted">暂无拉取记录。</td></tr>';
+  return rows;
 }
 async function loadDingtalk() {
   const data=await api("/api/dingtalk/settings");
@@ -100,11 +110,15 @@ async function loadDingtalk() {
   document.querySelectorAll("#dingWeekdays input").forEach(input=>input.checked=data.weekdays.includes(Number(input.value)));
   $("#dingtalkLast").textContent=data.last_run?`${data.last_run.stats_date} · ${data.last_run.status==='success'?'发送成功':data.last_run.status==='failed'?'发送失败':'发送中'}${data.last_run.sent_at?` · ${bj(data.last_run.sent_at)}`:""}${data.last_run.error?` · ${data.last_run.error}`:""}`:"暂无发送记录";
 }
+async function loadPushSettings() {
+  const shops=await api("/api/ozon/push-settings");
+  $("#pushShops").innerHTML=shops.map(s=>`<div class="summary-card"><div class="panel-title"><strong>${esc(s.name)}</strong><span class="tag">${esc(s.connection_status)}</span></div><label>seller_id<input id="pushSeller${s.id}" inputmode="numeric" value="${esc(s.seller_id||'')}" required></label><label>回调URL<input id="pushUrl${s.id}" value="${esc(s.callback_url)}" readonly></label><button type="button" data-copy-push="${s.id}">复制回调URL</button><p class="muted">最近 Ping：${bj(s.last_ping_at)}<br>最近业务事件：${bj(s.last_business_event_at)}<br>最近失败：${bj(s.last_failure_at)}${s.last_error?` · ${esc(s.last_error)}`:""}</p><small class="muted">${s.event_types.map(esc).join(" · ")}</small></div>`).join("");
+}
 async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
   if(page==="risk") return loadRisk();
-  const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturns,stock:loadStock};
-  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync(); if(page==="dingtalk") return loadDingtalk();
+  const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturnPage,stock:loadStock};
+  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadPushSettings();
 }
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -118,8 +132,11 @@ $("#shopSelect").addEventListener("change",e=>{state.shop=Number(e.target.value)
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
 $("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});
+$("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(!tab)return;document.querySelectorAll("[data-return-tab]").forEach(button=>button.classList.toggle("active",button.dataset.returnTab===tab));document.querySelectorAll(".return-tab").forEach(panel=>panel.classList.toggle("active",panel.id===`returns-${tab}`))};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
-$("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
+$("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();await loadPushSettings();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
+$("#pushForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/ozon/push-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#pushSeller1").value,2:$("#pushSeller2").value})});await loadPushSettings();toast("seller_id 已保存")}catch(err){toast(err.message,true)}});
+$("#pushShops").addEventListener("click",async e=>{const id=e.target.dataset.copyPush;if(!id)return;await navigator.clipboard.writeText($("#pushUrl"+id).value);toast("回调URL已复制")});
 $("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("钉钉设置已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
 $("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST"});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
 $("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});
@@ -167,7 +184,9 @@ $("#dateRangePanel").onclick=e=>{e.stopPropagation();const value=e.target.datase
 document.addEventListener("click",e=>{if(!e.target.closest(".date-range-wrap")){$("#dateRangePanel").classList.add("hidden");$("#dateRangeButton").setAttribute("aria-expanded","false")}});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("#dateRangePanel").classList.add("hidden");$("#dateRangeButton").setAttribute("aria-expanded","false")}});
 choosePreset("3months");
-$("#syncButtons").onclick=async e=>{const module=e.target.dataset.module;if(!module)return;if(!state.shop)return toast("请先在左上角选择一个店铺",true);e.target.disabled=true;try{const result=await api(`/api/sync/${module}?shop_id=${state.shop}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:$("#syncFrom").value,to:$("#syncTo").value})});toast(`${syncNames[module]}拉取完成：${result.records} 条`);loadSync()}catch(err){toast(err.message,true);loadSync()}finally{e.target.disabled=false}};
+$("#sync > .panel:first-child > .muted").textContent="每个按钮只调用本模块；长时段按自然月串行拉取，某月失败即停止。库存仅拉取一次当前快照。";
+async function waitForSync(runId,module){for(;;){const task=await api(`/api/sync/${runId}`);await loadSync();if(task.status!=="running"){if(task.status==="success")toast(`${syncNames[module]}拉取完成：${num(task.records,0)} 条`);else toast(task.error||"拉取失败",true);return}await new Promise(resolve=>setTimeout(resolve,1000))}}
+$("#syncButtons").onclick=async e=>{const module=e.target.dataset.module;if(!module)return;if(!state.shop)return toast("请先在左上角选择一个店铺",true);if(rangeState.preset==="all"&&!confirm("整个时段将按自然月逐段拉取，耗时可能较长。确认开始？"))return;e.target.disabled=true;try{const task=await api(`/api/sync/${module}?shop_id=${state.shop}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:$("#syncFrom").value,to:$("#syncTo").value})});await loadSync();await waitForSync(task.run_id,module)}catch(err){toast(err.message,true);await loadSync()}finally{e.target.disabled=false}};
 $("#themeButton").onclick=()=>{const dark=document.documentElement.dataset.theme!=="dark";document.documentElement.dataset.theme=dark?"dark":"";localStorage.setItem("theme",dark?"dark":"light")};
 $("#logoutButton").onclick=async()=>{await api("/api/logout",{method:"POST"});showLogin()};
 if(localStorage.getItem("theme")==="dark")document.documentElement.dataset.theme="dark";

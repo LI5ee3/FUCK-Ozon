@@ -1,4 +1,5 @@
 import os
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -36,9 +37,10 @@ def init_db():
         CREATE TABLE IF NOT EXISTS shops (
           id INTEGER PRIMARY KEY CHECK(id IN (1,2)),
           name TEXT NOT NULL UNIQUE CHECK(trim(name) <> ''),
-          settlement_currency TEXT NOT NULL CHECK(settlement_currency IN ('USD','CNY'))
+          settlement_currency TEXT NOT NULL CHECK(settlement_currency IN ('USD','CNY')),
+          seller_id TEXT, push_token TEXT
         );
-        INSERT OR IGNORE INTO shops VALUES (1, '店铺1', 'USD'), (2, '店铺2', 'CNY');
+        INSERT OR IGNORE INTO shops(id,name,settlement_currency) VALUES (1, '店铺1', 'USD'), (2, '店铺2', 'CNY');
 
         CREATE TABLE IF NOT EXISTS import_batches (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,13 +55,15 @@ def init_db():
           parent_order_no TEXT,
           channel TEXT NOT NULL CHECK(channel IN ('FBP','realFBS','WHD')),
           created_at TEXT, shipped_at TEXT, delivered_at TEXT,
-          status_raw TEXT NOT NULL DEFAULT '', cancel_reason_raw TEXT,
+          status_raw TEXT NOT NULL DEFAULT '', cancel_reason_raw TEXT, cancel_reason_id TEXT,
           shipped INTEGER NOT NULL DEFAULT 0 CHECK(shipped IN (0,1)),
           cancelled_after_ship INTEGER CHECK(cancelled_after_ship IN (0,1)),
           data_anomaly INTEGER NOT NULL DEFAULT 0 CHECK(data_anomaly IN (0,1)),
           amount_original REAL, amount_currency TEXT,
           amount_cny REAL, exchange_rate REAL, exchange_source TEXT, exchange_date TEXT,
           buyer_paid REAL, buyer_currency TEXT,
+          warehouse_id TEXT, seller_id TEXT, external_uuid TEXT, shipment_date TEXT,
+          delivery_date_begin TEXT, delivery_date_end TEXT, status_changed_at TEXT,
           source TEXT NOT NULL, import_batch_id INTEGER REFERENCES import_batches(id),
           updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
           PRIMARY KEY(shop_id, posting_number)
@@ -84,7 +88,9 @@ def init_db():
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           module TEXT NOT NULL, range_from TEXT, range_to TEXT,
           started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-          finished_at TEXT, data_through TEXT, status TEXT NOT NULL, error TEXT
+          finished_at TEXT, data_through TEXT, status TEXT NOT NULL, error TEXT,
+          progress_done INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 1,
+          records INTEGER NOT NULL DEFAULT 0, current_from TEXT, current_to TEXT
         );
         CREATE TABLE IF NOT EXISTS order_api_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), posting_number TEXT NOT NULL,
@@ -109,6 +115,13 @@ def init_db():
           occurred_at TEXT, posting_number TEXT, sku TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
           PRIMARY KEY(shop_id,record_key)
         );
+        CREATE TABLE IF NOT EXISTS rfbs_return_records (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), return_id INTEGER NOT NULL,
+          return_number TEXT NOT NULL CHECK(trim(return_number) <> ''), created_at TEXT,
+          posting_number TEXT, offer_id TEXT, sku TEXT, product_name TEXT,
+          status_raw TEXT, status_name TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
+          PRIMARY KEY(shop_id,return_id)
+        );
         CREATE TABLE IF NOT EXISTS stock_snapshots (
           shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
           observed_at TEXT NOT NULL, payload TEXT NOT NULL,
@@ -130,7 +143,70 @@ def init_db():
           attempted_at TEXT NOT NULL, sent_at TEXT, error TEXT,
           PRIMARY KEY(kind,stats_date)
         );
+        CREATE TABLE IF NOT EXISTS webhook_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          shop_id INTEGER NOT NULL REFERENCES shops(id), message_type TEXT NOT NULL,
+          event_key TEXT NOT NULL, occurred_at TEXT, received_at TEXT NOT NULL,
+          payload_json TEXT NOT NULL, processing_status TEXT NOT NULL, error_message TEXT,
+          UNIQUE(shop_id,event_key)
+        );
+        CREATE TABLE IF NOT EXISTS order_status_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          shop_id INTEGER NOT NULL, posting_number TEXT NOT NULL, message_type TEXT NOT NULL,
+          event_key TEXT NOT NULL, status_raw TEXT NOT NULL, status_name TEXT NOT NULL,
+          reason_id TEXT, reason_message TEXT, occurred_at TEXT NOT NULL, payload_json TEXT NOT NULL,
+          UNIQUE(shop_id,event_key),
+          FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
+        );
+        CREATE TABLE IF NOT EXISTS order_manual_data (
+          shop_id INTEGER NOT NULL, posting_number TEXT NOT NULL,
+          complaint_number TEXT, complaint_at TEXT, complaint_channel TEXT,
+          resolved INTEGER, package_returned INTEGER, compensation_amount REAL,
+          notes TEXT, manual_short_name TEXT, updated_at TEXT,
+          PRIMARY KEY(shop_id,posting_number),
+          FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
+        );
+        CREATE TABLE IF NOT EXISTS warehouse_stocks (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), warehouse_id TEXT NOT NULL,
+          sku TEXT NOT NULL, product_id TEXT, present INTEGER NOT NULL, reserved INTEGER NOT NULL,
+          updated_at TEXT NOT NULL, payload_json TEXT NOT NULL,
+          PRIMARY KEY(shop_id,warehouse_id,sku)
+        );
+        CREATE TABLE IF NOT EXISTS fbo_stocks (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), sku TEXT NOT NULL,
+          updated_at TEXT NOT NULL, new_present INTEGER NOT NULL, new_reserved INTEGER NOT NULL,
+          old_present INTEGER, old_reserved INTEGER, payload_json TEXT NOT NULL,
+          PRIMARY KEY(shop_id,sku)
+        );
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);
         """)
+        shop_columns = {row[1] for row in db.execute("PRAGMA table_info(shops)")}
+        for name in ("seller_id", "push_token"):
+            if name not in shop_columns:
+                db.execute(f"ALTER TABLE shops ADD COLUMN {name} TEXT")
+        order_columns = {row[1] for row in db.execute("PRAGMA table_info(orders)")}
+        for name in ("cancel_reason_id", "warehouse_id", "seller_id", "external_uuid", "shipment_date",
+                     "delivery_date_begin", "delivery_date_end", "status_changed_at"):
+            if name not in order_columns:
+                db.execute(f"ALTER TABLE orders ADD COLUMN {name} TEXT")
+        history_columns = {row[1] for row in db.execute("PRAGMA table_info(order_status_history)")}
+        for name in ("reason_id", "reason_message"):
+            if name not in history_columns:
+                db.execute(f"ALTER TABLE order_status_history ADD COLUMN {name} TEXT")
+        sync_columns = {row[1] for row in db.execute("PRAGMA table_info(sync_runs)")}
+        for name, definition in (
+            ("progress_done", "INTEGER NOT NULL DEFAULT 0"),
+            ("progress_total", "INTEGER NOT NULL DEFAULT 1"),
+            ("records", "INTEGER NOT NULL DEFAULT 0"),
+            ("current_from", "TEXT"),
+            ("current_to", "TEXT"),
+        ):
+            if name not in sync_columns:
+                db.execute(f"ALTER TABLE sync_runs ADD COLUMN {name} {definition}")
+        db.execute("""UPDATE sync_runs SET progress_done=progress_total
+          WHERE status='success' AND progress_done=0""")
+        for shop_id in (1, 2):
+            db.execute("UPDATE shops SET push_token=? WHERE id=? AND COALESCE(push_token,'')=''",
+                       (secrets.token_urlsafe(32), shop_id))

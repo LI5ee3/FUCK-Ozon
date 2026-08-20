@@ -2,15 +2,16 @@ import hashlib
 import hmac
 import json
 import secrets
+import threading
 import time
 from zipfile import BadZipFile
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl.utils.exceptions import InvalidFileException
 from starlette.concurrency import run_in_threadpool
@@ -18,7 +19,8 @@ from starlette.concurrency import run_in_threadpool
 from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, sync_module
+from .ozon import CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RFBS_RETURN_STATUS_ZH, RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, sync_module
+from .push import PushAuthError, PushProcessingError, PushRequestError, push_settings, receive_push, save_seller_ids
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -32,6 +34,9 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 @app.on_event("startup")
 def startup():
     init_db()
+    with transaction() as db:
+        db.execute("""UPDATE sync_runs SET status='failed',error='服务重启，任务已中断，请重新拉取',
+          finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE status='running'""")
     start_scheduler()
 
 
@@ -67,7 +72,8 @@ def _authenticated(request):
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
     public = {"/api/login", "/api/session"}
-    if request.url.path.startswith("/api/") and request.url.path not in public and not _authenticated(request):
+    push_callback = request.url.path.startswith("/api/ozon/push/")
+    if request.url.path.startswith("/api/") and request.url.path not in public and not push_callback and not _authenticated(request):
         return Response(json.dumps({"detail": "未登录"}, ensure_ascii=False), 401, media_type="application/json")
     return await call_next(request)
 
@@ -104,7 +110,7 @@ def logout(response: Response):
 @app.get("/api/shops")
 def shops():
     with connect() as db:
-        return [dict(row) for row in db.execute("SELECT * FROM shops ORDER BY id")]
+        return [dict(row) for row in db.execute("SELECT id,name,settlement_currency FROM shops ORDER BY id")]
 
 
 @app.put("/api/shops")
@@ -119,6 +125,50 @@ async def update_shops(request: Request):
         db.execute("UPDATE shops SET name=? WHERE id=1", (names[0],))
         db.execute("UPDATE shops SET name=? WHERE id=2", (names[1],))
     return {"ok": True}
+
+
+def _push_error(status, code, message):
+    return JSONResponse({"error": {"code": code, "message": message, "details": ""}}, status_code=status)
+
+
+@app.post("/api/ozon/push/{shop_token}")
+async def ozon_push(shop_token: str, request: Request):
+    request.scope["path"] = "/api/ozon/push/[redacted]"
+    request.scope["raw_path"] = b"/api/ozon/push/[redacted]"
+    if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+        return _push_error(415, "INVALID_CONTENT_TYPE", "Content-Type 必须是 application/json")
+    try:
+        length = int(request.headers.get("content-length", "0"))
+    except ValueError:
+        return _push_error(400, "INVALID_REQUEST", "Content-Length 无效")
+    if length > 1024 * 1024:
+        return _push_error(413, "REQUEST_TOO_LARGE", "请求体超过1MB")
+    body = await request.body()
+    if len(body) > 1024 * 1024:
+        return _push_error(413, "REQUEST_TOO_LARGE", "请求体超过1MB")
+    try:
+        payload = json.loads(body)
+        return await run_in_threadpool(receive_push, shop_token, payload)
+    except PushAuthError as error:
+        return _push_error(403, "AUTH_FAILED", str(error))
+    except (PushRequestError, json.JSONDecodeError) as error:
+        return _push_error(400, "INVALID_REQUEST", str(error))
+    except PushProcessingError:
+        return _push_error(500, "PROCESSING_FAILED", "事件持久化后处理失败")
+
+
+@app.get("/api/ozon/push-settings")
+def ozon_push_settings(request: Request):
+    return push_settings(str(request.base_url))
+
+
+@app.put("/api/ozon/push-settings")
+async def update_ozon_push_settings(request: Request):
+    try:
+        save_seller_ids(await request.json())
+    except PushRequestError as error:
+        raise HTTPException(400, str(error)) from error
+    return push_settings(str(request.base_url))
 
 
 def _dingtalk_settings():
@@ -356,6 +406,26 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
             "page": page, "size": size, "data_through": through}
 
 
+@app.get("/api/rfbs-returns")
+def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50):
+    where, args = _record_clause(shop_id)
+    page, size = _paging(page, size)
+    with connect() as db:
+        totals = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,COUNT(*) records
+          FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
+          GROUP BY r.shop_id ORDER BY r.shop_id""", args)]
+        total = db.execute(f"SELECT COUNT(*) FROM rfbs_return_records r{where}", args).fetchone()[0]
+        items = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,r.return_id,
+          r.return_number,r.created_at,r.posting_number,r.offer_id,r.sku,r.product_name,
+          r.status_raw,r.status_name FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
+          ORDER BY r.created_at DESC,r.return_id DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size])]
+        through = db.execute(f"SELECT MAX(r.created_at) FROM rfbs_return_records r{where}", args).fetchone()[0]
+    for item in items:
+        item["status_name"] = RFBS_RETURN_STATUS_ZH.get(item["status_raw"], item["status_name"] or item["status_raw"])
+    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
+            "page": page, "size": size, "data_through": through}
+
+
 def _latest_snapshots(db, table, shop_id):
     where, args = _record_clause(shop_id, "r")
     return db.execute(f"""SELECT r.shop_id,s.name shop_name,r.observed_at,r.payload FROM {table} r
@@ -420,6 +490,56 @@ def sync_runs():
         """)]
 
 
+@app.get("/api/sync/{run_id}")
+def sync_run(run_id: int):
+    with connect() as db:
+        row = db.execute("SELECT * FROM sync_runs WHERE id=?", (run_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "拉取任务不存在")
+    return dict(row)
+
+
+def _sync_ranges(module, start, end):
+    if module == "stock":
+        return [(start, end)]
+    ranges, current = [], start
+    while current <= end:
+        next_month = (current.replace(day=1, year=current.year + 1, month=1)
+                      if current.month == 12 else current.replace(day=1, month=current.month + 1))
+        chunk_end = min(end, next_month - timedelta(seconds=1))
+        ranges.append((current, chunk_end))
+        current = next_month
+    return ranges
+
+
+def _run_sync_job(run_id, module, shop_id, ranges):
+    records = 0
+    try:
+        for index, (start, end) in enumerate(ranges, 1):
+            with transaction() as db:
+                db.execute("UPDATE sync_runs SET current_from=?,current_to=? WHERE id=?",
+                           (start.isoformat(), end.isoformat(), run_id))
+            result = sync_module(module, shop_id, start, end)
+            records += int(result.get("records") or 0)
+            with transaction() as db:
+                db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",
+                           (index, records, end.isoformat(), run_id))
+    except Exception as error:
+        message = str(error)[:500]
+        with transaction() as db:
+            db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+              status='failed',error=? WHERE id=?""", (message, run_id))
+        try:
+            send_sync_failure(shop_id, module, ranges[0][0], ranges[-1][1], message)
+        except Exception:
+            pass
+        return
+    with transaction() as db:
+        db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+          data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
+                   (ranges[-1][1].isoformat(), run_id))
+
+
 @app.post("/api/sync/{module}")
 async def sync(module: str, request: Request, shop_id: int):
     if module not in SYNC_MODULES: raise HTTPException(404, "未知模块")
@@ -435,26 +555,14 @@ async def sync(module: str, request: Request, shop_id: int):
         raise HTTPException(400, "日期格式无效") from error
     if start >= end:
         raise HTTPException(400, "开始日期必须早于结束日期")
+    ranges = _sync_ranges(module, start, end)
     with transaction() as db:
         run_id = db.execute("""
-          INSERT INTO sync_runs(shop_id,module,range_from,range_to,status) VALUES(?,?,?,?, 'running')
-        """, (shop_id, module, start.isoformat(), end.isoformat())).lastrowid
-    try:
-        result = await run_in_threadpool(sync_module, module, shop_id, start, end)
-    except Exception as error:
-        message = str(error)[:500]
-        with transaction() as db:
-            db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),status='failed',error=? WHERE id=?""",
-                       (message, run_id))
-        try:
-            await run_in_threadpool(send_sync_failure, shop_id, module, start, end, message)
-        except Exception:
-            pass
-        raise HTTPException(502, message) from error
-    with transaction() as db:
-        db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-          data_through=?,status='success' WHERE id=?""", (end.isoformat(), run_id))
-    return {"run_id": run_id, **result}
+          INSERT INTO sync_runs(shop_id,module,range_from,range_to,status,progress_total)
+          VALUES(?,?,?,?, 'running',?)
+        """, (shop_id, module, start.isoformat(), end.isoformat(), len(ranges))).lastrowid
+    threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
+    return {"run_id": run_id, "status": "running", "progress_total": len(ranges)}
 
 
 @app.get("/api/export/orders")

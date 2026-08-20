@@ -68,6 +68,15 @@ def send_sync_failure(shop_id, module, start, end, error):
     send_text(message)
 
 
+def send_webhook_failure(shop_id, error):
+    if not configured():
+        return
+    with connect() as db:
+        shop = db.execute("SELECT name FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
+    now = datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M")
+    send_text(f"Ozon 推送处理失败\n店铺：{shop}\n失败时间：{now}（北京时间）\n错误：{_safe_error(error)[:200]}")
+
+
 def _display_time(value):
     if not value:
         return "暂无"
