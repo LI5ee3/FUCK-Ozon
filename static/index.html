@@ -60,11 +60,22 @@
 
       <section id="settings" class="page"><form id="shopForm" class="panel narrow"><h2>店铺名称</h2><p class="muted">改名只影响展示，不改变店铺ID与数据归属。</p><label>店铺1<input id="shop1" required></label><label>店铺2<input id="shop2" required></label><button class="primary">保存</button></form></section>
 
-      <section id="timeliness" class="page placeholder"></section><section id="finance" class="page placeholder"></section>
-      <section id="returns" class="page placeholder"></section><section id="premium" class="page placeholder"></section>
-      <section id="stock" class="page placeholder"></section><section id="prices" class="page placeholder"></section>
-      <section id="questions" class="page placeholder"></section><section id="rules" class="page placeholder"></section>
+      <section id="timeliness" class="page"><div id="timelinessSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>订单时效明细</h2><span class="muted">仅计算已有实际时间的数据</span></div><div class="table-wrap"><table><thead><tr><th>店铺 / 渠道</th><th>订单号</th><th>创建时间</th><th>发货时间</th><th>签收时间</th><th class="num">发货耗时</th><th class="num">配送耗时</th></tr></thead><tbody id="timelinessRows"></tbody></table></div><div class="pager"><button id="timelinessPrev">上一页</button><span id="timelinessInfo"></span><button id="timelinessNext">下一页</button></div></div></section>
+
+      <section id="finance" class="page"><div id="financeSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>财务流水</h2><span class="muted">不同结算币种分店铺展示</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>发生时间</th><th>业务类型</th><th>订单号</th><th class="num">净额</th><th class="num">销售计提</th><th class="num">销售佣金</th></tr></thead><tbody id="financeRows"></tbody></table></div><div class="pager"><button id="financePrev">上一页</button><span id="financeInfo"></span><button id="financeNext">下一页</button></div></div></section>
+
+      <section id="returns" class="page"><div id="returnsSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>退货与取消明细</h2><span class="muted">来自 Ozon 退货接口</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>时间</th><th>订单号</th><th>SKU / 商品</th><th class="num">数量</th><th>原因</th><th>状态</th></tr></thead><tbody id="returnsRows"></tbody></table></div><div class="pager"><button id="returnsPrev">上一页</button><span id="returnsInfo"></span><button id="returnsNext">下一页</button></div></div></section>
+
+      <section id="premium" class="page"><div id="premiumSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>Premium 日 / SKU 明细</h2><span class="muted">指标保持 Ozon 原始口径</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>日期</th><th>SKU / 商品</th><th class="num">收入</th><th class="num">下单件数</th><th class="num">送达件数</th><th class="num">退货</th><th class="num">取消</th></tr></thead><tbody id="premiumRows"></tbody></table></div><div class="pager"><button id="premiumPrev">上一页</button><span id="premiumInfo"></span><button id="premiumNext">下一页</button></div></div></section>
+
+      <section id="stock" class="page"><div id="stockSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>最新库存快照</h2><span class="muted">每个店铺只展示最近一次拉取</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>货号</th><th>Product ID</th><th>库存类型</th><th class="num">可用</th><th class="num">预留</th><th>快照时间</th></tr></thead><tbody id="stockRows"></tbody></table></div><div class="pager"><button id="stockPrev">上一页</button><span id="stockInfo"></span><button id="stockNext">下一页</button></div></div></section>
+
+      <section id="prices" class="page"><div id="pricesSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>最新价格与佣金快照</h2><span class="muted">每个店铺只展示最近一次拉取</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>货号</th><th>Product ID</th><th class="num">当前价</th><th class="num">营销价</th><th class="num">净价</th><th class="num">最低价</th><th class="num">FBO佣金</th><th class="num">FBS佣金</th><th>活动</th></tr></thead><tbody id="pricesRows"></tbody></table></div><div class="pager"><button id="pricesPrev">上一页</button><span id="pricesInfo"></span><button id="pricesNext">下一页</button></div></div></section>
+
+      <section id="questions" class="page"><div id="questionsSummary" class="summary-grid"></div><div class="panel"><div class="panel-title"><h2>买家问答</h2><span class="muted">仅展示已拉取的问题与回答数量</span></div><div class="table-wrap"><table><thead><tr><th>店铺</th><th>发布时间</th><th>SKU</th><th>状态</th><th>问题</th><th class="num">回答数</th></tr></thead><tbody id="questionsRows"></tbody></table></div><div class="pager"><button id="questionsPrev">上一页</button><span id="questionsInfo"></span><button id="questionsNext">下一页</button></div></div></section>
+
+      <section id="rules" class="page"><div class="panel"><h2>当前商品匹配规则</h2><p class="muted">系统按店铺、订单号和 SKU 识别同一商品行；API 数据优先，CSV 只补充 API 缺失字段。当前没有需要人工维护的匹配规则。</p><div class="table-wrap"><table><thead><tr><th>对象</th><th>唯一标识</th><th>合并规则</th></tr></thead><tbody><tr><td>订单</td><td>店铺 + 订单号</td><td>API 状态与渠道优先</td></tr><tr><td>订单商品</td><td>店铺 + 订单号 + SKU</td><td>同一文件内数量先合计，再幂等写入</td></tr><tr><td>马帮成本</td><td>店铺 + 订单号</td><td>按订单总成本匹配，不自动分摊 SKU</td></tr></tbody></table></div></div></section>
     </main>
   </div>
-  <script src="/static/app.js?v=20260820-3"></script>
+  <script src="/static/app.js?v=20260820-4"></script>
 </body></html>

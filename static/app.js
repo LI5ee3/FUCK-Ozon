@@ -1,10 +1,26 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: []};
+const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,premium:1,stock:1,prices:1,questions:1}};
 const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",finance:"财务利润",returns:"退货与投诉",premium:"Premium分析",stock:"库存",prices:"价格与佣金",questions:"买家问答",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",settings:"系统设置"};
 const syncNames = {orders:"订单",finance:"财务",returns:"退货",premium:"Premium分析",stock:"库存",prices:"价格",questions:"买家问答"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
 const bj = (v) => v ? new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)).replaceAll("/","-") : "暂无";
+const num = (v, digits=2) => Number(v || 0).toLocaleString("zh-CN",{maximumFractionDigits:digits});
+const metric = (v, digits=2, suffix="") => v == null || v === "" ? "暂无" : `${num(v,digits)}${suffix}`;
+const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时`;
+const cell = (v) => v == null || v === "" ? "暂无" : esc(v);
+
+function summary(id, cards) {
+  $(`#${id}Summary`).innerHTML=cards.map(c=>`<div class="summary-card"><span class="muted">${esc(c[0])}</span><strong>${esc(c[1])}</strong>${c[2]?`<small class="muted">${esc(c[2])}</small>`:""}</div>`).join("");
+}
+function pager(name, data, loader) {
+  const pages=Math.max(1,Math.ceil(data.total/data.size));
+  $(`#${name}Info`).textContent=`第 ${data.page} / ${pages} 页，共 ${data.total} 条`;
+  $(`#${name}Prev`).disabled=data.page<=1; $(`#${name}Next`).disabled=data.page>=pages;
+  $(`#${name}Prev`).onclick=()=>{state.pages[name]--;loader()};
+  $(`#${name}Next`).onclick=()=>{state.pages[name]++;loader()};
+  $("#dataThrough").textContent=`数据截止：${data.data_through?.length===10?data.data_through:bj(data.data_through)}`;
+}
 
 async function api(url, options={}) {
   const response = await fetch(url, options);
@@ -44,6 +60,48 @@ async function loadRisk() {
   const rows=await api(`/api/risk?shop_id=${state.shop}`);
   $("#riskRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)} / <span class="tag">${r.channel}</span></td><td title="${esc(r.product_name)}">${esc(r.sku)}</td><td class="num">${r.valid_pieces}</td><td class="risk-col">${pct(r.cancelled_rate)}</td><td class="risk-col">${pct(r.unclaimed_rate)}</td><td class="risk-col">${pct(r.customs_rate)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">暂无数据。</td></tr>';
 }
+async function loadTimeliness() {
+  const data=await api(`/api/timeliness?shop_id=${state.shop}&page=${state.pages.timeliness}`), s=data.summary;
+  summary("timeliness",[["有效订单",num(s.orders,0)],["已有发货时间",num(s.shipped_orders,0)],["平均发货耗时",hours(s.avg_ship_hours)],["平均配送耗时",hours(s.avg_delivery_hours)]]);
+  $("#timelinessRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)} / <span class="tag">${esc(r.channel)}</span></td><td>${esc(r.posting_number)}</td><td>${bj(r.created_at)}</td><td>${bj(r.shipped_at)}</td><td>${bj(r.delivered_at)}</td><td class="num">${hours(r.ship_hours)}</td><td class="num">${hours(r.delivery_hours)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  pager("timeliness",data,loadTimeliness);
+}
+async function loadFinance() {
+  const data=await api(`/api/finance?shop_id=${state.shop}&page=${state.pages.finance}`);
+  summary("finance",[["流水记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.amount)} ${s.currency}`,`销售计提 ${num(s.accruals)} · 销售佣金 ${num(s.commission)}`])]);
+  $("#financeRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.occurred_at)}</td><td>${cell(r.operation_type)}</td><td>${cell(r.posting_number)}</td><td class="num">${metric(r.amount)} ${esc(r.currency)}</td><td class="num">${metric(r.accruals)} ${esc(r.currency)}</td><td class="num">${metric(r.commission)} ${esc(r.currency)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  pager("finance",data,loadFinance);
+}
+async function loadReturns() {
+  const data=await api(`/api/returns?shop_id=${state.shop}&page=${state.pages.returns}`);
+  summary("returns",[["退货记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.quantity,0)} 件`,`共 ${num(s.records,0)} 条记录`])]);
+  $("#returnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.occurred_at)}</td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td><td class="num">${num(r.quantity,0)}</td><td><span class="cell-text" title="${esc(r.reason)}">${cell(r.reason)}</span></td><td>${cell(r.status||r.type)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  pager("returns",data,loadReturns);
+}
+async function loadPremium() {
+  const data=await api(`/api/premium?shop_id=${state.shop}&page=${state.pages.premium}`);
+  summary("premium",[["日 / SKU 记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.revenue)} 收入`,`API 原始值 · 下单 ${num(s.ordered_units,0)} · 送达 ${num(s.delivered_units,0)} · 退货 ${num(s.returns,0)} · 取消 ${num(s.cancellations,0)}`])]);
+  $("#premiumRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.day)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td><td class="num">${metric(r.revenue)}</td><td class="num">${metric(r.ordered_units,0)}</td><td class="num">${metric(r.delivered_units,0)}</td><td class="num">${metric(r.returns,0)}</td><td class="num">${metric(r.cancellations,0)}</td></tr>`).join("") || '<tr><td colspan="8" class="muted">暂无数据。</td></tr>';
+  pager("premium",data,loadPremium);
+}
+async function loadStock() {
+  const data=await api(`/api/stock?shop_id=${state.shop}&page=${state.pages.stock}`);
+  summary("stock",[["最新商品",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.present,0)} 可用`,`商品 ${num(s.products,0)} · 预留 ${num(s.reserved,0)}`])]);
+  $("#stockRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.offer_id)}</td><td>${cell(r.product_id)}</td><td>${cell(r.types)}</td><td class="num">${num(r.present,0)}</td><td class="num">${num(r.reserved,0)}</td><td>${bj(r.observed_at)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  pager("stock",data,loadStock);
+}
+async function loadPrices() {
+  const data=await api(`/api/prices?shop_id=${state.shop}&page=${state.pages.prices}`);
+  summary("prices",[["最新商品",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.products,0)} 个商品`,`参加活动 ${num(s.in_action,0)}`])]);
+  $("#pricesRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.offer_id)}</td><td>${cell(r.product_id)}</td><td class="num">${metric(r.price)} ${cell(r.currency)}</td><td class="num">${metric(r.marketing_price)} ${cell(r.currency)}</td><td class="num">${metric(r.net_price)} ${cell(r.currency)}</td><td class="num">${metric(r.min_price)} ${cell(r.currency)}</td><td class="num">${metric(r.sales_percent_fbo,2,"%")}</td><td class="num">${metric(r.sales_percent_fbs,2,"%")}</td><td>${r.in_action?'是':'否'}</td></tr>`).join("") || '<tr><td colspan="10" class="muted">暂无数据。</td></tr>';
+  pager("prices",data,loadPrices);
+}
+async function loadQuestions() {
+  const data=await api(`/api/questions?shop_id=${state.shop}&page=${state.pages.questions}`);
+  summary("questions",[["问题记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.answered,0)} 已回答`,`共 ${num(s.records,0)} 个问题`])]);
+  $("#questionsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.published_at)}</td><td>${cell(r.sku)}</td><td>${cell(r.status)}</td><td><span class="cell-text" title="${esc(r.text)}">${cell(r.text)}</span></td><td class="num">${metric(r.answers_count,0)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">暂无数据。</td></tr>';
+  pager("questions",data,loadQuestions);
+}
 async function loadImports() {
   const rows=await api("/api/imports");
   $("#importRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(r.kind)}</td><td>${esc(r.filename)}</td><td class="num">${r.row_count}</td><td>${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">暂无导入记录。</td></tr>';
@@ -54,7 +112,9 @@ async function loadSync() {
 }
 async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
-  if(page==="risk") return loadRisk(); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync();
+  if(page==="risk") return loadRisk();
+  const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturns,premium:loadPremium,stock:loadStock,prices:loadPrices,questions:loadQuestions};
+  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync();
 }
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -64,7 +124,7 @@ function openPage(page) {
 
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});showShell();await loadShops();await loadOverview()}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{if(e.target.dataset.page)openPage(e.target.dataset.page)});
-$("#shopSelect").addEventListener("change",e=>{state.shop=Number(e.target.value);state.page=1;const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))});
+$("#shopSelect").addEventListener("change",e=>{state.shop=Number(e.target.value);state.page=1;Object.keys(state.pages).forEach(k=>state.pages[k]=1);const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))});
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
 $("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});

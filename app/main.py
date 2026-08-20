@@ -17,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import _env, default_range, sync_module
+from .ozon import ANALYTICS_METRICS, _env, default_range, sync_module
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -118,6 +118,14 @@ def _shop_clause(shop_id):
     return (" AND o.shop_id=?", [shop_id]) if shop_id in (1, 2) else ("", [])
 
 
+def _record_clause(shop_id, alias="r"):
+    return (f" WHERE {alias}.shop_id=?", [shop_id]) if shop_id in (1, 2) else ("", [])
+
+
+def _paging(page, size):
+    return max(page, 1), min(max(size, 1), 100)
+
+
 @app.get("/api/summary")
 def summary(shop_id: int = 0):
     clause, args = _shop_clause(shop_id)
@@ -187,6 +195,222 @@ def risk(shop_id: int = 0):
         for key in ("cancelled", "unclaimed", "customs"):
             row[f"{key}_rate"] = row[f"{key}_pieces"] / row["valid_pieces"] if row["valid_pieces"] else 0
     return rows
+
+
+@app.get("/api/timeliness")
+def timeliness(shop_id: int = 0, page: int = 1, size: int = 30):
+    clause, args = _shop_clause(shop_id)
+    page, size = _paging(page, size)
+    with connect() as db:
+        summary = dict(db.execute(f"""
+          SELECT COUNT(*) orders,
+            SUM(o.shipped_at IS NOT NULL) shipped_orders,
+            SUM(o.delivered_at IS NOT NULL) delivered_orders,
+            AVG(CASE WHEN o.shipped_at IS NOT NULL AND julianday(o.shipped_at)>=julianday(o.created_at)
+              THEN (julianday(o.shipped_at)-julianday(o.created_at))*24 END) avg_ship_hours,
+            AVG(CASE WHEN o.delivered_at IS NOT NULL AND o.shipped_at IS NOT NULL
+              AND julianday(o.delivered_at)>=julianday(o.shipped_at)
+              THEN (julianday(o.delivered_at)-julianday(o.shipped_at))*24 END) avg_delivery_hours
+          FROM orders o WHERE {ACTIVE}{clause}
+        """, args).fetchone())
+        total = summary["orders"]
+        rows = [dict(row) for row in db.execute(f"""
+          SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
+            CASE WHEN o.shipped_at IS NOT NULL AND julianday(o.shipped_at)>=julianday(o.created_at)
+              THEN (julianday(o.shipped_at)-julianday(o.created_at))*24 END ship_hours,
+            CASE WHEN o.delivered_at IS NOT NULL AND o.shipped_at IS NOT NULL
+              AND julianday(o.delivered_at)>=julianday(o.shipped_at)
+              THEN (julianday(o.delivered_at)-julianday(o.shipped_at))*24 END delivery_hours
+          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {ACTIVE}{clause}
+          ORDER BY o.created_at DESC LIMIT ? OFFSET ?
+        """, args + [size, (page - 1) * size])]
+        through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}", args).fetchone()[0]
+    return {"summary": summary, "items": rows, "total": total, "page": page, "size": size,
+            "data_through": through}
+
+
+@app.get("/api/finance")
+def finance(shop_id: int = 0, page: int = 1, size: int = 50):
+    where, args = _record_clause(shop_id)
+    page, size = _paging(page, size)
+    with connect() as db:
+        totals = [dict(row) for row in db.execute(f"""
+          SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,COUNT(*) records,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.amount') AS REAL)),0) amount,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.accruals_for_sale') AS REAL)),0) accruals,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.sale_commission') AS REAL)),0) commission
+          FROM finance_records r JOIN shops s ON s.id=r.shop_id{where}
+          GROUP BY r.shop_id ORDER BY r.shop_id
+        """, args)]
+        total = db.execute(f"SELECT COUNT(*) FROM finance_records r{where}", args).fetchone()[0]
+        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,
+          r.occurred_at,r.payload FROM finance_records r JOIN shops s ON s.id=r.shop_id{where}
+          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
+        through = db.execute(f"SELECT MAX(r.occurred_at) FROM finance_records r{where}", args).fetchone()[0]
+    items = []
+    for row in records:
+        payload = json.loads(row["payload"])
+        posting = payload.get("posting") or {}
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"], "currency": row["currency"],
+                      "occurred_at": row["occurred_at"], "posting_number": posting.get("posting_number"),
+                      "operation_type": payload.get("operation_type_name") or payload.get("operation_type"),
+                      "amount": payload.get("amount"), "accruals": payload.get("accruals_for_sale"),
+                      "commission": payload.get("sale_commission")})
+    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
+            "page": page, "size": size, "data_through": through}
+
+
+@app.get("/api/returns")
+def returns(shop_id: int = 0, page: int = 1, size: int = 50):
+    where, args = _record_clause(shop_id)
+    page, size = _paging(page, size)
+    with connect() as db:
+        totals = [dict(row) for row in db.execute(f"""
+          SELECT r.shop_id,s.name shop_name,COUNT(*) records,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.product.quantity') AS INTEGER)),0) quantity
+          FROM return_records r JOIN shops s ON s.id=r.shop_id{where}
+          GROUP BY r.shop_id ORDER BY r.shop_id
+        """, args)]
+        total = db.execute(f"SELECT COUNT(*) FROM return_records r{where}", args).fetchone()[0]
+        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.posting_number,r.sku,r.payload
+          FROM return_records r JOIN shops s ON s.id=r.shop_id{where}
+          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
+        through = db.execute(f"SELECT MAX(r.occurred_at) FROM return_records r{where}", args).fetchone()[0]
+    items = []
+    for row in records:
+        payload = json.loads(row["payload"])
+        product, visual = payload.get("product") or {}, payload.get("visual") or {}
+        status = visual.get("status") or {}
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                      "occurred_at": row["occurred_at"], "posting_number": row["posting_number"],
+                      "sku": row["sku"], "product_name": product.get("name"),
+                      "quantity": product.get("quantity"), "reason": payload.get("return_reason_name"),
+                      "status": status.get("display_name") if isinstance(status, dict) else status,
+                      "type": payload.get("type")})
+    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
+            "page": page, "size": size, "data_through": through}
+
+
+@app.get("/api/premium")
+def premium(shop_id: int = 0, page: int = 1, size: int = 50):
+    where, args = _record_clause(shop_id)
+    page, size = _paging(page, size)
+    metric_indexes = {name: ANALYTICS_METRICS.index(name) for name in
+                      ("revenue", "ordered_units", "returns", "cancellations", "delivered_units")}
+    with connect() as db:
+        totals = [dict(row) for row in db.execute(f"""
+          SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,COUNT(*) records,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['revenue']}]') AS REAL)),0) revenue,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['ordered_units']}]') AS REAL)),0) ordered_units,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['delivered_units']}]') AS REAL)),0) delivered_units,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['returns']}]') AS REAL)),0) returns,
+            COALESCE(SUM(CAST(json_extract(r.payload,'$.metrics[{metric_indexes['cancellations']}]') AS REAL)),0) cancellations
+          FROM analytics_records r JOIN shops s ON s.id=r.shop_id{where}
+          GROUP BY r.shop_id ORDER BY r.shop_id
+        """, args)]
+        total = db.execute(f"SELECT COUNT(*) FROM analytics_records r{where}", args).fetchone()[0]
+        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,
+          r.occurred_at,r.payload FROM analytics_records r JOIN shops s ON s.id=r.shop_id{where}
+          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
+        through = db.execute(f"SELECT MAX(r.occurred_at) FROM analytics_records r{where}", args).fetchone()[0]
+    items = []
+    for row in records:
+        payload = json.loads(row["payload"])
+        dimensions, metrics = payload.get("dimensions") or [], payload.get("metrics") or []
+        sku_dimension = next((d for d in dimensions if str(d.get("id", "")) != str(row["occurred_at"])), {})
+        value = lambda name: metrics[metric_indexes[name]] if len(metrics) > metric_indexes[name] else None
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"], "currency": row["currency"],
+                      "day": row["occurred_at"], "sku": sku_dimension.get("id"),
+                      "product_name": sku_dimension.get("name"), "revenue": value("revenue"),
+                      "ordered_units": value("ordered_units"), "delivered_units": value("delivered_units"),
+                      "returns": value("returns"), "cancellations": value("cancellations")})
+    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
+            "page": page, "size": size, "data_through": through}
+
+
+def _latest_snapshots(db, table, shop_id):
+    where, args = _record_clause(shop_id, "r")
+    return db.execute(f"""SELECT r.shop_id,s.name shop_name,r.observed_at,r.payload FROM {table} r
+      JOIN shops s ON s.id=r.shop_id JOIN (
+        SELECT shop_id,MAX(observed_at) observed_at FROM {table} GROUP BY shop_id
+      ) latest ON latest.shop_id=r.shop_id AND latest.observed_at=r.observed_at{where}
+      ORDER BY r.shop_id,r.record_key""", args).fetchall()
+
+
+@app.get("/api/stock")
+def stock(shop_id: int = 0, page: int = 1, size: int = 50):
+    page, size = _paging(page, size)
+    with connect() as db:
+        records = _latest_snapshots(db, "stock_snapshots", shop_id)
+    items, shops = [], {}
+    for row in records:
+        payload = json.loads(row["payload"])
+        stocks = payload.get("stocks") or []
+        present = sum(int(value.get("present") or 0) for value in stocks)
+        reserved = sum(int(value.get("reserved") or 0) for value in stocks)
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                      "observed_at": row["observed_at"], "product_id": payload.get("product_id"),
+                      "offer_id": payload.get("offer_id"), "present": present, "reserved": reserved,
+                      "types": ", ".join(sorted({str(value.get("type") or value.get("shipment_type") or "")
+                                                   for value in stocks if value.get("type") or value.get("shipment_type")}))})
+        summary = shops.setdefault(row["shop_id"], {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                                                    "products": 0, "present": 0, "reserved": 0})
+        summary["products"] += 1; summary["present"] += present; summary["reserved"] += reserved
+    total = len(items); start = (page - 1) * size
+    through = max((item["observed_at"] for item in items), default=None)
+    return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
+            "total": total, "page": page, "size": size, "data_through": through}
+
+
+@app.get("/api/prices")
+def prices(shop_id: int = 0, page: int = 1, size: int = 50):
+    page, size = _paging(page, size)
+    with connect() as db:
+        records = _latest_snapshots(db, "price_snapshots", shop_id)
+    items, shops = [], {}
+    for row in records:
+        payload = json.loads(row["payload"])
+        price, commissions = payload.get("price") or {}, payload.get("commissions") or {}
+        action = bool((payload.get("marketing_actions") or {}).get("ozon_actions_exist"))
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                      "observed_at": row["observed_at"], "product_id": payload.get("product_id"),
+                      "offer_id": payload.get("offer_id"), "currency": price.get("currency_code"),
+                      "price": price.get("price"), "marketing_price": price.get("marketing_seller_price"),
+                      "net_price": price.get("net_price"), "min_price": price.get("min_price"),
+                      "sales_percent_fbo": commissions.get("sales_percent_fbo"),
+                      "sales_percent_fbs": commissions.get("sales_percent_fbs"), "in_action": action})
+        summary = shops.setdefault(row["shop_id"], {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                                                    "products": 0, "in_action": 0})
+        summary["products"] += 1; summary["in_action"] += int(action)
+    total = len(items); start = (page - 1) * size
+    through = max((item["observed_at"] for item in items), default=None)
+    return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
+            "total": total, "page": page, "size": size, "data_through": through}
+
+
+@app.get("/api/questions")
+def questions(shop_id: int = 0, page: int = 1, size: int = 50):
+    where, args = _record_clause(shop_id)
+    page, size = _paging(page, size)
+    with connect() as db:
+        totals = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,
+          COUNT(*) records,SUM(json_extract(r.payload,'$.answers_count')>0) answered
+          FROM question_records r JOIN shops s ON s.id=r.shop_id{where}
+          GROUP BY r.shop_id ORDER BY r.shop_id""", args)]
+        total = db.execute(f"SELECT COUNT(*) FROM question_records r{where}", args).fetchone()[0]
+        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.payload
+          FROM question_records r JOIN shops s ON s.id=r.shop_id{where}
+          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
+        through = db.execute(f"SELECT MAX(r.occurred_at) FROM question_records r{where}", args).fetchone()[0]
+    items = []
+    for row in records:
+        payload = json.loads(row["payload"])
+        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+                      "published_at": row["occurred_at"], "sku": payload.get("sku"),
+                      "status": payload.get("status"), "text": payload.get("text"),
+                      "answers_count": payload.get("answers_count"), "question_link": payload.get("question_link")})
+    return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
+            "page": page, "size": size, "data_through": through}
 
 
 @app.post("/api/import/{kind}")
