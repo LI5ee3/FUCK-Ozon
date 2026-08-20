@@ -65,7 +65,9 @@ function openPage(page) {
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});showShell();await loadShops();await loadOverview()}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{if(e.target.dataset.page)openPage(e.target.dataset.page)});
 $("#shopSelect").addEventListener("change",e=>{state.shop=Number(e.target.value);state.page=1;const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))});
-$("#searchButton").onclick=()=>{state.page=1;loadOrders().catch(e=>toast(e.message,true))};
+$("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
+$("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
+$("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 $("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
 $("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});

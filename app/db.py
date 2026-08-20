@@ -123,4 +123,5 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);
         """)

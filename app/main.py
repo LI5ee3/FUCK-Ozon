@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import time
 from zipfile import BadZipFile
@@ -18,7 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import default_range, sync_module
+from .ozon import _env, default_range, sync_module
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -78,7 +77,7 @@ def session(request: Request):
 
 @app.post("/api/login")
 async def login(request: Request, response: Response):
-    expected = os.getenv("ADMIN_PASSWORD")
+    expected = _env().get("ADMIN_PASSWORD")
     if not expected:
         raise HTTPException(503, "服务器尚未设置 ADMIN_PASSWORD")
     body = await request.json()
@@ -197,7 +196,9 @@ async def upload(kind: str, request: Request, shop_id: int):
     content = await request.body()
     if len(content) > 50 * 1024 * 1024: raise HTTPException(413, "文件超过50MB")
     try:
-        return import_costs(shop_id, filename, content) if kind == "mabang" else import_csv(shop_id, kind, filename, content)
+        if kind == "mabang":
+            return await run_in_threadpool(import_costs, shop_id, filename, content)
+        return await run_in_threadpool(import_csv, shop_id, kind, filename, content)
     except (ValueError, UnicodeError, BadZipFile, InvalidFileException) as error:
         raise HTTPException(400, str(error)) from error
 
@@ -257,7 +258,7 @@ def export_orders(shop_id: int = 0):
     def lines():
         with connect() as db:
             shops_value = [dict(r) for r in db.execute("SELECT id,name FROM shops ORDER BY id")]
-            through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE 1=1{clause}", args).fetchone()[0]
+            through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}", args).fetchone()[0]
             yield json.dumps({"type":"metadata","shops":shops_value,"timezone":"数据库UTC；显示北京时间",
                               "order_definition":"COUNT DISTINCT posting_number","piece_definition":"SUM quantity",
                               "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
@@ -265,7 +266,7 @@ def export_orders(shop_id: int = 0):
               SELECT o.shop_id,s.name shop,o.posting_number,o.channel,o.created_at,o.status_raw,
                 o.cancel_reason_raw,o.amount_original,o.amount_currency,c.cost_cny
               FROM orders o JOIN shops s ON s.id=o.shop_id LEFT JOIN order_costs c USING(shop_id,posting_number)
-              WHERE 1=1{clause} ORDER BY o.created_at
+              WHERE {ACTIVE}{clause} ORDER BY o.created_at
             """, args):
                 yield json.dumps(dict(row), ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",

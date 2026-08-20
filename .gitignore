@@ -3,6 +3,11 @@
 data/
 __pycache__/
 *.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+SYNC_VALIDATION.md
 .DS_Store
 FBP.csv
 realFBS.csv

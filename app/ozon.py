@@ -74,7 +74,7 @@ def _post(shop_id, path, payload):
                     return json.load(response)
             except urllib.error.HTTPError as error:
                 _last_request = time.monotonic()
-                if error.code == 429 and attempt < 6:
+                if (error.code == 429 or 500 <= error.code < 600) and attempt < 6:
                     time.sleep(min(30, 2 ** (attempt + 1)))
                     continue
                 try:
@@ -82,6 +82,12 @@ def _post(shop_id, path, payload):
                 except Exception:
                     message = "Ozon API请求失败"
                 raise RuntimeError(f"{path}: HTTP {error.code}: {message}") from error
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+                _last_request = time.monotonic()
+                if attempt < 6:
+                    time.sleep(min(30, 2 ** (attempt + 1)))
+                    continue
+                raise RuntimeError(f"{path}: 网络请求失败: {error}") from error
 
 
 def default_range():
@@ -181,6 +187,8 @@ def sync_orders(shop_id, start, end):
             """, (shop_id, number, posting.get("order_number"), channel, created,
                   STATUS_ZH.get(status_original, status_original), cancellation.get("cancel_reason"),
                   shipped, cancelled_after, 0, amount, amount_currency, "api", fetched))
+            db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
+                       (channel, shop_id, number))
             for product, price in zip(products, prices):
                 sku = str(product.get("sku") or "")
                 if not sku:
@@ -188,8 +196,8 @@ def sync_orders(shop_id, start, end):
                 db.execute("""
                   INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,
                     quantity,unit_price,price_currency,source)
-                  VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,channel,posting_number,sku) DO UPDATE SET
-                    offer_id=COALESCE(NULLIF(excluded.offer_id,''),order_items.offer_id),
+                  VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number,sku) DO UPDATE SET
+                    channel=excluded.channel,offer_id=COALESCE(NULLIF(excluded.offer_id,''),order_items.offer_id),
                     product_name_raw=COALESCE(NULLIF(excluded.product_name_raw,''),order_items.product_name_raw),
                     quantity=excluded.quantity,unit_price=COALESCE(excluded.unit_price,order_items.unit_price),
                     price_currency=COALESCE(NULLIF(excluded.price_currency,''),order_items.price_currency),source='api'
@@ -256,7 +264,15 @@ def sync_premium(shop_id, start, end):
     with transaction() as db:
         for record in records:
             dimensions = record.get("dimensions") or []
-            occurred = next((d.get("id") for d in dimensions if str(d.get("id", "")).startswith("20")), None)
+            occurred = None
+            for dimension in dimensions:
+                value = str(dimension.get("id", ""))
+                try:
+                    datetime.strptime(value, "%Y-%m-%d")
+                    occurred = value
+                    break
+                except ValueError:
+                    continue
             db.execute("""INSERT INTO analytics_records VALUES(?,?,?,?,?)
               ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,payload=excluded.payload,fetched_at=excluded.fetched_at
             """, (shop_id, _key(record), occurred, _json(record), fetched))
@@ -274,7 +290,8 @@ def _sync_snapshot(shop_id, path, table):
 
 
 def sync_questions(shop_id, start, end):
-    records = _cursor_pages(shop_id, "/v1/question/list", {"filter": {}, "limit": 100},
+    records = _cursor_pages(shop_id, "/v1/question/list",
+                            {"filter": {"date_from": _utc(start), "date_to": _utc(end)}, "limit": 100},
                             "questions", "last_id", "last_id")
     records = [record for record in records if start <= datetime.fromisoformat(record["published_at"].replace("Z", "+00:00")).astimezone(BEIJING) <= end]
     fetched = _stamp()

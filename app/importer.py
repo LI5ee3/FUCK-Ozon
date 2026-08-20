@@ -46,6 +46,18 @@ def import_csv(shop_id, channel, filename, content):
     if not rows or not required.issubset(rows[0]):
         raise ValueError("CSV字段不符合Ozon导出格式")
 
+    quantities = {}
+    for row in rows:
+        posting = _text(row["发货号码"])
+        sku = _text(row["SKU"])
+        if not posting or not sku:
+            raise ValueError("订单号或SKU为空")
+        quantity = _number(row["数量"])
+        if quantity is None or quantity <= 0 or not quantity.is_integer():
+            raise ValueError(f"订单 {posting} 的数量无效")
+        key = posting, sku
+        quantities[key] = quantities.get(key, 0) + int(quantity)
+
     with transaction() as db:
         batch = db.execute(
             "INSERT INTO import_batches(shop_id,kind,filename,row_count) VALUES(?,?,?,?)",
@@ -54,11 +66,7 @@ def import_csv(shop_id, channel, filename, content):
         for row in rows:
             posting = _text(row["发货号码"])
             sku = _text(row["SKU"])
-            if not posting or not sku:
-                raise ValueError("订单号或SKU为空")
-            quantity = _number(row["数量"])
-            if quantity is None or quantity <= 0 or not quantity.is_integer():
-                raise ValueError(f"订单 {posting} 的数量无效")
+            quantity = quantities[(posting, sku)]
             shipped, cancelled_after, anomaly, shipped_at = _shipping(row)
             created = row.get("已创建") or row.get("正在处理中")
             amount = _number(row.get("发货的金额"))
@@ -90,12 +98,16 @@ def import_csv(shop_id, channel, filename, content):
                   _text(row.get("取消原因")) or None, shipped, cancelled_after, anomaly,
                   amount, amount_currency, _number(row.get("已由买家支付")),
                   _text(row.get("买家货币代码")) or None, "csv", batch))
+            item_channel = db.execute(
+                "SELECT channel FROM orders WHERE shop_id=? AND posting_number=?", (shop_id, posting)).fetchone()[0]
+            db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
+                       (item_channel, shop_id, posting))
             db.execute("""
               INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,
                 quantity,unit_price,price_currency,buyer_paid,buyer_currency,source,import_batch_id)
               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-              ON CONFLICT(shop_id,channel,posting_number,sku) DO UPDATE SET
-                offer_id=COALESCE(order_items.offer_id,excluded.offer_id),
+              ON CONFLICT(shop_id,posting_number,sku) DO UPDATE SET
+                channel=excluded.channel,offer_id=COALESCE(order_items.offer_id,excluded.offer_id),
                 product_name_raw=CASE WHEN order_items.source='api' AND order_items.product_name_raw<>'' THEN order_items.product_name_raw ELSE excluded.product_name_raw END,
                 quantity=CASE WHEN order_items.source='api' THEN order_items.quantity ELSE excluded.quantity END,
                 unit_price=COALESCE(order_items.unit_price,excluded.unit_price),
@@ -103,8 +115,8 @@ def import_csv(shop_id, channel, filename, content):
                 buyer_paid=COALESCE(order_items.buyer_paid,excluded.buyer_paid),
                 buyer_currency=COALESCE(order_items.buyer_currency,excluded.buyer_currency),
                 import_batch_id=CASE WHEN order_items.source='api' THEN order_items.import_batch_id ELSE excluded.import_batch_id END
-            """, (shop_id, channel, posting, sku, _text(row.get("货号")) or None,
-                  _text(row.get("商品名称")), int(quantity),
+            """, (shop_id, item_channel, posting, sku, _text(row.get("货号")) or None,
+                  _text(row.get("商品名称")), quantity,
                   _number(row.get("您的价格")), _text(row.get("商品的货币代码")) or None,
                   _number(row.get("已由买家支付")), _text(row.get("买家货币代码")) or None,
                   "csv", batch))
