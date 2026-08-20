@@ -18,12 +18,12 @@ from starlette.concurrency import run_in_threadpool
 from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import _env, default_range, sync_module
+from .ozon import CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, sync_module
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
-SYNC_MODULES = {"orders", "finance", "returns", "stock", "prices"}
+SYNC_MODULES = {"orders", "finance", "returns", "stock"}
 
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -204,6 +204,13 @@ def summary(shop_id: int = 0):
     return {"totals": totals, "channels": by_channel, "data_through": through}
 
 
+def _translated_order(row):
+    order = dict(row)
+    order["status_raw"] = STATUS_ZH.get(order["status_raw"], order["status_raw"])
+    order["cancel_reason_raw"] = CANCEL_REASON_ZH.get(order["cancel_reason_raw"], order["cancel_reason_raw"])
+    return order
+
+
 @app.get("/api/orders")
 def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size: int = 30):
     where, args = ["1=1"], []
@@ -219,7 +226,7 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
     sql_where = " AND ".join(where)
     with connect() as db:
         total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {sql_where}", args).fetchone()[0]
-        result = [dict(row) for row in db.execute(f"""
+        result = [_translated_order(row) for row in db.execute(f"""
           SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
             o.status_raw,o.cancel_reason_raw,o.shipped,o.data_anomaly,o.amount_original,o.amount_currency,c.cost_cny
           FROM orders o JOIN shops s ON s.id=o.shop_id
@@ -290,7 +297,7 @@ def finance(shop_id: int = 0, page: int = 1, size: int = 50):
     page, size = _paging(page, size)
     with connect() as db:
         totals = [dict(row) for row in db.execute(f"""
-          SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,COUNT(*) records,
+          SELECT r.shop_id,s.name shop_name,'RUB' currency,COUNT(*) records,
             COALESCE(SUM(CAST(json_extract(r.payload,'$.amount') AS REAL)),0) amount,
             COALESCE(SUM(CAST(json_extract(r.payload,'$.accruals_for_sale') AS REAL)),0) accruals,
             COALESCE(SUM(CAST(json_extract(r.payload,'$.sale_commission') AS REAL)),0) commission
@@ -298,7 +305,7 @@ def finance(shop_id: int = 0, page: int = 1, size: int = 50):
           GROUP BY r.shop_id ORDER BY r.shop_id
         """, args)]
         total = db.execute(f"SELECT COUNT(*) FROM finance_records r{where}", args).fetchone()[0]
-        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency currency,
+        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,'RUB' currency,
           r.occurred_at,r.payload FROM finance_records r JOIN shops s ON s.id=r.shop_id{where}
           ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
         through = db.execute(f"SELECT MAX(r.occurred_at) FROM finance_records r{where}", args).fetchone()[0]
@@ -306,9 +313,10 @@ def finance(shop_id: int = 0, page: int = 1, size: int = 50):
     for row in records:
         payload = json.loads(row["payload"])
         posting = payload.get("posting") or {}
+        operation = payload.get("operation_type_name") or payload.get("operation_type")
         items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"], "currency": row["currency"],
                       "occurred_at": row["occurred_at"], "posting_number": posting.get("posting_number"),
-                      "operation_type": payload.get("operation_type_name") or payload.get("operation_type"),
+                      "operation_type": FINANCE_OPERATION_ZH.get(operation, operation),
                       "amount": payload.get("amount"), "accruals": payload.get("accruals_for_sale"),
                       "commission": payload.get("sale_commission")})
     return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
@@ -336,11 +344,13 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
         payload = json.loads(row["payload"])
         product, visual = payload.get("product") or {}, payload.get("visual") or {}
         status = visual.get("status") or {}
+        status = status.get("display_name") if isinstance(status, dict) else status
         items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
                       "occurred_at": row["occurred_at"], "posting_number": row["posting_number"],
                       "sku": row["sku"], "product_name": product.get("name"),
-                      "quantity": product.get("quantity"), "reason": payload.get("return_reason_name"),
-                      "status": status.get("display_name") if isinstance(status, dict) else status,
+                      "quantity": product.get("quantity"),
+                      "reason": CANCEL_REASON_ZH.get(payload.get("return_reason_name"), payload.get("return_reason_name")),
+                      "status": RETURN_STATUS_ZH.get(status, status),
                       "type": payload.get("type")})
     return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
             "page": page, "size": size, "data_through": through}
@@ -374,32 +384,6 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50):
         summary = shops.setdefault(row["shop_id"], {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
                                                     "products": 0, "present": 0, "reserved": 0})
         summary["products"] += 1; summary["present"] += present; summary["reserved"] += reserved
-    total = len(items); start = (page - 1) * size
-    through = max((item["observed_at"] for item in items), default=None)
-    return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
-            "total": total, "page": page, "size": size, "data_through": through}
-
-
-@app.get("/api/prices")
-def prices(shop_id: int = 0, page: int = 1, size: int = 50):
-    page, size = _paging(page, size)
-    with connect() as db:
-        records = _latest_snapshots(db, "price_snapshots", shop_id)
-    items, shops = [], {}
-    for row in records:
-        payload = json.loads(row["payload"])
-        price, commissions = payload.get("price") or {}, payload.get("commissions") or {}
-        action = bool((payload.get("marketing_actions") or {}).get("ozon_actions_exist"))
-        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
-                      "observed_at": row["observed_at"], "product_id": payload.get("product_id"),
-                      "offer_id": payload.get("offer_id"), "currency": price.get("currency_code"),
-                      "price": price.get("price"), "marketing_price": price.get("marketing_seller_price"),
-                      "net_price": price.get("net_price"), "min_price": price.get("min_price"),
-                      "sales_percent_fbo": commissions.get("sales_percent_fbo"),
-                      "sales_percent_fbs": commissions.get("sales_percent_fbs"), "in_action": action})
-        summary = shops.setdefault(row["shop_id"], {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
-                                                    "products": 0, "in_action": 0})
-        summary["products"] += 1; summary["in_action"] += int(action)
     total = len(items); start = (page - 1) * size
     through = max((item["observed_at"] for item in items), default=None)
     return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
@@ -489,6 +473,6 @@ def export_orders(shop_id: int = 0):
               FROM orders o JOIN shops s ON s.id=o.shop_id LEFT JOIN order_costs c USING(shop_id,posting_number)
               WHERE {ACTIVE}{clause} ORDER BY o.created_at
             """, args):
-                yield json.dumps(dict(row), ensure_ascii=False) + "\n"
+                yield json.dumps(_translated_order(row), ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
                              headers={"Content-Disposition":"attachment; filename=orders.jsonl"})

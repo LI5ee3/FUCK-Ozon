@@ -9,28 +9,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from .db import connect, transaction
-from .ozon import BEIJING, _env
+from .ozon import BEIJING, CANCEL_REASON_ZH, _env
 
-MODULE_NAMES = {"orders": "订单", "finance": "财务", "returns": "退货",
-                "stock": "库存", "prices": "价格"}
-REASONS = {
-    "Покупатель отказался при вручении: товар не подошел": "买家收货时拒收：商品不合适",
-    "Отправление не прошло таможенное оформление": "包裹未通过海关清关",
-    "Не удалось доставить заказ": "订单配送失败",
-    "Покупатель не забрал заказ": "买家未取货",
-    "Покупатель отменил заказ: нашел дешевле": "买家取消：找到了更便宜的商品",
-    "Покупатель отменил заказ": "买家取消订单",
-    "Заказ утерян при доставке": "订单在配送途中丢失",
-    "Покупатель не предоставил паспортные данные": "买家未提供护照信息",
-    "Товар закончился на складе": "商品库存不足",
-    "Покупатель отменил заказ: не устроил срок доставки": "买家取消：配送时效不符合预期",
-    "Покупатель отказался при вручении: в заказе не тот товар": "买家收货时拒收：商品错误",
-    "Покупатель отказался при вручении: недоволен качеством товара": "买家收货时拒收：不满意商品质量",
-    "Вы отменили заказ": "卖家取消订单",
-    "Покупатель отменил заказ: перенос сроков доставки": "买家取消：配送日期变更",
-    "Покупатель отменил заказ по вашей просьбе": "买家应卖家请求取消订单",
-    "Покупатель отказался при вручении: неполная комплектация": "买家收货时拒收：配件不完整",
-}
+MODULE_NAMES = {"orders": "订单", "finance": "财务", "returns": "退货", "stock": "库存"}
 _stop = threading.Event()
 _thread = None
 
@@ -112,7 +93,7 @@ def daily_message(stats_date):
                   for channel in ("FBP", "realFBS", "WHD")}
         lines.append(f"{shop['name']}：FBP {counts['FBP']}｜realFBS {counts['realFBS']}｜WHD {counts['WHD']}")
         for row in own:
-            lines.append(f"{row['posting_number']}：{REASONS.get(row['cancel_reason_raw'], row['cancel_reason_raw'] or '原因暂缺')}")
+            lines.append(f"{row['posting_number']}：{CANCEL_REASON_ZH.get(row['cancel_reason_raw'], row['cancel_reason_raw'] or '原因暂缺')}")
         lines.append("")
     lines.append(f"数据截止：{_display_time(through)}")
     return "\n".join(lines)

@@ -91,6 +91,14 @@ def init_db():
           channel TEXT NOT NULL, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
           PRIMARY KEY(shop_id,posting_number)
         );
+        UPDATE orders SET shipped_at=(
+          SELECT json_extract(r.payload,'$.delivering_date') FROM order_api_records r
+          WHERE r.shop_id=orders.shop_id AND r.posting_number=orders.posting_number
+        ) WHERE (shipped_at IS NULL OR shipped_at='') AND EXISTS (
+          SELECT 1 FROM order_api_records r WHERE r.shop_id=orders.shop_id
+          AND r.posting_number=orders.posting_number
+          AND NULLIF(json_extract(r.payload,'$.delivering_date'),'') IS NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS finance_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
           occurred_at TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -106,14 +114,10 @@ def init_db():
           observed_at TEXT NOT NULL, payload TEXT NOT NULL,
           PRIMARY KEY(shop_id,record_key,observed_at)
         );
-        CREATE TABLE IF NOT EXISTS price_snapshots (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
-          observed_at TEXT NOT NULL, payload TEXT NOT NULL,
-          PRIMARY KEY(shop_id,record_key,observed_at)
-        );
         DROP TABLE IF EXISTS question_records;
         DROP TABLE IF EXISTS analytics_records;
-        DELETE FROM sync_runs WHERE module IN ('questions','premium');
+        DROP TABLE IF EXISTS price_snapshots;
+        DELETE FROM sync_runs WHERE module IN ('questions','premium','prices');
         CREATE TABLE IF NOT EXISTS notification_settings (
           id INTEGER PRIMARY KEY CHECK(id=1),
           daily_enabled INTEGER NOT NULL DEFAULT 0 CHECK(daily_enabled IN (0,1)),

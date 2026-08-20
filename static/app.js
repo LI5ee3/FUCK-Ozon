@@ -1,13 +1,13 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,stock:1,prices:1}};
-const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",finance:"财务利润",returns:"退货与投诉",stock:"库存",prices:"价格与佣金",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
-const syncNames = {orders:"订单",finance:"财务",returns:"退货",stock:"库存",prices:"价格"};
+const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,stock:1}};
+const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",finance:"财务利润",returns:"退货与投诉",stock:"库存",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
+const syncNames = {orders:"订单",finance:"财务",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
 const bj = (v) => v ? new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)).replaceAll("/","-") : "暂无";
 const num = (v, digits=2) => Number(v || 0).toLocaleString("zh-CN",{maximumFractionDigits:digits});
 const metric = (v, digits=2, suffix="") => v == null || v === "" ? "暂无" : `${num(v,digits)}${suffix}`;
-const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时`;
+const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时 / ${num(v/24,1)} 天`;
 const cell = (v) => v == null || v === "" ? "暂无" : esc(v);
 const channelTag = (v) => `<span class="tag channel-${({FBP:"fbp",realFBS:"fbs",WHD:"whd"}[v] || "")}">${esc(v)}</span>`;
 
@@ -85,12 +85,6 @@ async function loadStock() {
   $("#stockRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.offer_id)}</td><td>${cell(r.product_id)}</td><td>${cell(r.types)}</td><td class="num">${num(r.present,0)}</td><td class="num">${num(r.reserved,0)}</td><td>${bj(r.observed_at)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
   pager("stock",data,loadStock);
 }
-async function loadPrices() {
-  const data=await api(`/api/prices?shop_id=${state.shop}&page=${state.pages.prices}`);
-  summary("prices",[["最新商品",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.products,0)} 个商品`,`参加活动 ${num(s.in_action,0)}`])]);
-  $("#pricesRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.offer_id)}</td><td>${cell(r.product_id)}</td><td class="num">${metric(r.price)} ${cell(r.currency)}</td><td class="num">${metric(r.marketing_price)} ${cell(r.currency)}</td><td class="num">${metric(r.net_price)} ${cell(r.currency)}</td><td class="num">${metric(r.min_price)} ${cell(r.currency)}</td><td class="num">${metric(r.sales_percent_fbo,2,"%")}</td><td class="num">${metric(r.sales_percent_fbs,2,"%")}</td><td>${r.in_action?'是':'否'}</td></tr>`).join("") || '<tr><td colspan="10" class="muted">暂无数据。</td></tr>';
-  pager("prices",data,loadPrices);
-}
 async function loadImports() {
   const rows=await api("/api/imports");
   $("#importRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(r.kind)}</td><td>${esc(r.filename)}</td><td class="num">${r.row_count}</td><td>${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">暂无导入记录。</td></tr>';
@@ -109,7 +103,7 @@ async function loadDingtalk() {
 async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
   if(page==="risk") return loadRisk();
-  const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturns,stock:loadStock,prices:loadPrices};
+  const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturns,stock:loadStock};
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync(); if(page==="dingtalk") return loadDingtalk();
 }
 function openPage(page) {

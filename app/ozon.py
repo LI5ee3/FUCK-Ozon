@@ -20,11 +20,60 @@ MODULE_TABLES = {
     "finance": ("finance_records",),
     "returns": ("return_records",),
     "stock": ("stock_snapshots",),
-    "prices": ("price_snapshots",),
 }
 STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
     "awaiting_deliver": "等待发运", "awaiting_packaging": "待备货",
+    "awaiting_registration": "等待登记",
+}
+RETURN_STATUS_ZH = {
+    "На складе": "已到仓库",
+    "Едет на склад": "退回仓库途中",
+    "Списали товар": "商品已核销",
+}
+FINANCE_OPERATION_ZH = {
+    "Оплата эквайринга": "收单服务费",
+    "Перевыставление услуг доставки": "配送服务费重新结算",
+    "Доставка покупателю": "配送给买家",
+    "Агентское вознаграждение за заключение и сопровождение договора транспортно-экспедиционных услуг по организации международной перевозки": "国际运输货运代理服务佣金",
+    "Оплата за клик": "按点击付费",
+    "Продвижение бренда": "品牌推广",
+    "Доставка и обработка возврата, отмены, невыкупа": "退货、取消及未取货的配送与处理",
+    "Получение возврата, отмены, невыкупа от покупателя": "接收买家退货、取消及未取货商品",
+    "Частичная компенсация покупателю": "向买家部分赔偿",
+    "Подписка Premium Plus": "Premium Plus 订阅",
+    "Потеря по вине Ozon в логистике": "Ozon 物流责任导致商品丢失",
+    "Удержание за недовложение товара": "商品少装扣款",
+    "Утилизация товара": "商品销毁",
+    "Брак по вине Ozon на складе": "Ozon 仓库责任导致商品损坏",
+    "Начисление по спору": "争议补偿入账",
+    "Утилизация товара: Автоутилизация со стока": "商品销毁：库存自动销毁",
+    "Брак по вине Ozon в логистике": "Ozon 物流责任导致商品损坏",
+    "Потеря по вине Ozon на складе": "Ozon 仓库责任导致商品丢失",
+}
+CANCEL_REASON_ZH = {
+    "Покупатель отказался при вручении: товар не подошел": "买家收货时拒收：商品不合适",
+    "Отправление не прошло таможенное оформление": "包裹未通过海关清关",
+    "Не удалось доставить заказ": "订单配送失败",
+    "Покупатель не забрал заказ": "买家未取货",
+    "Покупатель отменил заказ: нашел дешевле": "买家取消：找到了更便宜的商品",
+    "Покупатель отменил заказ": "买家取消订单",
+    "Заказ утерян при доставке": "订单在配送途中丢失",
+    "Покупатель не предоставил паспортные данные": "买家未提供护照信息",
+    "Товар закончился на складе": "商品库存不足",
+    "Покупатель отменил заказ: не устроил срок доставки": "买家取消：配送时效不符合预期",
+    "Покупатель отказался при вручении: в заказе не тот товар": "买家收货时拒收：商品错误",
+    "Покупатель отказался при вручении: недоволен качеством товара": "买家收货时拒收：不满意商品质量",
+    "Вы отменили заказ": "卖家取消订单",
+    "Покупатель отменил заказ: перенос сроков доставки": "买家取消：配送日期变更",
+    "Покупатель отменил заказ по вашей просьбе": "买家应卖家请求取消订单",
+    "Покупатель отказался при вручении: неполная комплектация": "买家收货时拒收：配件不完整",
+    "Товар не работает / брак": "商品无法使用 / 存在缺陷",
+    "Покупатель получил не те товары": "买家收到错误商品",
+    "Покупатель передумал": "买家改变主意",
+    "Упаковка и товар повреждены": "包装和商品均损坏",
+    "Товар в неполной комплектации": "商品配件不完整",
+    "Товар поврежден, но упаковка цела": "商品损坏但包装完好",
 }
 _request_lock = threading.Lock()
 _last_request = 0.0
@@ -161,13 +210,15 @@ def sync_orders(shop_id, start, end):
             amount = sum(price[0] * int(product.get("quantity") or 0) for product, price in zip(products, prices))
             amount_currency = prices[0][1] if prices else currency
             created = posting.get("in_process_at") or posting.get("created_at")
+            shipped_at = posting.get("delivering_date")
             db.execute("""
-              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,status_raw,
+              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,status_raw,
                 cancel_reason_raw,shipped,cancelled_after_ship,data_anomaly,amount_original,
                 amount_currency,source,updated_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
                 parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
                 channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
+                shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
                 status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
                 cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
                 shipped=CASE WHEN excluded.channel='WHD' AND excluded.status_raw='已取消' AND excluded.cancelled_after_ship IS NULL
@@ -176,7 +227,7 @@ def sync_orders(shop_id, start, end):
                 amount_original=COALESCE(excluded.amount_original,orders.amount_original),
                 amount_currency=COALESCE(NULLIF(excluded.amount_currency,''),orders.amount_currency),
                 source='api',updated_at=excluded.updated_at
-            """, (shop_id, number, posting.get("order_number"), channel, created,
+            """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at,
                   STATUS_ZH.get(status_original, status_original), cancellation.get("cancel_reason"),
                   shipped, cancelled_after, 0, amount, amount_currency, "api", fetched))
             db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
@@ -254,8 +305,7 @@ def _sync_snapshot(shop_id, path, table):
 def sync_module(module, shop_id, start=None, end=None):
     start, end = (start, end) if start and end else default_range()
     functions = {"orders": sync_orders, "finance": sync_finance, "returns": sync_returns,
-                 "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots"),
-                 "prices": lambda s, _a, _b: _sync_snapshot(s, "/v5/product/info/prices", "price_snapshots")}
+                 "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots")}
     if module not in functions:
         raise ValueError("未知同步模块")
     return functions[module](shop_id, start, end)
