@@ -8,6 +8,7 @@ DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / "fuck-ozon.db"
 
 
+@contextmanager
 def connect():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=30)
@@ -15,20 +16,21 @@ def connect():
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA busy_timeout=30000")
     db.execute("PRAGMA journal_mode=WAL")
-    return db
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 @contextmanager
 def transaction():
-    db = connect()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
+    with connect() as db:
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
 
 def init_db():
@@ -90,8 +92,17 @@ def init_db():
           started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
           finished_at TEXT, data_through TEXT, status TEXT NOT NULL, error TEXT,
           progress_done INTEGER NOT NULL DEFAULT 0, progress_total INTEGER NOT NULL DEFAULT 1,
-          records INTEGER NOT NULL DEFAULT 0, current_from TEXT, current_to TEXT
+          records INTEGER NOT NULL DEFAULT 0, current_from TEXT, current_to TEXT,
+          run_source TEXT NOT NULL DEFAULT 'manual', scheduled_date TEXT
         );
+        CREATE TABLE IF NOT EXISTS auto_sync_settings (
+          module TEXT PRIMARY KEY CHECK(module IN ('orders','finance','returns','stock')),
+          enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+          run_time TEXT NOT NULL, range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365)
+        );
+        INSERT OR IGNORE INTO auto_sync_settings VALUES
+          ('orders',0,'02:00',3),('finance',0,'03:00',3),
+          ('returns',0,'04:00',3),('stock',0,'05:00',1);
         CREATE TABLE IF NOT EXISTS order_api_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), posting_number TEXT NOT NULL,
           channel TEXT NOT NULL, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -195,6 +206,19 @@ def init_db():
         for name in ("reason_id", "reason_message"):
             if name not in history_columns:
                 db.execute(f"ALTER TABLE order_status_history ADD COLUMN {name} TEXT")
+        db.execute("""UPDATE orders SET
+          shipped=1,
+          shipped_at=COALESCE(NULLIF(shipped_at,''),(SELECT MIN(h.occurred_at) FROM order_status_history h
+            WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number
+            AND h.status_name IN ('运输中','已签收')))
+          WHERE EXISTS (SELECT 1 FROM order_status_history h WHERE h.shop_id=orders.shop_id
+            AND h.posting_number=orders.posting_number AND h.status_name IN ('运输中','已签收'))""")
+        db.execute("""UPDATE orders SET delivered_at=(SELECT MIN(h.occurred_at) FROM order_status_history h
+          WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number AND h.status_name='已签收')
+          WHERE NULLIF(delivered_at,'') IS NULL AND EXISTS (SELECT 1 FROM order_status_history h
+            WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number AND h.status_name='已签收')""")
+        db.execute("""UPDATE orders SET cancelled_after_ship=1
+          WHERE status_raw='已取消' AND shipped=1 AND COALESCE(cancelled_after_ship,0)=0""")
         sync_columns = {row[1] for row in db.execute("PRAGMA table_info(sync_runs)")}
         for name, definition in (
             ("progress_done", "INTEGER NOT NULL DEFAULT 0"),
@@ -202,11 +226,17 @@ def init_db():
             ("records", "INTEGER NOT NULL DEFAULT 0"),
             ("current_from", "TEXT"),
             ("current_to", "TEXT"),
+            ("run_source", "TEXT NOT NULL DEFAULT 'manual'"),
+            ("scheduled_date", "TEXT"),
         ):
             if name not in sync_columns:
                 db.execute(f"ALTER TABLE sync_runs ADD COLUMN {name} {definition}")
         db.execute("""UPDATE sync_runs SET progress_done=progress_total
           WHERE status='success' AND progress_done=0""")
+        db.execute("DROP INDEX IF EXISTS idx_auto_sync_once")
+        db.execute("""CREATE UNIQUE INDEX idx_auto_sync_once
+          ON sync_runs(shop_id,module,scheduled_date)
+          WHERE run_source='auto' AND status IN ('running','success')""")
         for shop_id in (1, 2):
             db.execute("UPDATE shops SET push_token=? WHERE id=? AND COALESCE(push_token,'')=''",
                        (secrets.token_urlsafe(32), shop_id))

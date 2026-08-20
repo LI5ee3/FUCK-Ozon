@@ -91,7 +91,7 @@ def daily_message(stats_date):
         shops = db.execute("SELECT id,name FROM shops ORDER BY id").fetchall()
         rows = db.execute("""SELECT o.shop_id,o.channel,o.posting_number,o.cancel_reason_raw
           FROM orders o WHERE o.status_raw='已取消' AND o.shipped=1
-          AND date(datetime(o.created_at),'+8 hours')=?
+          AND date(datetime(o.status_changed_at),'+8 hours')=?
           ORDER BY o.shop_id,CASE o.channel WHEN 'FBP' THEN 1 WHEN 'realFBS' THEN 2 ELSE 3 END,o.posting_number
         """, (stats_date,)).fetchall()
         through = db.execute("SELECT MAX(created_at) FROM orders").fetchone()[0]

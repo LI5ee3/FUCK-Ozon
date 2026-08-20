@@ -4,7 +4,7 @@ const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timelin
 const syncNames = {orders:"订单",finance:"财务",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
-const bj = (v) => v ? new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(v)).replaceAll("/","-") : "暂无";
+const bj = (v) => { if (!v) return "暂无"; const date=new Date(v); return Number.isNaN(date.getTime()) ? "暂无" : new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(date).replaceAll("/","-"); };
 const num = (v, digits=2) => Number(v || 0).toLocaleString("zh-CN",{maximumFractionDigits:digits});
 const metric = (v, digits=2, suffix="") => v == null || v === "" ? "暂无" : `${num(v,digits)}${suffix}`;
 const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时 / ${num(v/24,1)} 天`;
@@ -100,9 +100,10 @@ async function loadImports() {
 }
 async function loadSync() {
   const rows=await api("/api/sync");
-  $("#syncRows").innerHTML=rows.map(r=>{const total=Math.max(1,Number(r.progress_total||1)),done=Number(r.progress_done||0),percent=Math.round(done/total*100),status=r.status==='failed'?'失败':r.status==='success'?'成功':'进行中';return `<tr><td>${esc(r.shop_name)}</td><td>${esc(syncNames[r.module]||r.module)}</td><td><div>${status} · ${done}/${total} · ${percent}%${r.records?` · ${num(r.records,0)} 条`:''}</div><div class="sync-progress" role="progressbar" aria-label="${esc(syncNames[r.module]||r.module)}拉取进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>${r.status==='running'&&r.current_from?`<small class="muted">当前：${esc(r.current_from.slice(0,10))} — ${esc(r.current_to.slice(0,10))}</small>`:''}</td><td>${bj(r.started_at)}</td><td class="error">${esc(r.error||'')}</td></tr>`}).join("") || '<tr><td colspan="5" class="muted">暂无拉取记录。</td></tr>';
+  $("#syncRows").innerHTML=rows.map(r=>{const total=Math.max(1,Number(r.progress_total||1)),done=Number(r.progress_done||0),percent=Math.round(done/total*100),status=r.status==='failed'?'失败':r.status==='success'?'成功':'进行中';return `<tr><td>${esc(r.shop_name)}</td><td>${esc(syncNames[r.module]||r.module)}${r.run_source==='auto'?' · 自动':''}</td><td><div>${status} · ${done}/${total} · ${percent}%${r.records?` · ${num(r.records,0)} 条`:''}</div><div class="sync-progress" role="progressbar" aria-label="${esc(syncNames[r.module]||r.module)}拉取进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>${r.status==='running'&&r.current_from?`<small class="muted">当前：${esc(r.current_from.slice(0,10))} — ${esc(r.current_to.slice(0,10))}</small>`:''}</td><td>${bj(r.started_at)}</td><td class="error">${esc(r.error||'')}</td></tr>`}).join("") || '<tr><td colspan="5" class="muted">暂无拉取记录。</td></tr>';
   return rows;
 }
+async function loadAutoSync(){const rows=await api("/api/auto-sync-settings");$("#autoSyncCards").innerHTML=rows.map(r=>`<div class="auto-sync-card"><div class="panel-title"><strong>${esc(syncNames[r.module])}</strong><label class="check-row"><input id="autoEnabled-${r.module}" type="checkbox" ${r.enabled?'checked':''}>启用</label></div><label>每天拉取时间（北京时间）<input id="autoTime-${r.module}" type="time" value="${esc(r.run_time)}" required></label><label>拉取范围${r.module==='stock'?'（库存为当前快照）':'（最近 N 天）'}<input id="autoRange-${r.module}" type="number" min="1" max="365" value="${Number(r.range_days)}" ${r.module==='stock'?'disabled':''} required></label></div>`).join("")}
 async function loadDingtalk() {
   const data=await api("/api/dingtalk/settings");
   $("#dingtalkConfigured").textContent=data.configured?"机器人已配置":"机器人未配置";
@@ -118,7 +119,7 @@ async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturnPage,stock:loadStock};
-  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return loadSync(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadPushSettings();
+  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync()]); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadPushSettings();
 }
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -142,6 +143,8 @@ $("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/ap
 $("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});
 $("#exportOrders").onclick=()=>{location.href=`/api/export/orders?shop_id=${state.shop}`};
 $("#syncButtons").innerHTML=Object.entries(syncNames).map(([key,name])=>`<button data-module="${key}">${name}拉取</button>`).join("");
+$("#sync > .panel:first-child").insertAdjacentHTML("afterend",`<form id="autoSyncForm" class="panel"><div class="panel-title"><h2>自动同步设置</h2><span class="muted">四个模块独立设置</span></div><p class="muted">到达设定时间后，每天分别为两个店铺创建任务；日期型数据继续按自然月分段。</p><div id="autoSyncCards" class="auto-sync-grid"></div><button class="primary">保存自动同步设置</button></form>`);
+$("#autoSyncForm").addEventListener("submit",async e=>{e.preventDefault();const values=Object.fromEntries(Object.keys(syncNames).map(module=>[module,{enabled:$("#autoEnabled-"+module).checked,run_time:$("#autoTime-"+module).value,range_days:Number($("#autoRange-"+module).value)}]));try{await api("/api/auto-sync-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});toast("自动同步设置已保存");await loadAutoSync()}catch(err){toast(err.message,true)}});
 const today=new Date(); today.setHours(0,0,0,0);
 const isoDate=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 const localDate=value=>{const [year,month,day]=value.split("-").map(Number);return new Date(year,month-1,day)};

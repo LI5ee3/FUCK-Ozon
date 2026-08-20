@@ -32,9 +32,10 @@ def _utc(value):
 def _shipping(row):
     status = _text(row.get("状态"))
     shipped_at = _text(row.get("已转移配送") or row.get("实际转移配送日期"))
-    shipped = bool(shipped_at or any(part in status for part in SHIPPED_STATUS_PARTS))
+    status_shipped = any(part in status for part in SHIPPED_STATUS_PARTS)
+    shipped = bool(shipped_at or status_shipped)
     cancelled = status == "已取消"
-    anomaly = cancelled and bool(shipped_at) != shipped
+    anomaly = bool(shipped_at) != status_shipped
     return int(shipped), (int(shipped) if cancelled else None), int(anomaly), shipped_at
 
 

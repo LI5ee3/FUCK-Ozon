@@ -19,13 +19,15 @@ from starlette.concurrency import run_in_threadpool
 from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
 from .importer import CHANNELS, import_costs, import_csv
-from .ozon import CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RFBS_RETURN_STATUS_ZH, RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, sync_module
+from .ozon import BEIJING, CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RFBS_RETURN_STATUS_ZH, RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, sync_module
 from .push import PushAuthError, PushProcessingError, PushRequestError, push_settings, receive_push, save_seller_ids
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
 SYNC_MODULES = {"orders", "finance", "returns", "stock"}
+_auto_sync_stop = threading.Event()
+_auto_sync_thread = None
 
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -38,11 +40,13 @@ def startup():
         db.execute("""UPDATE sync_runs SET status='failed',error='服务重启，任务已中断，请重新拉取',
           finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE status='running'""")
     start_scheduler()
+    _start_auto_sync_scheduler()
 
 
 @app.on_event("shutdown")
 def shutdown():
     stop_scheduler()
+    _stop_auto_sync_scheduler()
 
 
 def _secret():
@@ -499,6 +503,44 @@ def sync_run(run_id: int):
     return dict(row)
 
 
+@app.get("/api/auto-sync-settings")
+def auto_sync_settings():
+    with connect() as db:
+        return [dict(row) for row in db.execute("SELECT * FROM auto_sync_settings ORDER BY rowid")]
+
+
+def save_auto_sync_settings(values):
+    if set(values) != SYNC_MODULES:
+        raise ValueError("必须提交订单、财务、退货和库存四个模块的设置")
+    settings = []
+    for module in ("orders", "finance", "returns", "stock"):
+        value = values[module]
+        run_time = str(value.get("run_time") or "")
+        if len(run_time) != 5:
+            raise ValueError("拉取时间格式无效")
+        try:
+            datetime.strptime(run_time, "%H:%M")
+            range_days = int(value.get("range_days") or 0)
+        except (TypeError, ValueError) as error:
+            raise ValueError("拉取时间或范围无效") from error
+        if not 1 <= range_days <= 365:
+            raise ValueError("自动拉取范围必须为 1 至 365 天")
+        settings.append((int(bool(value.get("enabled"))), run_time,
+                         1 if module == "stock" else range_days, module))
+    with transaction() as db:
+        db.executemany("UPDATE auto_sync_settings SET enabled=?,run_time=?,range_days=? WHERE module=?",
+                       settings)
+
+
+@app.put("/api/auto-sync-settings")
+async def update_auto_sync_settings(request: Request):
+    try:
+        save_auto_sync_settings(await request.json())
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+    return {"ok": True}
+
+
 def _sync_ranges(module, start, end):
     if module == "stock":
         return [(start, end)]
@@ -506,6 +548,7 @@ def _sync_ranges(module, start, end):
     while current <= end:
         next_month = (current.replace(day=1, year=current.year + 1, month=1)
                       if current.month == 12 else current.replace(day=1, month=current.month + 1))
+        next_month = next_month.replace(hour=0, minute=0, second=0, microsecond=0)
         chunk_end = min(end, next_month - timedelta(seconds=1))
         ranges.append((current, chunk_end))
         current = next_month
@@ -540,6 +583,66 @@ def _run_sync_job(run_id, module, shop_id, ranges):
                    (ranges[-1][1].isoformat(), run_id))
 
 
+def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_date=None):
+    ranges = _sync_ranges(module, start, end)
+    with transaction() as db:
+        if run_source == "auto" and db.execute("""SELECT 1 FROM sync_runs
+          WHERE shop_id=? AND module=? AND scheduled_date=? AND run_source='auto'
+          AND status='failed' AND started_at>=strftime('%Y-%m-%dT%H:%M:%SZ','now','-5 minutes')""",
+                                                     (shop_id, module, scheduled_date)).fetchone():
+            return None
+        cursor = db.execute("""INSERT OR IGNORE INTO sync_runs(
+          shop_id,module,range_from,range_to,status,progress_total,run_source,scheduled_date)
+          VALUES(?,?,?,?, 'running',?,?,?)""",
+                            (shop_id, module, start.isoformat(), end.isoformat(), len(ranges),
+                             run_source, scheduled_date))
+        if cursor.rowcount == 0:
+            return None
+        run_id = cursor.lastrowid
+    threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
+    return run_id
+
+
+def run_auto_sync_once(now=None):
+    now = now or datetime.now(BEIJING)
+    today = now.date().isoformat()
+    with connect() as db:
+        settings = db.execute("SELECT * FROM auto_sync_settings WHERE enabled=1 ORDER BY rowid").fetchall()
+    started = []
+    for setting in settings:
+        if now.strftime("%H:%M") < setting["run_time"]:
+            continue
+        end = now
+        start = (now - timedelta(days=setting["range_days"] - 1)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        for shop_id in (1, 2):
+            run_id = _create_sync_job(setting["module"], shop_id, start, end, "auto", today)
+            if run_id:
+                started.append(run_id)
+    return started
+
+
+def _auto_sync_scheduler():
+    while not _auto_sync_stop.wait(20):
+        try:
+            run_auto_sync_once()
+        except Exception:
+            pass
+
+
+def _start_auto_sync_scheduler():
+    global _auto_sync_thread
+    if _auto_sync_thread and _auto_sync_thread.is_alive():
+        return
+    _auto_sync_stop.clear()
+    _auto_sync_thread = threading.Thread(target=_auto_sync_scheduler, name="auto-sync-scheduler", daemon=True)
+    _auto_sync_thread.start()
+
+
+def _stop_auto_sync_scheduler():
+    _auto_sync_stop.set()
+
+
 @app.post("/api/sync/{module}")
 async def sync(module: str, request: Request, shop_id: int):
     if module not in SYNC_MODULES: raise HTTPException(404, "未知模块")
@@ -555,14 +658,10 @@ async def sync(module: str, request: Request, shop_id: int):
         raise HTTPException(400, "日期格式无效") from error
     if start >= end:
         raise HTTPException(400, "开始日期必须早于结束日期")
-    ranges = _sync_ranges(module, start, end)
-    with transaction() as db:
-        run_id = db.execute("""
-          INSERT INTO sync_runs(shop_id,module,range_from,range_to,status,progress_total)
-          VALUES(?,?,?,?, 'running',?)
-        """, (shop_id, module, start.isoformat(), end.isoformat(), len(ranges))).lastrowid
-    threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
-    return {"run_id": run_id, "status": "running", "progress_total": len(ranges)}
+    run_id = _create_sync_job(module, shop_id, start, end)
+    with connect() as db:
+        total = db.execute("SELECT progress_total FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
+    return {"run_id": run_id, "status": "running", "progress_total": total}
 
 
 @app.get("/api/export/orders")

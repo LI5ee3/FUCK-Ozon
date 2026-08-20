@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v=20260821-4">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v=20260821-6">
 </head>
 <body>
   <div id="login" class="login hidden">
@@ -72,5 +72,5 @@
       <section id="rules" class="page"><div class="panel"><h2>当前商品匹配规则</h2><p class="muted">系统按店铺、订单号和 SKU 识别同一商品行；API 数据优先，CSV 只补充 API 缺失字段。当前没有需要人工维护的匹配规则。</p><div class="table-wrap"><table><thead><tr><th>对象</th><th>唯一标识</th><th>合并规则</th></tr></thead><tbody><tr><td>订单</td><td>店铺 + 订单号</td><td>API 状态与渠道优先</td></tr><tr><td>订单商品</td><td>店铺 + 订单号 + SKU</td><td>同一文件内数量先合计，再幂等写入</td></tr><tr><td>马帮成本</td><td>店铺 + 订单号</td><td>按订单总成本匹配，不自动分摊 SKU</td></tr></tbody></table></div></div></section>
     </main>
   </div>
-  <script src="/static/app.js?v=20260821-4"></script>
+  <script src="/static/app.js?v=20260821-6"></script>
 </body></html>

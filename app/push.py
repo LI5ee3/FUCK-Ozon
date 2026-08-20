@@ -150,19 +150,25 @@ def _state(db, shop_id, posting, message_type, event_key, raw, occurred_at, payl
     if not raw or not occurred_at:
         raise PushRequestError("状态代码和状态时间不能为空")
     display = STATUS_ZH.get(raw, "已取消" if "cancel" in raw.lower() else raw)
+    shipped = int(display in ("运输中", "已签收"))
+    delivered = int(display == "已签收")
     db.execute("""INSERT OR IGNORE INTO order_status_history(
       shop_id,posting_number,message_type,event_key,status_raw,status_name,reason_id,reason_message,
       occurred_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                (shop_id, posting, message_type, event_key, raw, display,
                 str(reason_id or "") or None, reason, occurred_at, _json(payload)))
     db.execute("""UPDATE orders SET status_raw=?,status_changed_at=?,
+      shipped=CASE WHEN ?=1 THEN 1 ELSE shipped END,
+      shipped_at=CASE WHEN ?=1 AND NULLIF(shipped_at,'') IS NULL THEN ? ELSE shipped_at END,
+      delivered_at=CASE WHEN ?=1 AND NULLIF(delivered_at,'') IS NULL THEN ? ELSE delivered_at END,
       cancel_reason_raw=CASE WHEN ? IS NULL OR ?='' THEN cancel_reason_raw ELSE ? END,
       cancel_reason_id=CASE WHEN ? IS NULL OR ?='' THEN cancel_reason_id ELSE ? END,
       cancelled_after_ship=CASE WHEN ?=1 THEN CASE WHEN shipped=1 OR NULLIF(shipped_at,'') IS NOT NULL THEN 1 ELSE 0 END
         ELSE cancelled_after_ship END,updated_at=?,source='push'
       WHERE shop_id=? AND posting_number=?
       AND (status_changed_at IS NULL OR status_changed_at='' OR status_changed_at<=?)""",
-               (display, occurred_at, reason, reason, reason, reason_id, reason_id, reason_id,
+               (display, occurred_at, shipped, shipped, occurred_at, delivered, occurred_at,
+                reason, reason, reason, reason_id, reason_id, reason_id,
                 int("cancel" in raw.lower()), _now(),
                 shop_id, posting, occurred_at))
 

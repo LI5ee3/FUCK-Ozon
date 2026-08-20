@@ -281,8 +281,8 @@ def sync_orders(shop_id, start, end):
 
 def sync_finance(shop_id, start, end):
     records, cursor = [], start
-    while cursor < end:
-        window_end = min(cursor + timedelta(days=30), end)
+    while cursor <= end:
+        window_end = min(cursor + timedelta(days=30) - timedelta(seconds=1), end)
         page = 1
         while True:
             payload = {"filter": {"date": {"from": _utc(cursor), "to": _utc(window_end)},
@@ -293,7 +293,9 @@ def sync_finance(shop_id, start, end):
             if page >= int(result.get("page_count") or 0):
                 break
             page += 1
-        cursor = window_end
+        if window_end >= end:
+            break
+        cursor = window_end + timedelta(seconds=1)
     fetched = _stamp()
     with transaction() as db:
         for record in records:
