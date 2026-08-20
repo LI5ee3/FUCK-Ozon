@@ -70,6 +70,11 @@ def send_text(content):
         raise RuntimeError(result.get("errmsg") or "钉钉机器人发送失败")
 
 
+def send_test():
+    now = datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M")
+    send_text(f"FUCK Ozon 测试消息\n机器人连接正常\n发送时间：{now}（北京时间）")
+
+
 def send_sync_failure(shop_id, module, start, end, error):
     if not configured():
         return

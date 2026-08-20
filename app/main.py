@@ -16,7 +16,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
-from .dingtalk import configured as dingtalk_configured, send_sync_failure, start_scheduler, stop_scheduler
+from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
 from .importer import CHANNELS, import_costs, import_csv
 from .ozon import _env, default_range, sync_module
 
@@ -156,6 +156,17 @@ async def update_dingtalk_settings(request: Request):
         db.execute("UPDATE notification_settings SET daily_enabled=?,push_time=?,weekdays=? WHERE id=1",
                    (int(enabled), push_time, ",".join(map(str, weekdays))))
     return _dingtalk_settings()
+
+
+@app.post("/api/dingtalk/test")
+async def test_dingtalk():
+    if not dingtalk_configured():
+        raise HTTPException(400, "钉钉机器人未配置")
+    try:
+        await run_in_threadpool(send_test)
+    except Exception as error:
+        raise HTTPException(502, "测试推送失败") from error
+    return {"ok": True}
 
 
 def _shop_clause(shop_id):
