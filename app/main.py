@@ -1149,10 +1149,11 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
     if shop_id in (1, 2) and module != "rules":
         where.append(f"{alias}.shop_id=?"); args.append(shop_id)
     if date_from:
-        where.append(f"{date_column}>=?"); args.append(date_from)
+        where.append(f"julianday({date_column})>=julianday(?)"); args.append(date_from)
     if date_to:
-        where.append(f"{date_column}<=?"); args.append(date_to + "T23:59:59Z")
-    if module == "risk":
+        where.append(f"julianday({date_column})<=julianday(?)")
+        args.append(date_to if "T" in date_to else date_to + "T23:59:59.999999Z")
+    if module in {"risk", "timeliness"}:
         where.append(ACTIVE)
     sql_where = " AND ".join(where)
 
@@ -1172,9 +1173,10 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                 if shop_id in (1, 2):
                     legacy_where.append("shop_id=?"); legacy_args.append(shop_id)
                 if date_from:
-                    legacy_where.append("occurred_at>=?"); legacy_args.append(date_from)
+                    legacy_where.append("julianday(occurred_at)>=julianday(?)"); legacy_args.append(date_from)
                 if date_to:
-                    legacy_where.append("occurred_at<=?"); legacy_args.append(date_to + "T23:59:59Z")
+                    legacy_where.append("julianday(occurred_at)<=julianday(?)")
+                    legacy_args.append(date_to if "T" in date_to else date_to + "T23:59:59.999999Z")
                 for row in db.execute(f"SELECT shop_id,occurred_at,posting_number,sku,payload FROM return_records WHERE {' AND '.join(legacy_where)} ORDER BY occurred_at", legacy_args):
                     value, payload = dict(row), json.loads(row["payload"])
                     product, visual = payload.get("product") or {}, payload.get("visual") or {}

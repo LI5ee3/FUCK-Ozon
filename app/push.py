@@ -155,8 +155,9 @@ def _state(db, shop_id, posting, message_type, event_key, raw, occurred_at, payl
       occurred_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?)""",
                (shop_id, posting, message_type, event_key, raw, display,
                 str(reason_id or "") or None, reason, occurred_at, _json(payload)))
+    cancelling = int("cancel" in raw.lower())
     db.execute("""UPDATE orders SET status_raw=?,status_changed_at=?,
-      shipped=CASE WHEN ?=1 THEN 1 ELSE shipped END,
+      shipped=CASE WHEN ?=1 OR (?=1 AND NULLIF(shipped_at,'') IS NOT NULL) THEN 1 ELSE shipped END,
       shipped_at=CASE WHEN ?=1 AND NULLIF(shipped_at,'') IS NULL THEN ? ELSE shipped_at END,
       delivered_at=CASE WHEN ?=1 AND NULLIF(delivered_at,'') IS NULL THEN ? ELSE delivered_at END,
       cancel_reason_raw=CASE WHEN ? IS NULL OR ?='' THEN cancel_reason_raw ELSE ? END,
@@ -165,9 +166,9 @@ def _state(db, shop_id, posting, message_type, event_key, raw, occurred_at, payl
         ELSE cancelled_after_ship END,updated_at=?,source='push'
       WHERE shop_id=? AND posting_number=?
       AND (status_changed_at IS NULL OR status_changed_at='' OR status_changed_at<=?)""",
-               (display, occurred_at, shipped, shipped, occurred_at, delivered, occurred_at,
+               (display, occurred_at, shipped, cancelling, shipped, occurred_at, delivered, occurred_at,
                 reason, reason, reason, reason_id, reason_id, reason_id,
-                int("cancel" in raw.lower()), _now(),
+                cancelling, _now(),
                 shop_id, posting, occurred_at))
 
 

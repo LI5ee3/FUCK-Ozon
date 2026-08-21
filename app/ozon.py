@@ -124,36 +124,39 @@ def _headers(shop_id):
     return {"Client-Id": client_id, "Api-Key": api_key, "Content-Type": "application/json"}
 
 
-def _post(shop_id, path, payload):
+def _wait_for_request_slot():
     global _last_request
-    # ponytail: one global limiter is enough for one admin; use per-shop limiters only if sync concurrency matters.
     with _request_lock:
-        delay = max(0, 1.05 - (time.monotonic() - _last_request))
-        if delay:
-            time.sleep(delay)
-        for attempt in range(7):
-            request = urllib.request.Request(
-                API + path, data=json.dumps(payload).encode(), headers=_headers(shop_id), method="POST")
+        now = time.monotonic()
+        scheduled = max(now, _last_request + 1.05)
+        _last_request = scheduled
+    if scheduled > now:
+        time.sleep(scheduled - now)
+
+
+def _post(shop_id, path, payload):
+    # ponytail: one global start-rate limiter; network waits must not block unrelated module requests.
+    for attempt in range(7):
+        _wait_for_request_slot()
+        request = urllib.request.Request(
+            API + path, data=json.dumps(payload).encode(), headers=_headers(shop_id), method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            if (error.code == 429 or 500 <= error.code < 600) and attempt < 6:
+                time.sleep(min(30, 2 ** (attempt + 1)))
+                continue
             try:
-                with urllib.request.urlopen(request, timeout=60) as response:
-                    _last_request = time.monotonic()
-                    return json.load(response)
-            except urllib.error.HTTPError as error:
-                _last_request = time.monotonic()
-                if (error.code == 429 or 500 <= error.code < 600) and attempt < 6:
-                    time.sleep(min(30, 2 ** (attempt + 1)))
-                    continue
-                try:
-                    message = json.loads(error.read()).get("message", "Ozon API请求失败")
-                except Exception:
-                    message = "Ozon API请求失败"
-                raise RuntimeError(f"{path}: HTTP {error.code}: {message}") from error
-            except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
-                _last_request = time.monotonic()
-                if attempt < 6:
-                    time.sleep(min(30, 2 ** (attempt + 1)))
-                    continue
-                raise RuntimeError(f"{path}: 网络请求失败: {error}") from error
+                message = json.loads(error.read()).get("message", "Ozon API请求失败")
+            except Exception:
+                message = "Ozon API请求失败"
+            raise RuntimeError(f"{path}: HTTP {error.code}: {message}") from error
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as error:
+            if attempt < 6:
+                time.sleep(min(30, 2 ** (attempt + 1)))
+                continue
+            raise RuntimeError(f"{path}: 网络请求失败: {error}") from error
 
 
 def default_range():
@@ -190,11 +193,15 @@ def _cursor_pages(shop_id, path, payload, list_key, request_cursor="cursor", res
         if cursor:
             request[request_cursor] = cursor
         body = _post(shop_id, path, request)
-        batch = body.get(list_key) or []
+        container = body.get("result") if isinstance(body.get("result"), dict) else body
+        batch = container.get(list_key) or []
         records.extend(batch)
-        if not body.get("has_next") or not batch:
+        total = container.get("total")
+        if not batch or ("has_next" in container and not container.get("has_next")):
             return records
-        cursor = str(body.get(response_cursor) or batch[-1].get("id") or "")
+        if total is not None and len(records) >= int(total):
+            return records
+        cursor = str(container.get(response_cursor) or body.get(response_cursor) or batch[-1].get("id") or "")
         if not cursor:
             raise RuntimeError(f"{path}: 分页游标缺失")
     raise RuntimeError(f"{path}: 分页超过安全上限")
@@ -221,10 +228,12 @@ def sync_orders(shop_id, start, end):
         delivered = {row[0] for row in db.execute(
             "SELECT posting_number FROM orders WHERE shop_id=? AND NULLIF(delivered_at,'') IS NOT NULL", (shop_id,))}
     for posting in fbs:
-        if posting.get("status") == "delivered" and posting["posting_number"] not in delivered:
+        if (posting.get("status") == "delivered" and posting["posting_number"] not in delivered
+                and not posting.get("fact_delivery_date")):
             posting["fact_delivery_date"] = posting.get("fact_delivery_date") or posting.get("delivering_date")
     for posting in fbo:
-        if posting.get("status") == "delivered" and posting["posting_number"] not in delivered:
+        if (posting.get("status") == "delivered" and posting["posting_number"] not in delivered
+                and not posting.get("fact_delivery_date")):
             detail = _post(shop_id, "/v2/posting/fbo/get", {
                 "posting_number": posting["posting_number"],
                 "with": {"analytics_data": False, "financial_data": False}}).get("result") or {}
@@ -320,7 +329,7 @@ def sync_finance(shop_id, start, end):
         try:
             realization = _post(shop_id, "/v2/finance/realization", {"month": month.month, "year": month.year})
         except RuntimeError as error:
-            if "HTTP 404: Report was not found" not in str(error):
+            if "HTTP 404:" not in str(error):
                 raise
         else:
             reports.append(("realization", f"{month.year:04d}-{month.month:02d}", realization))

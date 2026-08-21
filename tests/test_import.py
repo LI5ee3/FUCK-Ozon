@@ -1,16 +1,18 @@
 import asyncio
 import json
 import tempfile
+import threading
 import unittest
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from app import db
+from app import db, ozon
 from app.importer import _shipping, import_costs, import_csv
-from app.main import export_orders, login, upload
-from app.ozon import _post, _product_price, sync_finance, sync_module, sync_orders, sync_returns, table_fingerprints
+from app.main import export_module, export_orders, login, upload
+from app.ozon import (_cursor_pages, _post, _product_price, sync_finance, sync_module,
+                      sync_orders, sync_returns, table_fingerprints)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,7 +44,7 @@ class ImportRegressionTest(unittest.TestCase):
         moment = datetime(2026, 8, 1, tzinfo=timezone.utc)
         def response(_shop, path, _payload):
             if path == "/v2/finance/realization":
-                raise RuntimeError("/v2/finance/realization: HTTP 404: Report was not found")
+                raise RuntimeError("/v2/finance/realization: HTTP 404: Отчет не найден")
             return {"result": {"operations": [], "page_count": 0}}
         with patch("app.ozon._post", side_effect=response):
             sync_finance(1, moment, moment)
@@ -63,6 +65,36 @@ class ImportRegressionTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 _post(1, "/test", {})
         self.assertEqual(request.call_count, 7)
+
+    def test_cursor_pages_supports_total_without_has_next(self):
+        pages = [
+            {"items": [{"id": 1}], "cursor": "next", "total": 2},
+            {"items": [{"id": 2}], "cursor": "done", "total": 2},
+        ]
+        with patch("app.ozon._post", side_effect=pages) as post:
+            records = _cursor_pages(1, "/stocks", {"limit": 1}, "items")
+        self.assertEqual([row["id"] for row in records], [1, 2])
+        self.assertEqual(post.call_args_list[1].args[2]["cursor"], "next")
+
+    def test_network_wait_does_not_hold_rate_limit_lock(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class Response:
+            def __enter__(self):
+                entered.set(); release.wait(1); return self
+            def __exit__(self, *_):
+                return False
+
+        ozon._last_request = 0
+        with patch("app.ozon.urllib.request.urlopen", return_value=Response()), \
+             patch("app.ozon.json.load", return_value={}):
+            thread = threading.Thread(target=_post, args=(1, "/test", {}))
+            thread.start(); self.assertTrue(entered.wait(1))
+            acquired = ozon._request_lock.acquire(timeout=.1)
+            if acquired:
+                ozon._request_lock.release()
+            release.set(); thread.join(1)
+        self.assertTrue(acquired)
 
     def test_return_sources_stay_separate_and_rfbs_is_idempotent(self):
         cancellation = {"id": 1, "posting_number": "C-1", "product": {"sku": 1}, "logistic": {}}
@@ -165,14 +197,22 @@ class ImportRegressionTest(unittest.TestCase):
             {"posting_number": "P-2", "integration_type_flow": "FBP", "status": "delivering",
              "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": None, "products": []},
         ]
+        fbo = [{"posting_number": "W-1", "status": "delivered",
+                "created_at": "2026-08-01T00:00:00Z", "fact_delivery_date": "2026-08-02T00:00:00Z",
+                "products": []}]
         moment = datetime(2026, 8, 1, tzinfo=timezone.utc)
-        with patch("app.ozon._cursor_pages", side_effect=[postings, []]):
+        with patch("app.ozon._cursor_pages", side_effect=[postings, fbo]), \
+             patch("app.ozon._post") as detail:
             sync_orders(1, moment, moment)
+        detail.assert_not_called()
         with db.connect() as connection:
             times = dict(connection.execute("SELECT posting_number,shipped_at FROM orders WHERE posting_number IN ('P-1','P-2')"))
+            delivered = connection.execute(
+                "SELECT delivered_at FROM orders WHERE posting_number='W-1'").fetchone()[0]
             connection.execute("UPDATE orders SET shipped_at=NULL WHERE posting_number='P-1'")
             connection.commit()
         self.assertEqual(times, {"P-1": "2026-08-01T02:00:00Z", "P-2": "2026-08-01T03:00:00Z"})
+        self.assertEqual(delivered, "2026-08-02T00:00:00Z")
         db.init_db()
         with db.connect() as connection:
             backfilled = connection.execute("SELECT shipped_at FROM orders WHERE posting_number='P-1'").fetchone()[0]
@@ -199,6 +239,26 @@ class ImportRegressionTest(unittest.TestCase):
 
         rows = asyncio.run(collect())
         self.assertEqual([row.get("posting_number") for row in rows[1:]], ["P-1"])
+
+    def test_timeliness_export_filters_pre_ship_cancellations_and_accepts_iso_end(self):
+        header = "订单号;发货号码;状态;SKU;数量;已创建\n"
+        content = (header
+                   + "M-1;P-1;已签收;SKU-1;1;2026-08-01T12:00:00Z\n"
+                   + "M-2;P-2;已取消;SKU-2;1;2026-08-01T11:00:00Z\n"
+                   + "M-3;P-3;已签收;SKU-3;1;2026-08-01T12:00:00.500Z\n")
+        import_csv(1, "FBP", "timeliness.csv", content.encode())
+        with db.transaction() as connection:
+            connection.execute(
+                "UPDATE orders SET created_at='2026-08-01T12:00:00.500Z' WHERE posting_number='P-3'")
+
+        async def collect(date_to):
+            return [json.loads(line) async for line in export_module(
+                "timeliness", 1, date_to=date_to).body_iterator]
+
+        exact = asyncio.run(collect("2026-08-01T12:00:00Z"))
+        whole_day = asyncio.run(collect("2026-08-01"))
+        self.assertEqual([row.get("posting_number") for row in exact[1:]], ["P-1"])
+        self.assertEqual(sorted(row.get("posting_number") for row in whole_day[1:]), ["P-1", "P-3"])
 
     def test_login_can_use_dotenv_values(self):
         from app.security import password_hash

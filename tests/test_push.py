@@ -175,6 +175,18 @@ class PushTest(unittest.TestCase):
         self.assertEqual(orders(1, q="W-5")["total"], 1)
         self.assertIn("W-5：买家取消订单", daily_message("2026-08-20"))
 
+        receive_push(self.tokens[1], {"message_type": "TYPE_FBO_POSTING_NEW", "seller_id": 1001,
+                     "uuid": "evidence-new", "posting_number": "W-5B", "creation_date": "2026-08-01T00:00:00Z"})
+        with db.transaction() as connection:
+            connection.execute("UPDATE orders SET shipped=0,shipped_at='2026-08-19T01:00:00Z' WHERE posting_number='W-5B'")
+        receive_push(self.tokens[1], {"message_type": "TYPE_FBO_POSTING_CANCELLED", "seller_id": 1001,
+                     "uuid": "evidence-cancel", "posting_number": "W-5B", "new_state": "cancelled",
+                     "cancel_date": "2026-08-20T03:00:00Z", "reason": {"message": "Покупатель отменил заказ"}})
+        with db.connect() as connection:
+            repaired = connection.execute(
+                "SELECT shipped,cancelled_after_ship FROM orders WHERE posting_number='W-5B'").fetchone()
+        self.assertEqual(tuple(repaired), (1, 1))
+
     def test_existing_webhook_history_backfills_shipping_times(self):
         receive_push(self.tokens[1], {"message_type": "TYPE_FBO_POSTING_NEW", "seller_id": 1001,
                      "uuid": "backfill-new", "posting_number": "W-6", "creation_date": "2026-08-01T00:00:00Z"})
