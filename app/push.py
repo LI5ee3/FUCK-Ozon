@@ -1,10 +1,8 @@
 import hashlib
 import json
-import threading
 from datetime import datetime, timezone
 
 from .db import connect, transaction
-from .dingtalk import send_webhook_failure
 from .ozon import STATUS_ZH, _env
 
 PUSH_TYPES = (
@@ -214,6 +212,11 @@ def _seller_stocks(db, shop_id, payload):
               payload_json=excluded.payload_json WHERE warehouse_stocks.updated_at<=excluded.updated_at""",
                        (shop_id, warehouse, sku, str(item.get("product_id") or ""),
                         int(stock["present"]), int(stock["reserved"]), updated, _json(item)))
+            db.execute("""INSERT OR IGNORE INTO stock_history(
+              shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
+              VALUES(?,?,?,?,?,?,?,?,?)""",
+              (shop_id, "webhook", warehouse, sku, int(stock["present"]), int(stock["reserved"]),
+               updated, _event_key(shop_id, "TYPE_STOCKS_CHANGED", payload), _json(item)))
 
 
 def _fbo_stocks(db, shop_id, payload):
@@ -230,6 +233,11 @@ def _fbo_stocks(db, shop_id, payload):
           WHERE fbo_stocks.updated_at<=excluded.updated_at""",
                    (shop_id, sku, updated, int(stock["new_present"]), int(stock["new_reserved"]),
                     stock.get("old_present"), stock.get("old_reserved"), _json(stock)))
+        db.execute("""INSERT OR IGNORE INTO stock_history(
+          shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
+          VALUES(?,?,?,?,?,?,?,?,?)""",
+          (shop_id, "webhook_fbo", "", sku, int(stock["new_present"]), int(stock["new_reserved"]),
+           updated, _event_key(shop_id, "TYPE_FBO_STOCKS_CHANGED", payload), _json(stock)))
 
 
 def _process(db, shop_id, seller_id, message_type, event_key, payload):
@@ -272,7 +280,7 @@ def receive_push(shop_token, payload):
             db.execute("UPDATE webhook_events SET processing_status='processed',error_message=NULL WHERE shop_id=? AND event_key=?",
                        (shop["id"], event_key))
             return {"version": _env().get("APP_VERSION", "1.0.0"), "name": "FUCK Ozon", "time": received}
-        if previous in ("processed", "pending_match"):
+        if previous == "processed":
             return {"result": True}
     try:
         with transaction() as db:
@@ -287,18 +295,23 @@ def receive_push(shop_token, payload):
         with transaction() as db:
             db.execute("UPDATE webhook_events SET processing_status='failed',error_message=? WHERE shop_id=? AND event_key=?",
                        (str(error)[:500], shop["id"], event_key))
-        if previous != "failed":
-            threading.Thread(target=send_webhook_failure, args=(shop["id"], str(error)), daemon=True).start()
         raise
     except Exception as error:
         message = str(error)[:500]
         with transaction() as db:
             db.execute("UPDATE webhook_events SET processing_status='failed',error_message=? WHERE shop_id=? AND event_key=?",
                        (message, shop["id"], event_key))
-        if previous != "failed":
-            threading.Thread(target=send_webhook_failure, args=(shop["id"], message), daemon=True).start()
         raise PushProcessingError(message) from error
     return {"result": True}
+
+
+def retry_pending(event_id):
+    with connect() as db:
+        row = db.execute("""SELECT e.*,s.push_token FROM webhook_events e JOIN shops s ON s.id=e.shop_id
+          WHERE e.id=? AND e.processing_status='pending_match'""", (event_id,)).fetchone()
+    if not row:
+        raise PushRequestError("待匹配事件不存在")
+    return receive_push(row["push_token"], json.loads(row["payload_json"]))
 
 
 def push_settings(base_url):

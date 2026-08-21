@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], pages: {timeliness:1,finance:1,returns:1,rfbsReturns:1,stock:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], complaints:[], csrf:"", pages: {timeliness:1,finance:1,returns:1,rfbsReturns:1,complaints:1,stock:1}};
 const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",finance:"财务利润",returns:"退货与投诉",stock:"库存",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",finance:"财务",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -24,6 +24,7 @@ function pager(name, data, loader) {
 }
 
 async function api(url, options={}) {
+  if(options.method && options.method!=="GET") options.headers={...(options.headers||{}),"X-CSRF-Token":state.csrf};
   const response = await fetch(url, options);
   if (response.status === 401) { showLogin(); throw new Error("请重新登录"); }
   if (!response.ok) { const body = await response.json().catch(()=>({})); throw new Error(body.detail || `请求失败 ${response.status}`); }
@@ -41,6 +42,7 @@ async function loadShops() {
   const options = state.shops.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
   $("#shopSelect").innerHTML = `<option value="0">两店铺合并（人民币）</option>${options}`;
   $("#importShop").innerHTML = `<option value="">请选择</option>${options}`;
+  $("#complaintShop").innerHTML = `<option value="">请选择</option>${options}`;
   $("#shop1").value = state.shops[0].name; $("#shop2").value = state.shops[1].name;
 }
 async function loadOverview() {
@@ -54,22 +56,30 @@ async function loadOrders() {
   const q=encodeURIComponent($("#orderSearch").value), channel=encodeURIComponent($("#channelFilter").value);
   const data=await api(`/api/orders?shop_id=${state.shop}&channel=${channel}&q=${q}&page=${state.page}`); state.total=data.total;
   $("#orderList").innerHTML=data.items.map(o=>`<article class="order-card"><div class="order-head"><div><strong>${esc(o.posting_number)}</strong> ${channelTag(o.channel)}</div><span>${esc(o.shop_name)}</span></div><div class="order-meta"><span>${bj(o.created_at)}</span><span>${esc(o.status_raw)}</span><span>${o.amount_original==null?'金额暂无':`${o.amount_original.toFixed(2)} ${esc(o.amount_currency)}`}</span></div>${o.items.map(i=>`<div class="product-row"><span title="${esc(i.product_name_raw)}">${esc(i.product_name_raw)} · SKU ${esc(i.sku)}</span><span>× ${i.quantity}</span></div>`).join("")}<div class="muted">${o.cost_cny==null?'成本暂无':`订单总成本 ¥${o.cost_cny.toFixed(4)}${o.items.length>1?'；SKU成本暂无':''}`}</div>${o.cancel_reason_raw?`<div class="exception">${esc(o.cancel_reason_raw)}</div>`:""}${o.data_anomaly?'<div class="exception">数据异常</div>':""}</article>`).join("") || '<div class="panel muted">没有匹配订单。</div>';
+  document.querySelectorAll(".order-card").forEach((card,index)=>card.insertAdjacentHTML("beforeend",`<button type="button" data-add-complaint="${esc(data.items[index].posting_number)}" data-complaint-shop="${data.items[index].shop_id}">新增投诉</button>`));
   const pages=Math.max(1,Math.ceil(data.total/data.size)); $("#pageInfo").textContent=`第 ${data.page} / ${pages} 页，共 ${data.total} 个订单`;
   $("#prevPage").disabled=state.page<=1; $("#nextPage").disabled=state.page>=pages;
 }
 async function loadRisk() {
-  const rows=await api(`/api/risk?shop_id=${state.shop}`);
+  const [rows,reasons]=await Promise.all([api(`/api/risk?shop_id=${state.shop}&grouped=${$("#riskGrouped").checked}`),api(`/api/risk/reasons?shop_id=${state.shop}`)]);
   $("#riskRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)} / ${channelTag(r.channel)}</td><td title="${esc(r.product_name)}">${esc(r.sku)}</td><td class="num">${r.valid_pieces}</td><td class="risk-col">${pct(r.cancelled_rate)}</td><td class="risk-col">${pct(r.unclaimed_rate)}</td><td class="risk-col">${pct(r.customs_rate)}</td></tr>`).join("") || '<tr><td colspan="6" class="muted">暂无数据。</td></tr>';
+  $("#reasonRows").innerHTML=reasons.items.map(r=>`<tr><td>${esc(r.shop_name)} / ${channelTag(r.channel)}</td><td><button class="link-button" data-reason="${esc(r.reason_raw)}">${esc(r.reason_name)}</button></td><td>${r.orders}</td><td>${r.pieces}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">暂无发货后取消原因。</td></tr>';
 }
 async function loadTimeliness() {
   const data=await api(`/api/timeliness?shop_id=${state.shop}&page=${state.pages.timeliness}`), s=data.summary;
   summary("timeliness",[["有效订单",num(s.orders,0)],["已有发货时间",num(s.shipped_orders,0)],["平均发货耗时",hours(s.avg_ship_hours)],["平均配送耗时",hours(s.avg_delivery_hours)]]);
+  $("#timelinessGroupRows").innerHTML=data.groups.map(r=>`<tr><td>${esc(r.shop_name)} / ${channelTag(r.channel)}</td><td>${r.ship_samples}</td><td>${hours(r.avg_ship_hours)} / ${hours(r.p50_ship_hours)} / ${hours(r.p90_ship_hours)}</td><td>${r.delivery_samples}</td><td>${r.delivery_samples?`${hours(r.avg_delivery_hours)} / ${hours(r.p50_delivery_hours)} / ${hours(r.p90_delivery_hours)}`:"数据不足"}</td><td>${pct(r.created_completeness)} / ${pct(r.shipped_completeness)} / ${pct(r.delivered_completeness)}</td></tr>`).join("");
   $("#timelinessRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)} / ${channelTag(r.channel)}</td><td>${esc(r.posting_number)}</td><td>${bj(r.created_at)}</td><td>${bj(r.shipped_at)}</td><td>${bj(r.delivered_at)}</td><td class="num">${hours(r.ship_hours)}</td><td class="num">${hours(r.delivery_hours)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
   pager("timeliness",data,loadTimeliness);
 }
 async function loadFinance() {
-  const data=await api(`/api/finance?shop_id=${state.shop}&page=${state.pages.finance}`);
+  const [data,profits,rates]=await Promise.all([api(`/api/finance?shop_id=${state.shop}&page=${state.pages.finance}`),api(`/api/profits?shop_id=${state.shop}`),api("/api/exchange-rates")]);
   summary("finance",[["流水记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.amount)} ${s.currency}`,`销售计提 ${num(s.accruals)} · 销售佣金 ${num(s.commission)}`])]);
+  if(!$("#financeReportSummary")) $("#financeSummary").insertAdjacentHTML("afterend",'<p id="financeReportSummary" class="muted"></p>');
+  $("#financeReportSummary").textContent=data.summary.reports.length?`账单汇总（RUB）：回款 ${num(data.summary.reports.reduce((v,r)=>v+Number(r.money_transfer||0),0))}；赔偿 ${num(data.summary.reports.reduce((v,r)=>v+Number(r.compensation_amount||0),0))}；退款与取消 ${num(data.summary.reports.reduce((v,r)=>v+Number(r.refunds_and_cancellations||0),0))}；处理与配送 ${num(data.summary.reports.reduce((v,r)=>v+Number(r.processing_and_delivery||0),0))}`:"尚未拉取账单汇总";
+  $("#profitRows").innerHTML=profits.items.map(r=>`<tr><td>${esc(r.shop_name)} / ${esc(r.posting_number)}</td><td>${metric(r.amount_original)} ${esc(r.amount_currency||"")}</td><td>${metric(r.net_rub)} RUB</td><td>${r.cost_cny==null?"暂无":`¥${num(r.cost_cny,4)}`}</td><td>${r.profit_cny==null?"汇率待配置/利润暂不可计算":`¥${num(r.profit_cny)}`}</td><td>${r.rub_rate?`${r.rub_rate.rate} · ${esc(r.rub_rate.source)} · ${r.rub_rate.date}`:"缺少RUB/CNY汇率"}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">暂无可匹配订单流水。</td></tr>';
+  $("#profitNote").textContent=`${profits.definition}；当前页缺少可计算利润 ${profits.missing_profit} 条。最终回款金额仅在API实际提供时展示，不由RUB账单猜算。`;
+  $("#rateList").textContent=rates.length?rates.slice(0,6).map(r=>`${r.currency} ${r.rate_to_cny}（${r.rate_date}，${r.source}）`).join("；"):"尚未配置RUB/CNY或USD/CNY汇率";
   $("#financeRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.occurred_at)}</td><td>${cell(r.operation_type)}</td><td>${cell(r.posting_number)}</td><td class="num">${metric(r.amount)} ${esc(r.currency)}</td><td class="num">${metric(r.accruals)} ${esc(r.currency)}</td><td class="num">${metric(r.commission)} ${esc(r.currency)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
   pager("finance",data,loadFinance);
 }
@@ -84,14 +94,16 @@ async function loadRfbsReturns() {
   const data=await api(`/api/rfbs-returns?shop_id=${state.shop}&page=${state.pages.rfbsReturns}`);
   $("#rfbsReturnsCount").textContent=data.total;
   summary("rfbsReturns",[["退货申请",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.records,0)} 条申请`])]);
-  $("#rfbsReturnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.created_at)}</td><td>${cell(r.return_number)}</td><td>${cell(r.status_name||r.status_raw)}</td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td></tr>`).join("") || '<tr><td colspan="6" class="muted">暂无退货申请。</td></tr>';
+  $("#rfbsReturnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.created_at)}</td><td>${cell(r.return_number)}<br><small>${cell(r.order_number)}</small></td><td>${cell(r.status_name||r.status_raw)}<br><small>${cell(r.compensation_status)}</small></td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span>${r.buyer_comment_raw?`<br><small>买家原文：${esc(r.buyer_comment_raw)}</small>`:""}</td><td>${num(r.quantity,0)} / ${metric(r.product_amount)} ${esc(r.product_currency||"")}</td><td>${cell(r.reason_name||r.reason_raw)}<br><small>${bj(r.logistic_return_at)}</small></td></tr>`).join("") || '<tr><td colspan="8" class="muted">暂无退货申请。</td></tr>';
   pager("rfbsReturns",data,loadRfbsReturns);
 }
-const loadReturnPage=()=>Promise.all([loadReturns(),loadRfbsReturns()]);
+async function loadComplaints(){const q=encodeURIComponent($("#complaintQuery").value),status=$("#complaintStatus").value,data=await api(`/api/complaints?shop_id=${state.shop}&q=${q}&status=${status}&page=${state.pages.complaints}`);state.complaints=data.items;$("#complaintsCount").textContent=data.total;$("#complaintRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(r.posting_number)}</td><td>${esc(r.complaint_number)}</td><td>${bj(r.complaint_at)} / ${esc(r.channel)}</td><td>${r.resolved==null?"未填写":r.resolved?"是":"否"}</td><td>${r.package_returned==null?"未填写":r.package_returned?"是":"否"}</td><td>${r.compensation_amount==null?"暂无":`${num(r.compensation_amount)} ${esc(r.compensation_currency)}`}</td><td>${esc(r.notes||"")} <button data-edit-complaint="${r.shop_id}:${esc(r.complaint_number)}">编辑</button></td></tr>`).join("")||'<tr><td colspan="8" class="muted">暂无投诉。</td></tr>';pager("complaints",data,loadComplaints)}
+const loadReturnPage=()=>Promise.all([loadReturns(),loadRfbsReturns(),loadComplaints()]);
 async function loadStock() {
   const data=await api(`/api/stock?shop_id=${state.shop}&page=${state.pages.stock}`);
-  summary("stock",[["最新商品",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.present,0)} 可用`,`商品 ${num(s.products,0)} · 预留 ${num(s.reserved,0)}`])]);
-  $("#stockRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${cell(r.offer_id)}</td><td>${cell(r.product_id)}</td><td>${cell(r.types)}</td><td class="num">${num(r.present,0)}</td><td class="num">${num(r.reserved,0)}</td><td>${bj(r.observed_at)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  summary("stock",[["库存行",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.present,0)} 可售`,`预留 ${num(s.reserved,0)} · 缺货 ${num(s.out_of_stock,0)}`])]);
+  $("#stockFormula").textContent=data.formula;
+  $("#stockRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}<br><small>${esc(r.source)}</small></td><td>${cell(r.sku)} / ${cell(r.offer_id)}</td><td>${cell(r.warehouse_id)} / ${cell(r.types)}</td><td>${num(r.present,0)}</td><td>${num(r.reserved,0)}</td><td>${num(r.sales_7,0)}</td><td>${num(r.sales_30,0)}</td><td>${r.days_available==null?"无法估算":`${r.days_available} 天`}</td><td>${bj(r.observed_at)}</td></tr>`).join("") || '<tr><td colspan="9" class="muted">暂无数据。</td></tr>';
   pager("stock",data,loadStock);
 }
 async function loadImports() {
@@ -103,7 +115,7 @@ async function loadSync() {
   $("#syncRows").innerHTML=rows.map(r=>{const total=Math.max(1,Number(r.progress_total||1)),done=Number(r.progress_done||0),percent=Math.round(done/total*100),status=r.status==='failed'?'失败':r.status==='success'?'成功':'进行中';return `<tr><td>${esc(r.shop_name)}</td><td>${esc(syncNames[r.module]||r.module)}${r.run_source==='auto'?' · 自动':''}</td><td><div>${status} · ${done}/${total} · ${percent}%${r.records?` · ${num(r.records,0)} 条`:''}</div><div class="sync-progress" role="progressbar" aria-label="${esc(syncNames[r.module]||r.module)}拉取进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>${r.status==='running'&&r.current_from?`<small class="muted">当前：${esc(r.current_from.slice(0,10))} — ${esc(r.current_to.slice(0,10))}</small>`:''}</td><td>${bj(r.started_at)}</td><td class="error">${esc(r.error||'')}</td></tr>`}).join("") || '<tr><td colspan="5" class="muted">暂无拉取记录。</td></tr>';
   return rows;
 }
-async function loadAutoSync(){const rows=await api("/api/auto-sync-settings");$("#autoSyncCards").innerHTML=rows.map(r=>`<div class="auto-sync-card"><div class="panel-title"><strong>${esc(syncNames[r.module])}</strong><label class="check-row"><input id="autoEnabled-${r.module}" type="checkbox" ${r.enabled?'checked':''}>启用</label></div><label>每天拉取时间（北京时间）<input id="autoTime-${r.module}" type="time" value="${esc(r.run_time)}" required></label><label>拉取范围${r.module==='stock'?'（库存为当前快照）':'（最近 N 天）'}<input id="autoRange-${r.module}" type="number" min="1" max="365" value="${Number(r.range_days)}" ${r.module==='stock'?'disabled':''} required></label></div>`).join("")}
+async function loadAutoSync(){const rows=await api("/api/auto-sync-settings");$("#autoSyncCards").innerHTML=rows.map(r=>`<div class="auto-sync-card"><div class="panel-title"><strong>${esc(state.shops.find(s=>s.id===r.shop_id)?.name)} · ${esc(syncNames[r.module])}</strong><label class="check-row"><input id="autoEnabled-${r.shop_id}-${r.module}" type="checkbox" ${r.enabled?'checked':''}>启用</label></div><label>每天拉取时间（北京时间）<input id="autoTime-${r.shop_id}-${r.module}" type="time" value="${esc(r.run_time)}" required></label><label>拉取范围${r.module==='stock'?'（库存为当前快照）':'（最近 N 天）'}<input id="autoRange-${r.shop_id}-${r.module}" type="number" min="1" max="365" value="${Number(r.range_days)}" ${r.module==='stock'?'disabled':''} required></label></div>`).join("")}
 async function loadDingtalk() {
   const data=await api("/api/dingtalk/settings");
   $("#dingtalkConfigured").textContent=data.configured?"机器人已配置":"机器人未配置";
@@ -115,11 +127,13 @@ async function loadPushSettings() {
   const shops=await api("/api/ozon/push-settings");
   $("#pushShops").innerHTML=shops.map(s=>`<div class="summary-card"><div class="panel-title"><strong>${esc(s.name)}</strong><span class="tag">${esc(s.connection_status)}</span></div><label>seller_id<input id="pushSeller${s.id}" inputmode="numeric" value="${esc(s.seller_id||'')}" required></label><label>回调URL<input id="pushUrl${s.id}" value="${esc(s.callback_url)}" readonly></label><button type="button" data-copy-push="${s.id}">复制回调URL</button><p class="muted">最近 Ping：${bj(s.last_ping_at)}<br>最近业务事件：${bj(s.last_business_event_at)}<br>最近失败：${bj(s.last_failure_at)}${s.last_error?` · ${esc(s.last_error)}`:""}</p><small class="muted">${s.event_types.map(esc).join(" · ")}</small></div>`).join("");
 }
+async function loadRules(){const data=await api("/api/product-rules");$("#ruleKeyNote").textContent=data.key_note;$("#ruleLists").innerHTML=`<h3>短名称</h3>${data.short_names.map(r=>`<p>${esc(r.key_type)}:${esc(r.key_value)} → ${esc(r.short_name)}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>合并组</h3>${data.groups.map(r=>`<p>${esc(r.name)}：${esc(r.key_type||"暂无成员")} ${esc(r.key_value||"")} ${r.key_type?`<button data-ungroup-type="${esc(r.key_type)}" data-ungroup-value="${esc(r.key_value)}">解除</button>`:""}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>品牌规则</h3>${data.brands.map(r=>`<p>${esc(r.brand_name)} · ${esc(r.keyword)} · 优先级 ${r.priority}${r.conflict?' · 冲突':''}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>匹配预览</h3>${data.products.filter(r=>r.matched_brand).slice(0,20).map(r=>`<p>${esc(r.product_name)} → ${esc(r.matched_brand)}</p>`).join("")||'<p class="muted">暂无品牌命中</p>'}`}
+async function loadSettings(){await loadPushSettings();$("#probeShops").innerHTML=state.shops.map(s=>`<div class="summary-card"><strong>${esc(s.name)}</strong><button data-probe="${s.id}">检测连接与权限</button><p id="probeResult${s.id}" class="muted">尚未检测</p></div>`).join("");const events=await api("/api/ozon/pending-events");$("#pendingEvents").innerHTML=events.map(e=>`<p>${esc(e.shop_name)} · ${esc(e.message_type)} · ${bj(e.received_at)} · ${esc(e.error_message)} <button data-retry-event="${e.id}">重新处理</button></p>`).join("")||'<p class="muted">暂无待匹配事件。</p>'}
 async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,finance:loadFinance,returns:loadReturnPage,stock:loadStock};
-  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync()]); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadPushSettings();
+  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync()]); if(page==="rules") return loadRules(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -127,26 +141,42 @@ function openPage(page) {
   $("#pageTitle").textContent=titles[page]; loadPage(page).catch(e=>toast(e.message,true));
 }
 
-$("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});showShell();await loadShops();await loadOverview()}catch(err){$("#loginError").textContent=err.message}});
+$("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await loadOverview()}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{if(e.target.dataset.page)openPage(e.target.dataset.page)});
 $("#shopSelect").addEventListener("change",e=>{state.shop=Number(e.target.value);state.page=1;Object.keys(state.pages).forEach(k=>state.pages[k]=1);const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))});
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
+$("#orderList").onclick=e=>{const posting=e.target.dataset.addComplaint;if(!posting)return;openPage("returns");$("#complaintPosting").value=posting;$("#complaintShop").value=e.target.dataset.complaintShop;document.querySelector('[data-return-tab="complaints"]').click();$("#complaintNumber").focus()};
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
 $("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});
+$("#riskGrouped").addEventListener("change",()=>loadRisk().catch(err=>toast(err.message,true)));
 $("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(!tab)return;document.querySelectorAll("[data-return-tab]").forEach(button=>button.classList.toggle("active",button.dataset.returnTab===tab));document.querySelectorAll(".return-tab").forEach(panel=>panel.classList.toggle("active",panel.id===`returns-${tab}`))};
+$("#complaintSearch").onsubmit=e=>{e.preventDefault();state.pages.complaints=1;loadComplaints().catch(err=>toast(err.message,true))};
+$("#complaintRows").onclick=e=>{const key=e.target.dataset.editComplaint;if(!key)return;const [shop,...number]=key.split(":"),r=state.complaints.find(x=>x.shop_id===Number(shop)&&x.complaint_number===number.join(":"));if(!r)return;$("#complaintShop").value=r.shop_id;$("#complaintPosting").value=r.posting_number;$("#complaintNumber").value=r.complaint_number;$("#complaintAt").value=new Date(r.complaint_at).toISOString().slice(0,16);$("#complaintChannel").value=r.channel;$("#complaintResolved").value=r.resolved==null?"":String(Boolean(r.resolved));$("#complaintReturned").value=r.package_returned==null?"":String(Boolean(r.package_returned));$("#complaintAmount").value=r.compensation_amount??"";$("#complaintCurrency").value=r.compensation_currency??"";$("#complaintNotes").value=r.notes??"";$("#complaintForm").scrollIntoView({behavior:"smooth"})};
+$("#reasonRows").onclick=async e=>{const reason=e.target.dataset.reason;if(!reason)return;const data=await api(`/api/risk/reasons?shop_id=${state.shop}&reason=${encodeURIComponent(reason)}`);$("#reasonDetails").textContent=data.details.map(r=>`${r.shop_name} / ${r.channel} / ${r.posting_number}（${r.pieces}件）`).join("；")};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 $("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();await loadPushSettings();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
 $("#pushForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/ozon/push-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#pushSeller1").value,2:$("#pushSeller2").value})});await loadPushSettings();toast("seller_id 已保存")}catch(err){toast(err.message,true)}});
 $("#pushShops").addEventListener("click",async e=>{const id=e.target.dataset.copyPush;if(!id)return;await navigator.clipboard.writeText($("#pushUrl"+id).value);toast("回调URL已复制")});
+$("#probeShops").onclick=async e=>{const id=e.target.dataset.probe;if(!id)return;const result=await api(`/api/ozon/probe/${id}`,{method:"POST"});$("#probeResult"+id).textContent=result.valid?`凭据有效；身份 ${JSON.stringify(result.identity)}；角色 ${result.roles.join("、")||"未返回"}；权限 ${Object.entries(result.permissions).map(([k,v])=>syncNames[k]+":"+v).join("；")}`:`检测失败：${result.error}`};
+$("#pendingEvents").onclick=async e=>{const id=e.target.dataset.retryEvent;if(!id)return;await api(`/api/ozon/pending-events/${id}/retry`,{method:"POST"});toast("已重新处理");await loadSettings()};
 $("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("钉钉设置已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
 $("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST"});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
 $("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});
-$("#exportOrders").onclick=()=>{location.href=`/api/export/orders?shop_id=${state.shop}`};
+const exportNames={orders:"订单",risk:"SKU风险及原因",timeliness:"发货配送时效",finance:"财务与利润",returns:"退货",complaints:"投诉",stock:"库存",rules:"商品规则"};
+$("#exportButtons").innerHTML=Object.entries(exportNames).map(([key,name])=>`<button data-export="${key}">${name} JSONL</button>`).join("");
+$("#exportButtons").onclick=e=>{if(e.target.dataset.export)location.href=`/api/export/${e.target.dataset.export}?shop_id=${state.shop}`};
+$("#complaintForm").onsubmit=async e=>{e.preventDefault();const tri=id=>$(id).value===""?null:$(id).value==="true";await api("/api/complaints",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:Number($("#complaintShop").value),posting_number:$("#complaintPosting").value,complaint_number:$("#complaintNumber").value,complaint_at:new Date($("#complaintAt").value).toISOString(),channel:$("#complaintChannel").value,resolved:tri("#complaintResolved"),package_returned:tri("#complaintReturned"),compensation_amount:$("#complaintAmount").value||null,compensation_currency:$("#complaintCurrency").value,notes:$("#complaintNotes").value})});toast("投诉已保存");await loadComplaints()};
+$("#rateForm").onsubmit=async e=>{e.preventDefault();await api("/api/exchange-rates",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({currency:$("#rateCurrency").value,rate_to_cny:$("#rateValue").value,rate_date:$("#rateDate").value,source:$("#rateSource").value})});toast("汇率已保存并记录修改历史");await loadFinance()};
+$("#shortNameForm").onsubmit=async e=>{e.preventDefault();await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"short_name",key_type:$("#shortKeyType").value,key_value:$("#shortKeyValue").value,short_name:$("#shortName").value})});toast("短名称已保存");await loadRules()};
+$("#brandForm").onsubmit=async e=>{e.preventDefault();await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"brand",brand_name:$("#brandName").value,keyword:$("#brandKeyword").value,priority:Number($("#brandPriority").value),enabled:$("#brandEnabled").checked})});toast("品牌规则已保存");await loadRules()};
+$("#groupForm").onsubmit=async e=>{e.preventDefault();const members=$("#groupMembers").value.split(/\n+/).filter(Boolean).map(line=>{const [key_type,...rest]=line.split(":");return {key_type,key_value:rest.join(":").trim()}});await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"group",name:$("#groupName").value,members})});toast("合并组已保存");await loadRules()};
+$("#ruleLists").onclick=async e=>{const keyType=e.target.dataset.ungroupType;if(!keyType)return;await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"ungroup",key_type:keyType,key_value:e.target.dataset.ungroupValue})});toast("已解除合并");await loadRules()};
 $("#syncButtons").innerHTML=Object.entries(syncNames).map(([key,name])=>`<button data-module="${key}">${name}拉取</button>`).join("");
 $("#sync > .panel:first-child").insertAdjacentHTML("afterend",`<form id="autoSyncForm" class="panel"><div class="panel-title"><h2>自动同步设置</h2><span class="muted">四个模块独立设置</span></div><p class="muted">到达设定时间后，每天分别为两个店铺创建任务；日期型数据继续按自然月分段。</p><div id="autoSyncCards" class="auto-sync-grid"></div><button class="primary">保存自动同步设置</button></form>`);
-$("#autoSyncForm").addEventListener("submit",async e=>{e.preventDefault();const values=Object.fromEntries(Object.keys(syncNames).map(module=>[module,{enabled:$("#autoEnabled-"+module).checked,run_time:$("#autoTime-"+module).value,range_days:Number($("#autoRange-"+module).value)}]));try{await api("/api/auto-sync-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});toast("自动同步设置已保存");await loadAutoSync()}catch(err){toast(err.message,true)}});
+$("#autoSyncForm").addEventListener("submit",async e=>{e.preventDefault();const values=Object.fromEntries([1,2].map(shop=>[String(shop),Object.fromEntries(Object.keys(syncNames).map(module=>[module,{enabled:$("#autoEnabled-"+shop+"-"+module).checked,run_time:$("#autoTime-"+shop+"-"+module).value,range_days:Number($("#autoRange-"+shop+"-"+module).value)}]))]));try{await api("/api/auto-sync-settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(values)});toast("两店铺自动同步设置已保存");await loadAutoSync()}catch(err){toast(err.message,true)}});
 const today=new Date(); today.setHours(0,0,0,0);
 const isoDate=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+$("#rateDate").value=isoDate(today);
 const localDate=value=>{const [year,month,day]=value.split("-").map(Number);return new Date(year,month-1,day)};
 const shiftDays=(date,amount)=>new Date(date.getFullYear(),date.getMonth(),date.getDate()+amount);
 const shiftMonths=(date,amount)=>new Date(date.getFullYear(),date.getMonth()+amount,1);
@@ -194,4 +224,4 @@ $("#themeButton").onclick=()=>{const dark=document.documentElement.dataset.theme
 $("#logoutButton").onclick=async()=>{await api("/api/logout",{method:"POST"});showLogin()};
 if(localStorage.getItem("theme")==="dark")document.documentElement.dataset.theme="dark";
 
-(async()=>{const s=await api("/api/session");if(!s.authenticated)return showLogin();showShell();await loadShops();await loadOverview()})().catch(e=>toast(e.message,true));
+(async()=>{const s=await api("/api/session");if(!s.authenticated)return showLogin();state.csrf=s.csrf_token;showShell();await loadShops();await loadOverview()})().catch(e=>toast(e.message,true));

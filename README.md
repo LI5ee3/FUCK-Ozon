@@ -5,11 +5,12 @@ FUCK Ozon 是一个面向 Ozon 卖家的双店铺、单管理员数据分析网�
 ## 主要功能
 
 - 两个 Ozon 店铺独立管理或合并查看。
-- 订单、财务、退货、库存和价格五个独立 API 拉取模块。
+- 订单、财务、退货和库存四个独立 API 拉取模块。
 - FBP、realFBS、WHD 三种履约模式分类统计。
 - Ozon CSV 订单导入和马帮 XLSX 订单成本导入。
-- 总览、订单卡片、SKU 风险、JSONL 订单导出和深色主题。
-- 单管理员密码登录，API 密钥与数据库均不进入 Git。
+- 订单利润、投诉管理、商品匹配规则、SKU 风险、时效、退货和统一库存。
+- 订单及七个分析模块可分别导出 UTF-8 JSONL。
+- 单管理员 `scrypt` 强哈希登录、CSRF 防护和登录失败限速。
 - 九种 Ozon 主动推送事件双店铺隔离接收，订单与库存实时幂等更新。
 
 ## 统计口径
@@ -18,8 +19,9 @@ FUCK Ozon 是一个面向 Ozon 卖家的双店铺、单管理员数据分析网�
 - 订单数按 `posting_number` 去重。
 - 商品件数按 `quantity` 求和。
 - 页面上的 Ozon 时间统一显示为北京时间。
-- 财务拉取自动按不超过 30 天的时间窗分段请求。
-- 库存和价格以快照方式保存，各拉取模块只写入自己的数据表。
+- Ozon 财务账单始终按 RUB 保存和显示；订单原币、店铺回款币种、RUB 账单和 CNY 成本分开。
+- 缺少可靠汇率时不计算人民币利润，每次换算保留原币、汇率、来源和日期。
+- 日期型同步按自然月分段，财务再限制为最多 30 天窗口；各模块只写自己的数据表。
 
 ## 技术栈与目录
 
@@ -38,7 +40,6 @@ deploy.sh         Linux 服务器一键部署脚本
 - 64 位 Linux 服务器。
 - 已安装 Docker Engine 和 Docker Compose v2。
 - 能够访问 `api-seller.ozon.ru`。
-- 如需公网访问，准备域名和 HTTPS 反向代理。
 
 > `compose.yaml` 使用 host 网络，优先用于 Linux 服务器。macOS 和 Windows 建议使用后文的本地 Python 安装方式。
 
@@ -129,8 +130,22 @@ Windows PowerShell 激活虚拟环境的命令为：
 
 ### 2. 创建 `.env`
 
+用标准库生成管理员密码的盐和 `scrypt` 哈希：
+
+```sh
+python - <<'PY'
+from app.security import password_hash
+password = input("管理员密码：")
+salt, digest = password_hash(password)
+print(f"ADMIN_PASSWORD_SALT={salt}\nADMIN_PASSWORD_HASH={digest}")
+PY
+```
+
+将输出和店铺凭据写入 `.env`：
+
 ```dotenv
-ADMIN_PASSWORD=请设置一个高强度管理员密码
+ADMIN_PASSWORD_SALT=上一步生成的盐
+ADMIN_PASSWORD_HASH=上一步生成的哈希
 SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
@@ -174,11 +189,11 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 ## 首次使用
 
-1. 使用 `.env` 中的 `ADMIN_PASSWORD` 登录。
+1. 使用生成哈希时输入的管理员密码登录。
 2. 在“系统设置”中修改两个店铺的显示名称。
 3. 在左上角选择单个店铺。
 4. 进入“独立同步中心”，选择日期范围后分别拉取所需模块。页面默认为近三个月；长时段按自然月串行执行并显示进度，库存只拉取一次当前快照。
-   也可以分别启用订单、财务、退货和库存的每日自动同步，自定义北京时间及最近 1–365 天范围；自动任务会同时拉取两个店铺，同日不会重复创建。
+   也可按“店铺+模块”分别设置订单、财务、退货和库存的每日自动同步，自定义北京时间及最近 1–365 天范围，同日成功任务不重复创建。
 5. 如需补充历史数据，在“数据导入/导出”中选择店铺和数据类型后上传文件。
 
 支持的导入文件：
@@ -215,7 +230,7 @@ docker compose down
 备份时请同时保存：
 
 - `data/`：数据库和会话密钥。
-- `.env`：管理员密码、端口和 Ozon API 凭据。
+- `.env`：管理员密码哈希、端口和 Ozon API 凭据。
 
 恢复时将两者放回项目根目录，确认 `.env` 权限为 `600`，再启动容器。
 
@@ -228,9 +243,9 @@ docker compose down
 
 ## 常见问题
 
-### 登录提示未设置 `ADMIN_PASSWORD`
+### 登录提示未设置管理员密码哈希
 
-确认 `.env` 位于项目根目录，包含非空的 `ADMIN_PASSWORD`，然后重启服务。
+确认 `.env` 位于项目根目录，同时包含 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`，然后重启服务。旧版 `ADMIN_PASSWORD` 会在部署或启动时一次性转换并从 `.env` 删除。
 
 ### API 拉取返回 401、403 或 502
 

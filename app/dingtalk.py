@@ -68,15 +68,6 @@ def send_sync_failure(shop_id, module, start, end, error):
     send_text(message)
 
 
-def send_webhook_failure(shop_id, error):
-    if not configured():
-        return
-    with connect() as db:
-        shop = db.execute("SELECT name FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
-    now = datetime.now(BEIJING).strftime("%Y-%m-%d %H:%M")
-    send_text(f"Ozon 推送处理失败\n店铺：{shop}\n失败时间：{now}（北京时间）\n错误：{_safe_error(error)[:200]}")
-
-
 def _display_time(value):
     if not value:
         return "暂无"
@@ -94,7 +85,10 @@ def daily_message(stats_date):
           AND date(datetime(o.status_changed_at),'+8 hours')=?
           ORDER BY o.shop_id,CASE o.channel WHEN 'FBP' THEN 1 WHEN 'realFBS' THEN 2 ELSE 3 END,o.posting_number
         """, (stats_date,)).fetchall()
-        through = db.execute("SELECT MAX(created_at) FROM orders").fetchone()[0]
+        through = db.execute("""SELECT MAX(data_through) FROM sync_runs
+          WHERE module='orders' AND status='success'""").fetchone()[0]
+        if not through:
+            through = db.execute("SELECT MAX(created_at) FROM orders").fetchone()[0]
     lines = ["昨日取消订单汇总", f"统计日期：{stats_date}（北京时间）", ""]
     for shop in shops:
         own = [row for row in rows if row["shop_id"] == shop["id"]]

@@ -17,9 +17,9 @@ BEIJING = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).resolve().parent.parent
 MODULE_TABLES = {
     "orders": ("orders", "order_items", "order_api_records"),
-    "finance": ("finance_records",),
+    "finance": ("finance_records", "finance_reports"),
     "returns": ("return_records", "rfbs_return_records"),
-    "stock": ("stock_snapshots",),
+    "stock": ("stock_snapshots", "stock_history"),
 }
 STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
@@ -217,6 +217,18 @@ def sync_orders(shop_id, start, end):
     fbs = _cursor_pages(shop_id, "/v4/posting/fbs/list", base, "postings")
     fbo = _cursor_pages(shop_id, "/v3/posting/fbo/list", base, "postings")
     fetched = _stamp()
+    with connect() as db:
+        delivered = {row[0] for row in db.execute(
+            "SELECT posting_number FROM orders WHERE shop_id=? AND NULLIF(delivered_at,'') IS NOT NULL", (shop_id,))}
+    for posting in fbs:
+        if posting.get("status") == "delivered" and posting["posting_number"] not in delivered:
+            posting["fact_delivery_date"] = posting.get("fact_delivery_date") or posting.get("delivering_date")
+    for posting in fbo:
+        if posting.get("status") == "delivered" and posting["posting_number"] not in delivered:
+            detail = _post(shop_id, "/v2/posting/fbo/get", {
+                "posting_number": posting["posting_number"],
+                "with": {"analytics_data": False, "financial_data": False}}).get("result") or {}
+            posting["fact_delivery_date"] = detail.get("fact_delivery_date")
     with transaction() as db:
         currency = db.execute("SELECT settlement_currency FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
         for posting, channel in [(record, None) for record in fbs] + [(record, "WHD") for record in fbo]:
@@ -236,14 +248,16 @@ def sync_orders(shop_id, start, end):
             amount_currency = prices[0][1] if prices else currency
             created = posting.get("in_process_at") or posting.get("created_at")
             shipped_at = posting.get("delivering_date")
+            delivered_at = posting.get("fact_delivery_date")
             db.execute("""
-              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,status_raw,
+              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,delivered_at,status_raw,
                 cancel_reason_raw,shipped,cancelled_after_ship,data_anomaly,amount_original,
                 amount_currency,source,updated_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
                 parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
                 channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
                 shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
+                delivered_at=COALESCE(NULLIF(excluded.delivered_at,''),orders.delivered_at),
                 status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
                 cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
                 shipped=CASE WHEN excluded.channel='WHD' AND excluded.status_raw='已取消' AND excluded.cancelled_after_ship IS NULL
@@ -252,7 +266,7 @@ def sync_orders(shop_id, start, end):
                 amount_original=COALESCE(excluded.amount_original,orders.amount_original),
                 amount_currency=COALESCE(NULLIF(excluded.amount_currency,''),orders.amount_currency),
                 source='api',updated_at=excluded.updated_at
-            """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at,
+            """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at, delivered_at,
                   STATUS_ZH.get(status_original, status_original), cancellation.get("cancel_reason"),
                   shipped, cancelled_after, 0, amount, amount_currency, "api", fetched))
             db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
@@ -280,7 +294,7 @@ def sync_orders(shop_id, start, end):
 
 
 def sync_finance(shop_id, start, end):
-    records, cursor = [], start
+    records, reports, cursor = [], [], start
     while cursor <= end:
         window_end = min(cursor + timedelta(days=30) - timedelta(seconds=1), end)
         page = 1
@@ -293,16 +307,37 @@ def sync_finance(shop_id, start, end):
             if page >= int(result.get("page_count") or 0):
                 break
             page += 1
+        totals = _post(shop_id, "/v3/finance/transaction/totals", {
+            "date": {"from": _utc(cursor), "to": _utc(window_end)},
+            "posting_number": "", "transaction_type": "all"})
+        reports.append(("totals", f"{_utc(cursor)}|{_utc(window_end)}", totals))
         if window_end >= end:
             break
         cursor = window_end + timedelta(seconds=1)
+    month = datetime(start.year, start.month, 1, tzinfo=start.tzinfo)
+    last_month = datetime(end.year, end.month, 1, tzinfo=end.tzinfo)
+    while month <= last_month:
+        try:
+            realization = _post(shop_id, "/v2/finance/realization", {"month": month.month, "year": month.year})
+        except RuntimeError as error:
+            if "HTTP 404: Report was not found" not in str(error):
+                raise
+        else:
+            reports.append(("realization", f"{month.year:04d}-{month.month:02d}", realization))
+        month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
     fetched = _stamp()
     with transaction() as db:
         for record in records:
             db.execute("""INSERT INTO finance_records VALUES(?,?,?,?,?)
               ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,payload=excluded.payload,fetched_at=excluded.fetched_at
             """, (shop_id, _key(record, "operation_id"), record.get("operation_date"), _json(record), fetched))
-    return {"records": len({_key(record, "operation_id") for record in records}), "fetched": len(records)}
+        for report_type, period_key, payload in reports:
+            db.execute("""INSERT INTO finance_reports VALUES(?,?,?,?,?)
+              ON CONFLICT(shop_id,report_type,period_key) DO UPDATE SET
+              payload=excluded.payload,fetched_at=excluded.fetched_at""",
+                       (shop_id, report_type, period_key, _json(payload), fetched))
+    return {"records": len({_key(record, "operation_id") for record in records}), "fetched": len(records),
+            "reports": len(reports)}
 
 
 def _rfbs_return_pages(shop_id, start, end):
@@ -346,15 +381,38 @@ def sync_returns(shop_id, start, end):
             product, state = record.get("product") or {}, record.get("state") or {}
             status_raw = state.get("state") or state.get("group_state") or ""
             status_name = state.get("state_name") or state.get("money_return_state_name") or status_raw
-            db.execute("""INSERT INTO rfbs_return_records VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+            reason = record.get("return_reason") or record.get("reason") or {}
+            if not isinstance(reason, dict):
+                reason = {"name": reason}
+            amount = product.get("price") or {}
+            if not isinstance(amount, dict):
+                amount = {"price": amount}
+            logistic = record.get("logistic") or {}
+            comment = record.get("client_comment") or record.get("comment") or record.get("buyer_comment")
+            db.execute("""INSERT INTO rfbs_return_records(
+              shop_id,return_id,return_number,created_at,posting_number,offer_id,sku,product_name,
+              status_raw,status_name,payload,fetched_at,order_number,quantity,reason_raw,reason_name,
+              compensation_status,product_amount,product_currency,logistic_return_at,buyer_comment_raw)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(shop_id,return_id) DO UPDATE SET
                 return_number=excluded.return_number,created_at=excluded.created_at,
                 posting_number=excluded.posting_number,offer_id=excluded.offer_id,sku=excluded.sku,
                 product_name=excluded.product_name,status_raw=excluded.status_raw,
-                status_name=excluded.status_name,payload=excluded.payload,fetched_at=excluded.fetched_at
+                status_name=excluded.status_name,payload=excluded.payload,fetched_at=excluded.fetched_at,
+                order_number=excluded.order_number,quantity=excluded.quantity,reason_raw=excluded.reason_raw,
+                reason_name=excluded.reason_name,compensation_status=excluded.compensation_status,
+                product_amount=excluded.product_amount,product_currency=excluded.product_currency,
+                logistic_return_at=excluded.logistic_return_at,buyer_comment_raw=excluded.buyer_comment_raw
             """, (shop_id, return_id, return_number, record.get("created_at"), record.get("posting_number"),
                   product.get("offer_id"), str(product.get("sku") or ""), product.get("name") or "",
-                  status_raw, status_name, _json(record), fetched))
+                  status_raw, status_name, _json(record), fetched, record.get("order_number"),
+                  int(record.get("quantity") or product.get("quantity") or 1),
+                  reason.get("reason") or reason.get("name") or reason.get("code"),
+                  reason.get("name") or reason.get("reason"),
+                  state.get("money_return_state_name") or state.get("money_return_state"),
+                  amount.get("price") or amount.get("amount"),
+                  amount.get("currency_code") or amount.get("currency"),
+                  logistic.get("return_date") or logistic.get("arrived_at"), comment))
             saved += 1
     return {"records": len(records) + saved, "cancellations": len(records), "return_requests": saved}
 
@@ -366,6 +424,14 @@ def _sync_snapshot(shop_id, path, table):
         for record in records:
             db.execute(f"INSERT INTO {table} VALUES(?,?,?,?)",
                        (shop_id, _key(record, "product_id", "offer_id"), observed, _json(record)))
+            for value in record.get("stocks") or []:
+                db.execute("""INSERT OR IGNORE INTO stock_history(
+                  shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
+                  VALUES(?,?,?,?,?,?,?,?,?)""",
+                  (shop_id, "api", ",".join(map(str, value.get("warehouse_ids") or [])),
+                   str(value.get("sku") or record.get("product_id") or ""),
+                   int(value.get("present") or 0), int(value.get("reserved") or 0), observed,
+                   _key(record, "product_id", "offer_id") + ":" + str(value.get("type") or ""), _json(record)))
     return {"records": len(records), "snapshot_at": observed}
 
 
@@ -376,6 +442,27 @@ def sync_module(module, shop_id, start=None, end=None):
     if module not in functions:
         raise ValueError("未知同步模块")
     return functions[module](shop_id, start, end)
+
+
+def probe_shop(shop_id):
+    roles_response = _post(shop_id, "/v1/roles", {})
+    info_response = _post(shop_id, "/v1/seller/info", {})
+    roles = roles_response.get("roles") or roles_response.get("result") or []
+    role_names = [str(role.get("name") or role.get("role") or role) if isinstance(role, dict) else str(role)
+                  for role in roles]
+    methods = {method for role in roles if isinstance(role, dict) for method in role.get("methods", [])}
+    required = {
+        "orders": {"/v4/posting/fbs/list", "/v3/posting/fbo/list"},
+        "finance": {"/v3/finance/transaction/list", "/v3/finance/transaction/totals", "/v2/finance/realization"},
+        "returns": {"/v1/returns/list", "/v2/returns/rfbs/list"},
+        "stock": {"/v4/product/info/stocks"},
+    }
+    permissions = {module: ("可用" if paths <= methods else "缺少：" + "、".join(sorted(paths - methods)))
+                   for module, paths in required.items()}
+    info = info_response.get("result") or info_response
+    allowed = {"company", "name", "seller_id", "client_id", "inn", "ogrn"}
+    return {"valid": True, "identity": {key: value for key, value in info.items() if key in allowed},
+            "roles": role_names, "permissions": permissions}
 
 
 def table_fingerprints():

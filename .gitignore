@@ -6,7 +6,6 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-tests/
 SYNC_VALIDATION.md
 启动本地看板.command
 .local-dashboard/

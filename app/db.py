@@ -121,6 +121,11 @@ def init_db():
           occurred_at TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
           PRIMARY KEY(shop_id,record_key)
         );
+        CREATE TABLE IF NOT EXISTS finance_reports (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), report_type TEXT NOT NULL,
+          period_key TEXT NOT NULL, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
+          PRIMARY KEY(shop_id,report_type,period_key)
+        );
         CREATE TABLE IF NOT EXISTS return_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
           occurred_at TEXT, posting_number TEXT, sku TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -189,9 +194,75 @@ def init_db():
           old_present INTEGER, old_reserved INTEGER, payload_json TEXT NOT NULL,
           PRIMARY KEY(shop_id,sku)
         );
+        CREATE TABLE IF NOT EXISTS exchange_rates (
+          currency TEXT NOT NULL, rate_date TEXT NOT NULL, rate_to_cny REAL NOT NULL CHECK(rate_to_cny>0),
+          source TEXT NOT NULL CHECK(trim(source)<>''), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          PRIMARY KEY(currency,rate_date)
+        );
+        CREATE TABLE IF NOT EXISTS exchange_rate_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, currency TEXT NOT NULL, rate_date TEXT NOT NULL,
+          old_rate REAL, new_rate REAL NOT NULL, source TEXT NOT NULL, changed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS currency_conversions (
+          entity_type TEXT NOT NULL, entity_key TEXT NOT NULL, original_amount REAL NOT NULL,
+          original_currency TEXT NOT NULL, rate_to_cny REAL NOT NULL, amount_cny REAL NOT NULL,
+          rate_source TEXT NOT NULL, rate_date TEXT NOT NULL, converted_at TEXT NOT NULL,
+          PRIMARY KEY(entity_type,entity_key,original_currency)
+        );
+        CREATE TABLE IF NOT EXISTS complaints (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), complaint_number TEXT NOT NULL,
+          posting_number TEXT NOT NULL, complaint_at TEXT NOT NULL, channel TEXT NOT NULL,
+          resolved INTEGER CHECK(resolved IN (0,1) OR resolved IS NULL),
+          package_returned INTEGER CHECK(package_returned IN (0,1) OR package_returned IS NULL),
+          compensation_amount REAL, compensation_currency TEXT, notes TEXT,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          PRIMARY KEY(shop_id,complaint_number),
+          FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
+        );
+        CREATE TABLE IF NOT EXISTS order_after_sales (
+          shop_id INTEGER NOT NULL, posting_number TEXT NOT NULL, status TEXT NOT NULL DEFAULT '处理中',
+          updated_at TEXT NOT NULL, PRIMARY KEY(shop_id,posting_number),
+          FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
+        );
+        CREATE TABLE IF NOT EXISTS product_short_names (
+          key_type TEXT NOT NULL CHECK(key_type IN ('sku','offer_id')), key_value TEXT NOT NULL,
+          short_name TEXT NOT NULL CHECK(trim(short_name)<>''), updated_at TEXT NOT NULL,
+          PRIMARY KEY(key_type,key_value)
+        );
+        CREATE TABLE IF NOT EXISTS product_groups (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE CHECK(trim(name)<>''),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS product_group_members (
+          group_id INTEGER NOT NULL REFERENCES product_groups(id) ON DELETE CASCADE,
+          key_type TEXT NOT NULL CHECK(key_type IN ('sku','offer_id')), key_value TEXT NOT NULL,
+          PRIMARY KEY(key_type,key_value), UNIQUE(group_id,key_type,key_value)
+        );
+        CREATE TABLE IF NOT EXISTS brand_rules (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, brand_name TEXT NOT NULL CHECK(trim(brand_name)<>''),
+          keyword TEXT NOT NULL CHECK(trim(keyword)<>''), priority INTEGER NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)), updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS shop_auto_sync_settings (
+          shop_id INTEGER NOT NULL REFERENCES shops(id),
+          module TEXT NOT NULL CHECK(module IN ('orders','finance','returns','stock')),
+          enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), run_time TEXT NOT NULL,
+          range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365),
+          PRIMARY KEY(shop_id,module)
+        );
+        INSERT OR IGNORE INTO shop_auto_sync_settings(shop_id,module,enabled,run_time,range_days)
+          SELECT s.id,a.module,a.enabled,a.run_time,a.range_days FROM shops s CROSS JOIN auto_sync_settings a;
+        CREATE TABLE IF NOT EXISTS stock_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
+          source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
+          reserved INTEGER NOT NULL, occurred_at TEXT NOT NULL, event_key TEXT,
+          payload_json TEXT NOT NULL, UNIQUE(shop_id,source,event_key,warehouse_id,sku)
+        );
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);
+        CREATE INDEX IF NOT EXISTS idx_complaints_order ON complaints(shop_id,posting_number);
+        CREATE INDEX IF NOT EXISTS idx_stock_history_time ON stock_history(shop_id,occurred_at);
         """)
         shop_columns = {row[1] for row in db.execute("PRAGMA table_info(shops)")}
         for name in ("seller_id", "push_token"):
@@ -206,6 +277,14 @@ def init_db():
         for name in ("reason_id", "reason_message"):
             if name not in history_columns:
                 db.execute(f"ALTER TABLE order_status_history ADD COLUMN {name} TEXT")
+        return_columns = {row[1] for row in db.execute("PRAGMA table_info(rfbs_return_records)")}
+        for name, definition in (
+            ("order_number", "TEXT"), ("quantity", "INTEGER"), ("reason_raw", "TEXT"),
+            ("reason_name", "TEXT"), ("compensation_status", "TEXT"), ("product_amount", "REAL"),
+            ("product_currency", "TEXT"), ("logistic_return_at", "TEXT"), ("buyer_comment_raw", "TEXT"),
+        ):
+            if name not in return_columns:
+                db.execute(f"ALTER TABLE rfbs_return_records ADD COLUMN {name} {definition}")
         db.execute("""UPDATE orders SET
           shipped=1,
           shipped_at=COALESCE(NULLIF(shipped_at,''),(SELECT MIN(h.occurred_at) FROM order_status_history h
@@ -240,3 +319,21 @@ def init_db():
         for shop_id in (1, 2):
             db.execute("UPDATE shops SET push_token=? WHERE id=? AND COALESCE(push_token,'')=''",
                        (secrets.token_urlsafe(32), shop_id))
+        db.execute("""INSERT OR IGNORE INTO complaints(
+          shop_id,complaint_number,posting_number,complaint_at,channel,resolved,package_returned,
+          compensation_amount,compensation_currency,notes,created_at,updated_at)
+          SELECT m.shop_id,m.complaint_number,m.posting_number,COALESCE(m.complaint_at,m.updated_at),
+          COALESCE(m.complaint_channel,'历史迁移'),m.resolved,m.package_returned,m.compensation_amount,
+          CASE WHEN m.compensation_amount IS NOT NULL THEN s.settlement_currency END,m.notes,
+          COALESCE(m.updated_at,strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+          COALESCE(m.updated_at,strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+          FROM order_manual_data m JOIN shops s ON s.id=m.shop_id
+          WHERE NULLIF(trim(m.complaint_number),'') IS NOT NULL""")
+        db.execute("""INSERT OR IGNORE INTO stock_history(
+          shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
+          SELECT s.shop_id,'API快照',COALESCE(json_extract(v.value,'$.warehouse_ids'),''),
+            CAST(COALESCE(json_extract(v.value,'$.sku'),json_extract(s.payload,'$.product_id')) AS TEXT),
+            COALESCE(json_extract(v.value,'$.present'),0),COALESCE(json_extract(v.value,'$.reserved'),0),
+            s.observed_at,s.record_key||':'||s.observed_at,s.payload
+          FROM stock_snapshots s,json_each(s.payload,'$.stocks') v
+          WHERE json_valid(s.payload)""")
