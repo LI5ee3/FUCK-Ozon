@@ -72,8 +72,15 @@ class TransferPageTest(unittest.TestCase):
     def test_rules_ignore_dates_and_page_hides_format_names(self):
         with db.transaction() as connection:
             connection.execute("INSERT INTO brand_rules(brand_name,keyword,priority,enabled,updated_at) VALUES('A','a',1,1,'2020-01-01T00:00:00Z')")
+            connection.execute("INSERT INTO product_short_names VALUES('sku','SKU-A','短名','2026-08-01T00:00:00Z')")
+            group_id = connection.execute("INSERT INTO product_groups(name,created_at,updated_at) VALUES('旧名','now','now')").lastrowid
+            connection.executemany("INSERT INTO product_group_members VALUES(?,?,?)", [
+                (group_id, "sku", "SKU-A"), (group_id, "offer_id", "O-A")])
+            connection.execute("INSERT INTO product_group_config VALUES(?,'O-A','SKU-A','active','')", (group_id,))
         exported = asyncio.run(rows(export_module("rules", date_from="2026-08-01", date_to="2026-08-01")))
-        self.assertTrue(any(row.get("rule_type") == "品牌规则" for row in exported[1:]))
+        self.assertEqual({row.get("rule_type") for row in exported[1:]}, {"中文短名称", "主货号合并"})
+        self.assertNotIn("旧名", json.dumps(exported, ensure_ascii=False))
+        self.assertNotIn("品牌规则", json.dumps(exported, ensure_ascii=False))
         html = (ROOT / "static/index.html").read_text()
         script = (ROOT / "static/app.js").read_text()
         self.assertNotIn("AI独立导出", html)

@@ -67,7 +67,7 @@ class InventoryPageTest(unittest.TestCase):
         self.assertEqual((real_only["fbp_present"], real_only["days_available"],
                           real_only["replenishment"]), (0, 0, 120))
         self.assertEqual(real_only["risk_status"], "FBP无库存，建议备货")
-        self.assertEqual(real_only["display_name"], "货号短名")
+        self.assertEqual(real_only["display_name"], "SKU短名")
         self.assertEqual(items["S-W"]["daily_sales"], 0)
         self.assertIsNone(items["S-W"]["replenishment"])
         self.assertEqual(items["S-C"]["daily_sales"], 0)
@@ -82,7 +82,8 @@ class InventoryPageTest(unittest.TestCase):
         self.assertEqual(stock(1, size=1, sku="S-R")["total"], 1)
         self.assertEqual(stock(1, size=1, offer_id="O-R")["items"][0]["sku"], "S-R")
         self.assertEqual(stock(1, product_name="原始手表")["total"], 1)
-        self.assertEqual(stock(1, product_name="货号短名")["total"], 1)
+        self.assertEqual(stock(1, product_name="SKU短名")["total"], 1)
+        self.assertEqual(stock(1, product_name="货号短名")["total"], 0)
         self.assertEqual(stock(1, sku="S-R", offer_id="O-W")["total"], 0)
 
     def test_replenishment_rounds_up_and_all_risk_states(self):

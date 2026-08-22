@@ -148,21 +148,24 @@ class FeatureRegressionTest(unittest.TestCase):
         self.assertIn("nav{display:flex;max-width:100%;overflow-x:auto", style)
 
     def test_product_priority_ungroup_and_module_exports(self):
-        asyncio.run(save_product_rule(Request({"kind": "brand", "brand_name": "低", "keyword": "商品", "priority": 1})))
-        asyncio.run(save_product_rule(Request({"kind": "brand", "brand_name": "高", "keyword": "商品", "priority": 9})))
-        asyncio.run(save_product_rule(Request({"kind": "short_name", "key_type": "sku", "key_value": "S-1", "short_name": "短名"})))
-        asyncio.run(save_product_rule(Request({"kind": "group", "name": "组A", "members": [{"key_type": "sku", "key_value": "S-1"}]})))
+        asyncio.run(save_product_rule(Request({"kind": "short_name", "sku": "S-1", "short_name": "短名"})))
+        asyncio.run(save_product_rule(Request({"kind": "merge", "primary_offer_id": "O-1",
+          "primary_sku": "S-1", "members": [{"key_type": "sku", "key_value": "S-1"}]})))
         rules = product_rules()
-        self.assertEqual(rules["products"][0]["matched_brand"], "高")
-        self.assertTrue(all(row["conflict"] for row in rules["brands"]))
+        self.assertNotIn("brands", rules)
+        self.assertEqual(rules["groups"][0]["primary_offer_id"], "O-1")
+        self.assertEqual(rules["groups"][0]["product_name"], "短名")
         risk_export = asyncio.run(self.response_text(export_module("risk")))
-        self.assertIn('"analysis_group": "组A"', risk_export)
-        asyncio.run(save_product_rule(Request({"kind": "ungroup", "key_type": "sku", "key_value": "S-1"})))
-        self.assertIsNone(product_rules()["groups"][0]["key_type"])
+        self.assertIn('"analysis_identity": "O-1"', risk_export)
         exported = asyncio.run(self.response_text(export_module("rules")))
         self.assertIn('"rule_type": "中文短名称"', exported)
-        self.assertIn('"rule_type": "品牌规则"', exported)
+        self.assertIn('"rule_type": "主货号合并"', exported)
+        self.assertNotIn("品牌规则", exported)
+        self.assertNotIn("组A", exported)
         self.assertNotIn("P-1", exported)
+        group_id = product_rules()["groups"][0]["id"]
+        asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
+        self.assertEqual(product_rules()["groups"], [])
 
     def test_stock_snapshot_backfill_and_real_csrf_middleware(self):
         payload = json.dumps({"product_id": 1, "stocks": [{"sku": "S-1", "warehouse_ids": [7],

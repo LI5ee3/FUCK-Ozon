@@ -124,6 +124,8 @@ class OverviewRegressionTest(unittest.TestCase):
             group_id = connection.execute("SELECT id FROM product_groups WHERE name='热销组合'").fetchone()[0]
             connection.executemany("INSERT INTO product_group_members VALUES(?,'sku',?)",
                                    [(group_id, "TIM-A"), (group_id, "TIM-B")])
+            connection.execute("INSERT INTO product_group_members VALUES(?,'offer_id','TIM-MAIN')", (group_id,))
+            connection.execute("INSERT INTO product_group_config VALUES(?,'TIM-MAIN','TIM-A','active','')", (group_id,))
             connection.execute("INSERT INTO product_short_names VALUES('sku','TIM-A','热销短名','now')")
             for index in range(30):
                 posting = f"TIM-{index}"
@@ -131,9 +133,10 @@ class OverviewRegressionTest(unittest.TestCase):
                   shipped_at,delivered_at,status_raw,shipped,source) VALUES(1,?,'FBP',
                   '2026-08-10T00:00:00Z','2026-08-11T00:00:00Z','2026-08-13T00:00:00Z','已签收',1,'api')""",
                                    (posting,))
+                sku = "TIM-A" if index < 15 else "TIM-B"
                 connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,
-                  product_name_raw,quantity,source) VALUES(1,'FBP',?,?,?,1,'api')""",
-                                   (posting, "TIM-A" if index < 15 else "TIM-B", "原始名称"))
+                  offer_id,product_name_raw,quantity,source) VALUES(1,'FBP',?,?,?,?,1,'api')""",
+                                   (posting, sku, "TIM-MAIN" if sku == "TIM-A" else "TIM-B-O", "原始名称"))
             connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,
               product_name_raw,quantity,source) VALUES(1,'FBP','MULTI','LOW','低库存商品',30,'api')""")
 

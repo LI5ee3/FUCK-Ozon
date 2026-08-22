@@ -52,6 +52,43 @@ def trim_import_batches(db, keep=10):
     db.execute(f"DELETE FROM import_batches WHERE id IN ({marks})", old)
 
 
+def migrate_product_rules(db):
+    for row in db.execute("""SELECT n.key_value,n.short_name FROM product_short_names n
+      LEFT JOIN product_short_name_migrations m
+        ON m.key_type=n.key_type AND m.key_value=n.key_value
+      WHERE n.key_type='offer_id' AND m.key_value IS NULL""").fetchall():
+        skus = [value[0] for value in db.execute(
+            "SELECT DISTINCT sku FROM order_items WHERE offer_id=? ORDER BY sku", (row["key_value"],))]
+        note = "货号无法唯一关联SKU"
+        if len(skus) == 1:
+            existing = db.execute("SELECT short_name FROM product_short_names WHERE key_type='sku' AND key_value=?",
+                                  (skus[0],)).fetchone()
+            if not existing:
+                db.execute("INSERT INTO product_short_names VALUES('sku',?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+                           (skus[0], row["short_name"]))
+                note = f"已迁移至SKU {skus[0]}"
+            elif existing[0] == row["short_name"]:
+                note = f"SKU {skus[0]} 已有相同规则"
+            else:
+                note = f"与SKU {skus[0]}现有短名称冲突"
+        db.execute("INSERT INTO product_short_name_migrations VALUES('offer_id',?,0,?)",
+                   (row["key_value"], note))
+
+    for row in db.execute("""SELECT g.id FROM product_groups g
+      LEFT JOIN product_group_config c ON c.group_id=g.id WHERE c.group_id IS NULL""").fetchall():
+        offers = [value[0] for value in db.execute("""SELECT key_value FROM product_group_members
+          WHERE group_id=? AND key_type='offer_id' ORDER BY key_value""", (row["id"],))]
+        primary_offer = offers[0] if len(offers) == 1 else None
+        skus = [value[0] for value in db.execute(
+            "SELECT DISTINCT sku FROM order_items WHERE offer_id=? ORDER BY sku", (primary_offer,))] if primary_offer else []
+        active = len(skus) == 1
+        note = "" if active else ("主货号对应多个SKU，待管理员选择" if len(skus) > 1
+                                  else "待设置主货号" if len(offers) != 1 else "主货号未匹配商品")
+        db.execute("INSERT INTO product_group_config VALUES(?,?,?,?,?)",
+                   (row["id"], primary_offer, skus[0] if active else None,
+                    "active" if active else "pending", note))
+
+
 def init_db():
     with transaction() as db:
         db.executescript("""
@@ -197,6 +234,15 @@ def init_db():
           key_type TEXT NOT NULL CHECK(key_type IN ('sku','offer_id')), key_value TEXT NOT NULL,
           PRIMARY KEY(key_type,key_value), UNIQUE(group_id,key_type,key_value)
         );
+        CREATE TABLE IF NOT EXISTS product_short_name_migrations (
+          key_type TEXT NOT NULL, key_value TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0,
+          note TEXT NOT NULL DEFAULT '', PRIMARY KEY(key_type,key_value)
+        );
+        CREATE TABLE IF NOT EXISTS product_group_config (
+          group_id INTEGER PRIMARY KEY REFERENCES product_groups(id) ON DELETE CASCADE,
+          primary_offer_id TEXT, primary_sku TEXT, status TEXT NOT NULL DEFAULT 'pending',
+          note TEXT NOT NULL DEFAULT ''
+        );
         CREATE TABLE IF NOT EXISTS brand_rules (
           id INTEGER PRIMARY KEY AUTOINCREMENT, brand_name TEXT NOT NULL CHECK(trim(brand_name)<>''),
           keyword TEXT NOT NULL CHECK(trim(keyword)<>''), priority INTEGER NOT NULL,
@@ -281,4 +327,5 @@ def init_db():
             s.observed_at,s.record_key||':'||s.observed_at,s.payload
           FROM stock_snapshots s,json_each(s.payload,'$.stocks') v
           WHERE json_valid(s.payload)""")
+        migrate_product_rules(db)
         trim_import_batches(db)

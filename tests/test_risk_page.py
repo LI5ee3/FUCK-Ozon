@@ -38,10 +38,6 @@ class RiskPageTest(unittest.TestCase):
               offer_id,product_name_raw,quantity,source) VALUES(?,?,?,?,?,?,?,'api')""",
               [(shop, channel, posting, sku, f"O-{sku}", f"商品 {sku}", quantity)
                for shop, posting, channel, _, _, _, _, sku, quantity in orders])
-            group_id = connection.execute("""INSERT INTO product_groups(name,created_at,updated_at)
-              VALUES('手表组','2026-08-10T00:00:00Z','2026-08-10T00:00:00Z')""").lastrowid
-            connection.executemany("INSERT INTO product_group_members(group_id,key_type,key_value) VALUES(?,'sku',?)",
-                                   [(group_id, "SKU-A"), (group_id, "SKU-B")])
 
     def tearDown(self):
         self.temp.cleanup()
@@ -61,8 +57,16 @@ class RiskPageTest(unittest.TestCase):
         self.assertEqual(risk(2, False, "2026-08-10", "2026-08-10")["items"][0]["total"]["valid"], 5)
 
     def test_grouping_unclaimed_customs_unknown_reason_and_detail_range(self):
-        grouped = risk(1, True, "2026-08-10", "2026-08-10")
-        row = next(item for item in grouped["items"] if item["group_name"] == "手表组")
+        with db.transaction() as connection:
+            group_id = connection.execute("""INSERT INTO product_groups(name,created_at,updated_at)
+              VALUES('旧组名','2026-08-10T00:00:00Z','2026-08-10T00:00:00Z')""").lastrowid
+            connection.executemany("INSERT INTO product_group_members(group_id,key_type,key_value) VALUES(?,?,?)", [
+                (group_id, "sku", "SKU-A"), (group_id, "sku", "SKU-B"),
+                (group_id, "offer_id", "O-SKU-A")])
+            connection.execute("INSERT INTO product_group_config VALUES(?,'O-SKU-A','SKU-A','active','')",
+                               (group_id,))
+        grouped = risk(1, False, "2026-08-10", "2026-08-10")
+        row = next(item for item in grouped["items"] if item["primary_offer_id"] == "O-SKU-A")
         self.assertEqual((row["member_count"], row["total"]["valid"]), (2, 17))
         reasons = risk_reasons(1, "", "2026-08-10", "2026-08-10")
         raw = {item["reason_raw"]: item for item in reasons["items"]}
@@ -94,6 +98,7 @@ class RiskPageTest(unittest.TestCase):
         self.assertEqual(script.count("function createDateRange"), 1)
         self.assertIn('riskRange=createDateRange("#riskDateRange"', script)
         self.assertIn("from:riskRange.start,to:riskRange.end", script)
+        self.assertNotIn('id="riskGrouped"', html)
         self.assertIn("无有效样本", script)
         self.assertIn('$("#riskSearch").addEventListener("input",renderRiskItems)', script)
         risk_loader = script[script.index("async function loadRisk"):script.index("async function loadTimeliness")]

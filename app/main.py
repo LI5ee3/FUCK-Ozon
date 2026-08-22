@@ -24,6 +24,7 @@ from .dingtalk import (DEFAULT_DAILY_TEMPLATE, configured as dingtalk_configured
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
                    RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, probe_shop, sync_module)
+from .products import clean_product_name, load_product_rules, resolve_product
 from .security import (clear_login_failures, login_limited, migrate_env_password,
                        password_matches, record_login_failure)
 
@@ -381,21 +382,16 @@ def _overview_stock_alerts(db, shop_id):
 def _overview_top_products(db, utc_start, utc_end, shop_id):
     clause, shop_args = _shop_clause(shop_id)
     rows = db.execute(f"""SELECT o.shop_id,o.posting_number,o.status_raw,o.shipped,
-      i.sku,i.offer_id,i.product_name_raw,i.quantity,g.id group_id,g.name group_name,
-      COALESCE(
-        (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=i.offer_id),
-        (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=i.sku)) short_name
+      i.sku,i.offer_id,i.product_name_raw,i.quantity
       FROM orders o JOIN order_items i USING(shop_id,posting_number)
-      LEFT JOIN product_groups g ON g.id=COALESCE(
-        (SELECT group_id FROM product_group_members m WHERE m.key_type='offer_id' AND m.key_value=i.offer_id),
-        (SELECT group_id FROM product_group_members m WHERE m.key_type='sku' AND m.key_value=i.sku))
       WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
         AND julianday(o.created_at)<julianday(?) {clause}""", [utc_start, utc_end] + shop_args)
+    rules = load_product_rules(db)
     products = {}
     for row in rows:
-        key = f"group:{row['group_id']}" if row["group_id"] else f"sku:{row['shop_id']}:{row['sku']}"
-        item = products.setdefault(key, {"name": row["short_name"] or row["group_name"] or
-                                             row["product_name_raw"] or row["sku"],
+        resolved = resolve_product(rules, row["sku"], row["offer_id"], row["product_name_raw"])
+        key = row["shop_id"], resolved["identity"]
+        item = products.setdefault(key, {"name": resolved["display_name"],
                                          "pieces": 0, "orders": set(), "cancelled": set()})
         item["pieces"] += row["quantity"]
         posting = row["shop_id"], row["posting_number"]
@@ -516,6 +512,7 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
     page, size = max(page, 1), min(max(size, 1), 100)
     sql_where = " AND ".join(where)
     with connect() as db:
+        rules = load_product_rules(db)
         total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {sql_where}", args).fetchone()[0]
         result = [_translated_order(row) for row in db.execute(f"""
           SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
@@ -525,13 +522,13 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
         """, args + [size, (page - 1) * size])]
         for order in result:
             order["items"] = [dict(row) for row in db.execute(
-                """SELECT sku,offer_id,COALESCE(
-                  (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=order_items.offer_id),
-                  (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=order_items.sku),
-                  product_name_raw) product_name_raw,product_name_raw product_name_original,
+                """SELECT sku,offer_id,product_name_raw,product_name_raw product_name_original,
                   quantity,unit_price,price_currency FROM order_items
                   WHERE shop_id=? AND posting_number=? ORDER BY sku""",
                 (order["shop_id"], order["posting_number"]))]
+            for item in order["items"]:
+                item["product_name_raw"] = resolve_product(
+                    rules, item["sku"], item["offer_id"], item["product_name_original"])["display_name"]
             order["sku_types"] = len(order["items"])
             order["pieces"] = sum(item["quantity"] for item in order["items"])
     return {"items": result, "total": total, "page": page, "size": size}
@@ -545,30 +542,24 @@ def risk(shop_id: int = 0, grouped: bool = False,
         raise HTTPException(400, "未知店铺")
     start, end, utc_start, utc_end = _overview_range(date_from, date_to)
     clause, args = _shop_clause(shop_id)
-    group_join = """LEFT JOIN product_groups g ON g.id=COALESCE(
-      (SELECT group_id FROM product_group_members m WHERE m.key_type='offer_id' AND m.key_value=i.offer_id),
-      (SELECT group_id FROM product_group_members m WHERE m.key_type='sku' AND m.key_value=i.sku))""" if grouped else ""
-    group_key = "CASE WHEN g.id IS NULL THEN 'sku:'||COALESCE(i.sku,'') ELSE 'group:'||g.id END" if grouped else "'sku:'||COALESCE(i.sku,'')"
-    group_name = "g.name" if grouped else "NULL"
     unclaimed = ",".join("?" for _ in BUYER_UNCLAIMED_REASONS)
     with connect() as db:
         rows = [dict(row) for row in db.execute(f"""
-          SELECT o.shop_id,s.name shop_name,o.channel,{group_key} item_key,{group_name} group_name,
-            GROUP_CONCAT(DISTINCT i.sku) member_skus,
-            GROUP_CONCAT(DISTINCT COALESCE(i.sku,'')||' '||COALESCE(i.offer_id,'')||' '||COALESCE(i.product_name_raw,'')) search_text,
-            MAX(COALESCE(
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=i.offer_id),
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=i.sku),
-            i.product_name_raw)) product_name,
+          SELECT o.shop_id,s.name shop_name,o.channel,i.sku,i.offer_id,i.product_name_raw,
             SUM(i.quantity) valid_pieces,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 THEN i.quantity ELSE 0 END) cancelled_pieces,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw IN ({unclaimed}) THEN i.quantity ELSE 0 END) unclaimed_pieces,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw='Отправление не прошло таможенное оформление' THEN i.quantity ELSE 0 END) customs_pieces
           FROM orders o JOIN shops s ON s.id=o.shop_id JOIN order_items i USING(shop_id,posting_number)
-          {group_join} WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
+          WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
             AND julianday(o.created_at)<julianday(?){clause}
-          GROUP BY o.shop_id,o.channel,{group_key},{group_name}
+          GROUP BY o.shop_id,o.channel,i.sku,i.offer_id,i.product_name_raw
         """, [*BUYER_UNCLAIMED_REASONS, utc_start, utc_end, *args])]
+        rules = load_product_rules(db)
+
+    for row in rows:
+        row["resolved"] = resolve_product(rules, row["sku"], row["offer_id"], row["product_name_raw"])
+        row["item_key"] = row["resolved"]["identity"]
 
     def stats(values):
         result = {key: sum(int(row[f"{key}_pieces"] or 0) for row in values)
@@ -580,12 +571,15 @@ def risk(shop_id: int = 0, grouped: bool = False,
     items = []
     for item_key in sorted({(row["shop_id"], row["item_key"]) for row in rows}):
         values = [row for row in rows if (row["shop_id"], row["item_key"]) == item_key]
-        skus = sorted({sku for row in values for sku in (row["member_skus"] or "").split(",") if sku})
+        skus = sorted({row["sku"] for row in values if row["sku"]})
+        offers = sorted({row["offer_id"] for row in values if row["offer_id"]})
+        resolved = values[0]["resolved"]
         items.append({"shop_id": values[0]["shop_id"], "shop_name": values[0]["shop_name"],
                       "item_key": item_key[1], "sku": skus[0] if len(skus) == 1 else "、".join(skus),
-                      "group_name": values[0]["group_name"], "member_count": len(skus),
-                      "product_name": max((row["product_name"] or "" for row in values), default=""),
-                      "search_text": " ".join(row["search_text"] or "" for row in values),
+                      "primary_offer_id": resolved["primary_offer_id"], "member_count": len(skus),
+                      "product_name": resolved["display_name"],
+                      "search_text": " ".join(skus + offers + [resolved["display_name"]] +
+                                                [row["product_name_raw"] or "" for row in values]),
                       "total": stats(values),
                       "channels": {channel: stats([row for row in values if row["channel"] == channel])
                                    if any(row["channel"] == channel for row in values) else None
@@ -821,23 +815,42 @@ async def save_complaint(request: Request):
 
 
 @app.get("/api/product-rules")
-def product_rules():
+def product_rules(q: str = ""):
     with connect() as db:
-        short_names = [dict(row) for row in db.execute("SELECT * FROM product_short_names ORDER BY key_type,key_value")]
-        groups = [dict(row) for row in db.execute("""SELECT g.id,g.name,m.key_type,m.key_value FROM product_groups g
-          LEFT JOIN product_group_members m ON m.group_id=g.id ORDER BY g.id,m.key_type,m.key_value""")]
-        brands = [dict(row) for row in db.execute("""SELECT b.*,
-          EXISTS(SELECT 1 FROM brand_rules x WHERE x.id<>b.id AND x.enabled=1 AND b.enabled=1
-            AND lower(x.keyword)=lower(b.keyword)) conflict FROM brand_rules b ORDER BY priority DESC,id""")]
+        pattern = f"%{q.strip()}%"
+        short_names = [dict(row) for row in db.execute("""SELECT n.key_value sku,n.short_name,n.updated_at
+          FROM product_short_names n LEFT JOIN product_short_name_migrations m
+            ON m.key_type=n.key_type AND m.key_value=n.key_value
+          WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1
+            AND (?='' OR n.key_value LIKE ? OR n.short_name LIKE ?)
+          ORDER BY n.key_value""", (q.strip(), pattern, pattern))]
         products = [dict(row) for row in db.execute("""SELECT sku,offer_id,MAX(product_name_raw) product_name
-          FROM order_items GROUP BY sku,offer_id ORDER BY product_name LIMIT 500""")]
-    enabled = [row for row in brands if row["enabled"]]
-    for product in products:
-        haystack = " ".join(str(product.get(key) or "") for key in ("product_name", "sku", "offer_id")).lower()
-        product["matched_brand"] = next(
-            (row["brand_name"] for row in enabled if row["keyword"].lower() in haystack), None)
-    return {"short_names": short_names, "groups": groups, "brands": brands, "products": products,
-            "key_note": "真实数据中SKU和货号均存在一对多历史记录，请明确选择匹配键"}
+          FROM order_items WHERE NULLIF(offer_id,'') IS NOT NULL
+          GROUP BY sku,offer_id ORDER BY offer_id,sku LIMIT 1000""")]
+        for product in products:
+            product["product_name"] = clean_product_name(product["product_name"])
+        rules = load_product_rules(db)
+        groups = []
+        for config in db.execute("""SELECT c.group_id id,c.primary_offer_id,c.primary_sku,c.status,c.note,
+            g.updated_at FROM product_group_config c JOIN product_groups g ON g.id=c.group_id
+            ORDER BY c.primary_offer_id,c.group_id"""):
+            group = dict(config)
+            group["members"] = [dict(row) for row in db.execute("""SELECT key_type,key_value
+              FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value""", (group["id"],))]
+            resolved = resolve_product(rules, group["primary_sku"], group["primary_offer_id"], "")
+            group["product_name"] = resolved["display_name"] if group["status"] == "active" else "待管理员确认"
+            groups.append(group)
+        conflicts = [dict(row) for row in db.execute("""SELECT key_type,key_value,note
+          FROM product_short_name_migrations WHERE enabled=0 AND note NOT LIKE '已迁移%' AND note NOT LIKE '%相同规则%'""")]
+        conflicts += [{"key_type": "merge", "key_value": row["primary_offer_id"] or "旧合并关系",
+                       "note": row["note"]} for row in groups if row["status"] != "active"]
+        short_name_count = db.execute("""SELECT COUNT(*) FROM product_short_names n
+          LEFT JOIN product_short_name_migrations m ON m.key_type=n.key_type AND m.key_value=n.key_value
+          WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1""").fetchone()[0]
+    return {"summary": {"short_names": short_name_count,
+                         "merges": sum(row["status"] == "active" for row in groups)},
+            "short_names": short_names, "groups": groups, "products": products, "conflicts": conflicts,
+            "fixed_rule": "固定规则：自动移除平台产品名称中的“Новый ”前缀"}
 
 
 @app.put("/api/product-rules")
@@ -847,34 +860,71 @@ async def save_product_rule(request: Request):
     now = datetime.now(timezone.utc).isoformat()
     with transaction() as db:
         if kind == "short_name":
-            key_type, key_value = body.get("key_type"), str(body.get("key_value") or "").strip()
+            key_value = str(body.get("sku") or body.get("key_value") or "").strip()
             name = str(body.get("short_name") or "").strip()
-            if key_type not in {"sku", "offer_id"} or not key_value or not name:
+            if body.get("key_type") not in (None, "sku") or not key_value or not name:
                 raise HTTPException(400, "短名称规则不完整")
-            db.execute("""INSERT INTO product_short_names VALUES(?,?,?,?)
+            db.execute("""INSERT INTO product_short_names VALUES('sku',?,?,?)
               ON CONFLICT(key_type,key_value) DO UPDATE SET short_name=excluded.short_name,updated_at=excluded.updated_at""",
-                       (key_type, key_value, name, now))
-        elif kind == "group":
-            name = str(body.get("name") or "").strip()
-            members = body.get("members") or []
-            if not name or not members: raise HTTPException(400, "合并组名称和成员不能为空")
-            group = db.execute("SELECT id FROM product_groups WHERE name=?", (name,)).fetchone()
-            group_id = group[0] if group else db.execute(
-                "INSERT INTO product_groups(name,created_at,updated_at) VALUES(?,?,?)", (name, now, now)).lastrowid
-            db.execute("DELETE FROM product_group_members WHERE group_id=?", (group_id,))
-            for member in members:
-                if member.get("key_type") not in {"sku", "offer_id"} or not str(member.get("key_value") or "").strip():
-                    raise HTTPException(400, "合并组成员无效")
-                db.execute("INSERT INTO product_group_members VALUES(?,?,?)",
-                           (group_id, member["key_type"], str(member["key_value"]).strip()))
-        elif kind == "brand":
-            brand, keyword = str(body.get("brand_name") or "").strip(), str(body.get("keyword") or "").strip()
-            if not brand or not keyword: raise HTTPException(400, "品牌和关键词不能为空")
-            db.execute("INSERT INTO brand_rules(brand_name,keyword,priority,enabled,updated_at) VALUES(?,?,?,?,?)",
-                       (brand, keyword, int(body.get("priority") or 0), int(bool(body.get("enabled", True))), now))
-        elif kind == "ungroup":
-            db.execute("DELETE FROM product_group_members WHERE key_type=? AND key_value=?",
-                       (body.get("key_type"), str(body.get("key_value") or "")))
+                       (key_value, name, now))
+            db.execute("DELETE FROM product_short_name_migrations WHERE key_type='sku' AND key_value=?", (key_value,))
+        elif kind == "delete_short_name":
+            sku = str(body.get("sku") or "").strip()
+            if not sku: raise HTTPException(400, "SKU不能为空")
+            db.execute("DELETE FROM product_short_names WHERE key_type='sku' AND key_value=?", (sku,))
+        elif kind == "merge":
+            group_id = int(body.get("id") or 0)
+            primary_offer = str(body.get("primary_offer_id") or "").strip()
+            members = [(str(row.get("key_type") or ""), str(row.get("key_value") or "").strip())
+                       for row in body.get("members") or []]
+            if not primary_offer or any(key_type not in {"sku", "offer_id"} or not value
+                                        for key_type, value in members):
+                raise HTTPException(400, "主货号和合并成员不能为空")
+            if len(members) != len(set(members)):
+                raise HTTPException(400, "合并成员不能重复")
+            members = list(dict.fromkeys([("offer_id", primary_offer), *members]))
+            if len(members) < 2: raise HTTPException(400, "请至少添加一个合并成员")
+            skus = [row[0] for row in db.execute(
+                "SELECT DISTINCT sku FROM order_items WHERE offer_id=? ORDER BY sku", (primary_offer,))]
+            if not skus: raise HTTPException(400, "主货号未匹配到现有商品")
+            primary_sku = str(body.get("primary_sku") or "").strip()
+            if len(skus) > 1 and primary_sku not in skus:
+                raise HTTPException(400, "主货号对应多个SKU，请明确选择名称解析SKU")
+            primary_sku = primary_sku if primary_sku in skus else skus[0]
+            existing = db.execute("SELECT group_id FROM product_group_config WHERE primary_offer_id=? AND group_id<>?",
+                                  (primary_offer, group_id)).fetchone()
+            if existing: raise HTTPException(400, "该主货号已用于其他合并关系")
+            for key_type, value in members:
+                owner = db.execute("SELECT group_id FROM product_group_members WHERE key_type=? AND key_value=? AND group_id<>?",
+                                   (key_type, value, group_id)).fetchone()
+                if owner: raise HTTPException(400, f"{key_type} {value} 已属于其他主货号")
+            member_skus = [value for key_type, value in members if key_type == "sku"]
+            member_offers = [value for key_type, value in members if key_type == "offer_id"]
+            pairs = db.execute(f"""SELECT DISTINCT sku,offer_id FROM order_items WHERE
+              sku IN ({','.join('?' for _ in member_skus) or "''"}) OR
+              offer_id IN ({','.join('?' for _ in member_offers) or "''"})""",
+              [*member_skus, *member_offers]).fetchall()
+            for pair in pairs:
+                owner = db.execute("""SELECT group_id FROM product_group_members WHERE group_id<>?
+                  AND ((key_type='sku' AND key_value=?) OR (key_type='offer_id' AND key_value=?)) LIMIT 1""",
+                  (group_id, pair["sku"], pair["offer_id"])).fetchone()
+                if owner: raise HTTPException(400, f"商品 {pair['sku']} / {pair['offer_id']} 与其他主货号冲突")
+            if group_id:
+                if not db.execute("SELECT 1 FROM product_groups WHERE id=?", (group_id,)).fetchone():
+                    raise HTTPException(400, "合并关系不存在")
+                db.execute("UPDATE product_groups SET name=?,updated_at=? WHERE id=?",
+                           (f"merge:{primary_offer}", now, group_id))
+                db.execute("DELETE FROM product_group_members WHERE group_id=?", (group_id,))
+            else:
+                group_id = db.execute("INSERT INTO product_groups(name,created_at,updated_at) VALUES(?,?,?)",
+                                      (f"merge:{primary_offer}", now, now)).lastrowid
+            db.execute("""INSERT INTO product_group_config VALUES(?,?,?,'active','')
+              ON CONFLICT(group_id) DO UPDATE SET primary_offer_id=excluded.primary_offer_id,
+              primary_sku=excluded.primary_sku,status='active',note=''""", (group_id, primary_offer, primary_sku))
+            db.executemany("INSERT INTO product_group_members VALUES(?,?,?)",
+                           [(group_id, key_type, value) for key_type, value in members])
+        elif kind == "dissolve":
+            db.execute("DELETE FROM product_groups WHERE id=?", (int(body.get("id") or 0),))
         else:
             raise HTTPException(400, "未知规则类型")
     return {"ok": True}
@@ -905,13 +955,11 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
         """, args)]
         total = db.execute(f"SELECT COUNT(*) FROM return_records r{where}", args).fetchone()[0]
         records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.posting_number,r.sku,r.payload,
-          CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT) offer_id,
-          COALESCE(
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT)),
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=r.sku)) short_name
+          CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT) offer_id
           FROM return_records r JOIN shops s ON s.id=r.shop_id{where}
           ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
         through = db.execute(f"SELECT MAX(r.occurred_at) FROM return_records r{where}", args).fetchone()[0]
+        rules = load_product_rules(db)
     items = []
     for row in records:
         payload = json.loads(row["payload"])
@@ -921,7 +969,8 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
         items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
                       "occurred_at": row["occurred_at"], "posting_number": row["posting_number"],
                       "sku": row["sku"], "offer_id": row["offer_id"],
-                      "product_name": row["short_name"] or product.get("name"),
+                      "product_name": resolve_product(rules, row["sku"], row["offer_id"],
+                                                       product.get("name"))["display_name"],
                       "quantity": product.get("quantity"),
                       "reason": CANCEL_REASON_ZH.get(payload.get("return_reason_name"), payload.get("return_reason_name")),
                       "reason_raw": payload.get("return_reason_name"),
@@ -961,17 +1010,16 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
           r.return_number,r.created_at,r.posting_number,r.offer_id,r.sku,r.product_name,
           r.status_raw,r.status_name,r.quantity,r.reason_raw,r.reason_name,
           r.compensation_status,r.product_amount,r.product_currency,r.logistic_return_at,
-          r.buyer_comment_raw,r.payload,COALESCE(
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=r.offer_id),
-            (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=r.sku),
-            r.product_name) display_product_name FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
+          r.buyer_comment_raw,r.payload FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
           ORDER BY r.created_at DESC,r.return_id DESC LIMIT ? OFFSET ?""",
           args + [size, (page - 1) * size]).fetchall()
         through = db.execute(f"SELECT MAX(r.created_at) FROM rfbs_return_records r{where}", args).fetchone()[0]
+        rules = load_product_rules(db)
     items = []
     for raw in rows:
         item = dict(raw)
-        item["product_name"] = item.pop("display_product_name")
+        item["product_name"] = resolve_product(rules, item["sku"], item["offer_id"],
+                                               item["product_name"])["display_name"]
         payload = json.loads(item.pop("payload"))
         product, state = payload.get("product") or {}, payload.get("state") or {}
         item["quantity"] = item["quantity"] or payload.get("quantity") or product.get("quantity") or 1
@@ -1028,8 +1076,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             item["offer_id"] = item["offer_id"] or row["offer_id"] or ""
             item["product_name_raw"] = item["product_name_raw"] or row["product_name_raw"] or ""
         shop_names = {row["id"]: row["name"] for row in db.execute("SELECT id,name FROM shops")}
-        short_names = {(row["key_type"], row["key_value"]): row["short_name"] for row in
-                       db.execute("SELECT key_type,key_value,short_name FROM product_short_names")}
+        rules = load_product_rules(db)
         sales_through = db.execute(f"""SELECT MAX(data_through) FROM sync_runs o
           WHERE module='orders' AND status='success'{shop_clause}""", shop_args).fetchone()[0]
         if not sales_through:
@@ -1057,19 +1104,40 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
     for key in sales:
         grouped.setdefault(key, {"shop_id": key[0], "shop_name": shop_names.get(key[0], f"店铺{key[0]}"),
           "sku": key[1], "offer_id": "", "product_id": None, "_channels": {}})
+    merged = {}
+    for group in grouped.values():
+        meta = metadata.get((group["shop_id"], group["sku"]), {})
+        group["offer_id"] = group["offer_id"] or meta.get("offer_id") or ""
+        raw_name = meta.get("product_name_raw") or ""
+        resolved = resolve_product(rules, group["sku"], group["offer_id"], raw_name)
+        target = merged.setdefault((group["shop_id"], resolved["identity"]), {
+          "shop_id": group["shop_id"], "shop_name": group["shop_name"],
+          "sku_members": set(), "offer_members": set(), "offer_id": resolved["primary_offer_id"] or group["offer_id"],
+          "product_id": group["product_id"], "product_name_raw": resolved["platform_name"],
+          "short_name": rules["short_names"].get(resolved["primary_sku"] or group["sku"], ""),
+          "display_name": resolved["display_name"], "analysis_identity": resolved["identity"],
+          "_channels": {}, "_sales": {"sales_7": 0, "sales_15": 0, "sales_30": 0}})
+        target["sku_members"].add(group["sku"])
+        if group["offer_id"]: target["offer_members"].add(group["offer_id"])
+        for channel, value in group["_channels"].items():
+            stock_value = target["_channels"].setdefault(channel, {"channel": channel, "source": "api",
+              "present": 0, "reserved": 0, "observed_at": value["observed_at"]})
+            stock_value["present"] += value["present"]
+            stock_value["reserved"] += value["reserved"]
+            stock_value["observed_at"] = max(stock_value["observed_at"] or "", value["observed_at"] or "")
+        sold = sales.get((group["shop_id"], group["sku"]), {})
+        for key in target["_sales"]:
+            target["_sales"][key] += int(sold.get(key) or 0)
+    grouped = merged
     cards = []
     for group in grouped.values():
         channels_by_name = group.pop("_channels")
         channels = [channels_by_name.get(channel, {"channel": channel, "source": "api",
                     "present": 0, "reserved": 0, "observed_at": None})
                     for channel in ("FBP", "realFBS", "WHD")]
-        sold = sales.get((group["shop_id"], group["sku"]), {})
-        meta = metadata.get((group["shop_id"], group["sku"]), {})
-        group["offer_id"] = group["offer_id"] or meta.get("offer_id") or ""
-        group["product_name_raw"] = meta.get("product_name_raw") or ""
-        group["short_name"] = (short_names.get(("offer_id", group["offer_id"])) or
-                               short_names.get(("sku", group["sku"])) or "")
-        group["display_name"] = group["short_name"] or group["product_name_raw"] or "产品名称暂无"
+        sold = group.pop("_sales")
+        group["sku"] = "、".join(sorted(group.pop("sku_members")))
+        group["offer_members"] = sorted(group["offer_members"])
         group["channels"] = channels
         group["present"] = sum(value["present"] for value in channels)
         group["reserved"] = sum(value["reserved"] for value in channels)
@@ -1093,8 +1161,8 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
         else:
             group["risk_status"] = "暂不需要FBP备货"
         group["observed_at"] = max((value["observed_at"] or "" for value in channels), default="") or None
-        filters = ((sku, group["sku"]), (offer_id, group["offer_id"]),
-                   (product_name, f"{group['product_name_raw']} {group['short_name']}"))
+        filters = ((sku, group["sku"]), (offer_id, " ".join(group["offer_members"])),
+                   (product_name, f"{group['product_name_raw']} {group['display_name']}"))
         if any(value.strip().lower() not in target.lower() for value, target in filters if value.strip()):
             continue
         cards.append(group)
@@ -1409,7 +1477,7 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
     if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
     tables = {
         "risk": ("orders o JOIN order_items i USING(shop_id,posting_number)", "o.created_at",
-                 "o.shop_id,o.channel,o.posting_number,i.sku,i.offer_id,i.quantity,o.status_raw,o.cancel_reason_raw,COALESCE((SELECT g.name FROM product_group_members m JOIN product_groups g ON g.id=m.group_id WHERE (m.key_type='sku' AND m.key_value=i.sku) OR (m.key_type='offer_id' AND m.key_value=i.offer_id) ORDER BY m.key_type='sku' DESC LIMIT 1),i.sku,i.offer_id) analysis_group"),
+                 "o.shop_id,o.channel,o.posting_number,i.sku,i.offer_id,i.product_name_raw,i.quantity,o.status_raw,o.cancel_reason_raw"),
         "timeliness": ("orders o", "o.created_at",
                  "o.shop_id,o.channel,o.posting_number,o.created_at,o.shipped_at,o.delivered_at"),
         "returns": ("rfbs_return_records o", "o.created_at",
@@ -1418,7 +1486,7 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                  "o.shop_id,o.posting_number,o.complaint_number,o.complaint_at,o.channel,o.resolved,o.package_returned,o.compensation_amount,o.compensation_currency,o.created_at,o.updated_at"),
         "stock": ("stock_history o", "o.occurred_at",
                  "o.shop_id,o.source,o.warehouse_id,o.sku,o.present,o.reserved,o.occurred_at"),
-        "rules": ("brand_rules o", "o.updated_at", "o.id,o.brand_name,o.keyword,o.priority,o.enabled,o.updated_at"),
+        "rules": ("product_short_names o", "o.updated_at", "o.key_value sku,o.short_name,o.updated_at"),
     }
     table, date_column, fields = tables[module]
     where, args = ["1=1"], []
@@ -1443,6 +1511,10 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
             selected = [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")
                         if shop_id not in (1, 2) or row["id"] == shop_id]
             through = db.execute(f"SELECT MAX({date_column}) FROM {table} WHERE {sql_where}", args).fetchone()[0]
+            if module == "rules":
+                through = db.execute("""SELECT MAX(value) FROM (
+                  SELECT MAX(updated_at) value FROM product_short_names
+                  UNION ALL SELECT MAX(updated_at) FROM product_groups)""").fetchone()[0]
             metadata = {"type": "metadata", "module": module, "shops": selected,
               "range": {"from": export_range[0], "to": export_range[1]} if export_range else {"from": None, "to": None},
               "timezone": "数据库UTC；页面北京时间", "currencies": "保留记录原始币种，不做跨币种汇总",
@@ -1468,18 +1540,30 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                                   "status": status.get("display_name") if isinstance(status, dict) else status})
                     yield json.dumps(value, ensure_ascii=False) + "\n"
             if module == "rules":
-                for rule_type, query in (
-                    ("中文短名称", "SELECT key_type,key_value,short_name,updated_at FROM product_short_names"),
-                    ("合并组", "SELECT g.name,m.key_type,m.key_value,g.updated_at FROM product_groups g LEFT JOIN product_group_members m ON m.group_id=g.id"),
-                ):
-                    for row in db.execute(query):
-                        yield json.dumps({"rule_type": rule_type, **dict(row)}, ensure_ascii=False) + "\n"
+                for row in db.execute("""SELECT n.key_value sku,n.short_name,n.updated_at
+                  FROM product_short_names n LEFT JOIN product_short_name_migrations m
+                    ON m.key_type=n.key_type AND m.key_value=n.key_value
+                  WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1 ORDER BY n.key_value"""):
+                    yield json.dumps({"rule_type": "中文短名称", **dict(row)}, ensure_ascii=False) + "\n"
+                for row in db.execute("""SELECT c.group_id,c.primary_offer_id,c.primary_sku,c.status,
+                  g.updated_at FROM product_group_config c JOIN product_groups g ON g.id=c.group_id
+                  WHERE c.status='active' ORDER BY c.primary_offer_id"""):
+                    value = dict(row)
+                    value["members"] = [dict(member) for member in db.execute("""SELECT key_type,key_value
+                      FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value""", (row["group_id"],))]
+                    yield json.dumps({"rule_type": "主货号合并", **value}, ensure_ascii=False) + "\n"
+                return
+            rules = load_product_rules(db) if module in {"risk", "stock"} else None
             for row in db.execute(f"SELECT {fields} FROM {table} WHERE {sql_where} ORDER BY {date_column}", args):
                 value = dict(row)
                 if module == "returns":
                     value["record_type"] = "退货明细"
-                elif module == "rules":
-                    value["rule_type"] = "品牌规则"
+                elif module == "risk":
+                    resolved = resolve_product(rules, value["sku"], value["offer_id"], value.pop("product_name_raw"))
+                    value["analysis_identity"] = resolved["identity"]
+                    value["analysis_product_name"] = resolved["display_name"]
+                elif module == "stock":
+                    value["analysis_identity"] = resolve_product(rules, value["sku"])["identity"]
                 yield json.dumps(value, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
       headers={"Content-Disposition": f"attachment; filename={module}.jsonl"})
