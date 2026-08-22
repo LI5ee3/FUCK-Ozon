@@ -1,6 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const state = {shop: 0, page: 1, total: 0, shops: [], complaints:[], csrf:"", overviewGranularity:"week", pages: {timeliness:1,returns:1,rfbsReturns:1,complaints:1,stock:1}};
 let riskItems=[];
+let dingSavedTemplate="", dingDefaultTemplate="";
 const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",returns:"退货与投诉",stock:"库存",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -187,13 +188,20 @@ async function loadSync() {
   return rows;
 }
 async function loadAutoSync(){const rows=await api("/api/auto-sync-settings");$("#autoSyncCards").innerHTML=rows.map(r=>`<div class="auto-sync-card"><div class="panel-title"><strong>${esc(state.shops.find(s=>s.id===r.shop_id)?.name)} · ${esc(syncNames[r.module])}</strong><label class="check-row"><input id="autoEnabled-${r.shop_id}-${r.module}" type="checkbox" ${r.enabled?'checked':''}>启用</label></div><label>每天拉取时间（北京时间）<input id="autoTime-${r.shop_id}-${r.module}" type="time" value="${esc(r.run_time)}" required></label><label>拉取范围${r.module==='stock'?'（库存为当前快照）':'（最近 N 天）'}<input id="autoRange-${r.shop_id}-${r.module}" type="number" min="1" max="365" value="${Number(r.range_days)}" ${r.module==='stock'?'disabled':''} required></label></div>`).join("")}
-async function loadDingtalk() {
+async function loadDingtalk(refreshTemplate=true) {
   const data=await api("/api/dingtalk/settings");
-  $("#dingtalkConfigured").textContent=data.configured?"机器人已配置":"机器人未配置";
+  $("#dingtalkConfigured").textContent=data.configured?"已配置":"未配置";
+  $("#dingEnabledStatus").textContent=data.daily_enabled?"已启用":"已停用";
+  $("#dingNext").textContent=data.next_push_at?bj(data.next_push_at):"—";
   $("#dingEnabled").checked=data.daily_enabled; $("#dingTime").value=data.push_time;
   document.querySelectorAll("#dingWeekdays input").forEach(input=>input.checked=data.weekdays.includes(Number(input.value)));
-  $("#dingtalkLast").textContent=data.last_run?`${data.last_run.stats_date} · ${data.last_run.status==='success'?'发送成功':data.last_run.status==='failed'?'发送失败':'发送中'}${data.last_run.sent_at?` · ${bj(data.last_run.sent_at)}`:""}${data.last_run.error?` · ${data.last_run.error}`:""}`:"暂无发送记录";
+  dingSavedTemplate=data.template;dingDefaultTemplate=data.default_template;if(refreshTemplate)$("#dingTemplate").value=data.template;
+  updateDingTemplateSaved();
+  const last=data.last_run,status=last?(last.status==='success'?'发送成功':last.status==='failed'?'发送失败':'发送中'):"暂无记录";
+  $("#dingLastStatus").textContent=status;
+  $("#dingtalkLast").innerHTML=`<div><dt>统计日期</dt><dd>${esc(last?.stats_date||'—')}</dd></div><div><dt>推送状态</dt><dd>${esc(status)}</dd></div><div><dt>实际发送时间</dt><dd>${last?.sent_at?bj(last.sent_at):'—'}</dd></div><div><dt>失败原因</dt><dd class="${last?.error?'error':''}">${esc(last?.error||'—')}</dd></div>`;
 }
+function updateDingTemplateSaved(){const saved=$("#dingTemplate").value===dingSavedTemplate;$("#dingTemplateSaved").textContent=saved?"当前模板已保存":"当前模板有未保存修改";$("#dingTemplateSaved").classList.toggle("unsaved",!saved)}
 async function loadRules(){const data=await api("/api/product-rules");$("#ruleKeyNote").textContent=data.key_note;$("#ruleLists").innerHTML=`<h3>短名称</h3>${data.short_names.map(r=>`<p>${esc(r.key_type)}:${esc(r.key_value)} → ${esc(r.short_name)}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>合并组</h3>${data.groups.map(r=>`<p>${esc(r.name)}：${esc(r.key_type||"暂无成员")} ${esc(r.key_value||"")} ${r.key_type?`<button data-ungroup-type="${esc(r.key_type)}" data-ungroup-value="${esc(r.key_value)}">解除</button>`:""}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>品牌规则</h3>${data.brands.map(r=>`<p>${esc(r.brand_name)} · ${esc(r.keyword)} · 优先级 ${r.priority}${r.conflict?' · 冲突':''}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>匹配预览</h3>${data.products.filter(r=>r.matched_brand).slice(0,20).map(r=>`<p>${esc(r.product_name)} → ${esc(r.matched_brand)}</p>`).join("")||'<p class="muted">暂无品牌命中</p>'}`}
 async function loadSettings(){$("#probeShops").innerHTML=state.shops.map(s=>`<article class="settings-shop-card"><div class="settings-shop-head"><div><span>店铺 ${s.id}</span><strong>${esc(s.name)}</strong></div><button class="primary" data-probe="${s.id}">检测连接与权限</button></div><div id="probeResult${s.id}" class="settings-probe-result hidden"></div></article>`).join("")}
 function probeResult(result){if(!result.valid)return `<span class="probe-state is-error">连接失败</span><p>${esc(result.error||"凭据或网络异常")}</p>`;const identity=result.identity||{},company=identity.company||{},name=company.name||identity.name||"店铺身份已确认",seller=identity.seller_id||identity.client_id||"未返回",inn=company.inn||identity.inn||"未返回",roles=(result.roles||[]).join("、")||"未返回";return `<span class="probe-state is-ok">凭据有效</span><dl class="probe-facts"><div><dt>店铺身份</dt><dd>${esc(name)}</dd></div><div><dt>Seller ID</dt><dd>${esc(seller)}</dd></div><div><dt>税号 INN</dt><dd>${esc(inn)}</dd></div><div><dt>角色</dt><dd>${esc(roles)}</dd></div></dl><div class="probe-permissions">${Object.entries(result.permissions||{}).map(([module,value])=>`<span class="${value==="可用"?'is-ok':'is-missing'}"><strong>${esc(syncNames[module]||module)}</strong>${esc(value)}</span>`).join("")||'<span class="is-missing">未返回模块权限</span>'}</div>`}
@@ -245,8 +253,12 @@ $("#reasonRows").onclick=async e=>{const reason=e.target.closest("[data-reason]"
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 $("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
 $("#probeShops").onclick=async e=>{const button=e.target.closest("[data-probe]");if(!button)return;const id=button.dataset.probe,target=$("#probeResult"+id);button.disabled=true;target.classList.remove("hidden");target.innerHTML='<span class="probe-state">正在检测</span><p>正在验证凭据与权限，请稍候。</p>';try{target.innerHTML=probeResult(await api(`/api/ozon/probe/${id}`,{method:"POST"}))}catch(error){target.innerHTML=probeResult({valid:false,error:error.message})}finally{button.disabled=false}};
-$("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("钉钉设置已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
-$("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST"});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
+$("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("推送计划已保存");await loadDingtalk(false)}catch(err){toast(err.message,true)}});
+$("#dingTemplate").oninput=updateDingTemplateSaved;
+$("#dingResetTemplate").onclick=()=>{$("#dingTemplate").value=dingDefaultTemplate;updateDingTemplateSaved()};
+$("#dingPreviewButton").onclick=async e=>{e.target.disabled=true;try{const data=await api("/api/dingtalk/preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({template:$("#dingTemplate").value})});$("#dingPreview").textContent=data.message}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
+$("#dingSaveTemplate").onclick=async e=>{e.target.disabled=true;try{const data=await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({template:$("#dingTemplate").value})});dingSavedTemplate=data.template;updateDingTemplateSaved();toast("消息模板已保存")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
+$("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({template:$("#dingTemplate").value})});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
 let importing=false;
 const importFileValid=file=>file?.name.toLowerCase().endsWith(".csv");
 function updateImportReady(message=""){

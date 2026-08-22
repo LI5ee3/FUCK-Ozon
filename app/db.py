@@ -5,6 +5,15 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / "fuck-ozon.db"
+LEGACY_DAILY_TEMPLATE = """昨日取消与退货订单汇总
+统计日期：{{统计日期}}（北京时间）
+
+{{店铺明细}}
+
+数据截止：{{数据截止}}"""
+DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
+
+{{店铺明细}}"""
 
 
 @contextmanager
@@ -141,9 +150,11 @@ def init_db():
           id INTEGER PRIMARY KEY CHECK(id=1),
           daily_enabled INTEGER NOT NULL DEFAULT 0 CHECK(daily_enabled IN (0,1)),
           push_time TEXT NOT NULL DEFAULT '09:00',
-          weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7'
+          weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7',
+          template TEXT
         );
-        INSERT OR IGNORE INTO notification_settings VALUES(1,0,'09:00','1,2,3,4,5,6,7');
+        INSERT OR IGNORE INTO notification_settings(id,daily_enabled,push_time,weekdays)
+          VALUES(1,0,'09:00','1,2,3,4,5,6,7');
         CREATE TABLE IF NOT EXISTS notification_runs (
           kind TEXT NOT NULL, stats_date TEXT NOT NULL, status TEXT NOT NULL,
           attempted_at TEXT NOT NULL, sent_at TEXT, error TEXT,
@@ -217,6 +228,13 @@ def init_db():
         for name in ("cancel_reason_id", "warehouse_id", "status_changed_at"):
             if name not in order_columns:
                 db.execute(f"ALTER TABLE orders ADD COLUMN {name} TEXT")
+        notification_columns = {row[1] for row in db.execute("PRAGMA table_info(notification_settings)")}
+        if "template" not in notification_columns:
+            db.execute("ALTER TABLE notification_settings ADD COLUMN template TEXT")
+        db.execute("UPDATE notification_settings SET template=? WHERE template IS NULL OR trim(template)=''",
+                   (DEFAULT_DAILY_TEMPLATE,))
+        db.execute("UPDATE notification_settings SET template=? WHERE template=?",
+                   (DEFAULT_DAILY_TEMPLATE, LEGACY_DAILY_TEMPLATE))
         return_columns = {row[1] for row in db.execute("PRAGMA table_info(rfbs_return_records)")}
         for name, definition in (
             ("order_number", "TEXT"), ("quantity", "INTEGER"), ("reason_raw", "TEXT"),

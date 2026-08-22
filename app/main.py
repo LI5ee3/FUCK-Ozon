@@ -18,7 +18,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
-from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
+from .dingtalk import (DEFAULT_DAILY_TEMPLATE, configured as dingtalk_configured, daily_message, next_push_time,
+                       send_sync_failure, send_test, start_scheduler, stop_scheduler,
+                       validate_template)
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
                    RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, probe_shop, sync_module)
@@ -171,12 +173,14 @@ async def ozon_probe(shop_id: int):
 def _dingtalk_settings():
     with connect() as db:
         row = dict(db.execute("SELECT * FROM notification_settings WHERE id=1").fetchone())
-        last = db.execute("""SELECT stats_date,status,sent_at,error FROM notification_runs
-          WHERE kind='daily' ORDER BY stats_date DESC LIMIT 1""").fetchone()
+        last = db.execute("""SELECT stats_date,status,attempted_at,sent_at,error FROM notification_runs
+          WHERE kind='daily' ORDER BY attempted_at DESC LIMIT 1""").fetchone()
     row["daily_enabled"] = bool(row["daily_enabled"])
     row["weekdays"] = [int(value) for value in row["weekdays"].split(",") if value]
     row["configured"] = dingtalk_configured()
     row["last_run"] = dict(last) if last else None
+    row["next_push_at"] = next_push_time(row)
+    row["default_template"] = DEFAULT_DAILY_TEMPLATE
     return row
 
 
@@ -188,29 +192,54 @@ def dingtalk_settings():
 @app.put("/api/dingtalk/settings")
 async def update_dingtalk_settings(request: Request):
     body = await request.json()
-    push_time = str(body.get("push_time", "")).strip()
-    try:
-        push_time = datetime.strptime(push_time, "%H:%M").strftime("%H:%M")
-        weekdays = sorted({int(value) for value in body.get("weekdays", [])})
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "钉钉推送时间或星期无效") from error
-    if any(value not in range(1, 8) for value in weekdays):
-        raise HTTPException(400, "钉钉推送星期无效")
-    enabled = bool(body.get("daily_enabled"))
-    if enabled and not weekdays:
-        raise HTTPException(400, "启用昨日汇总时至少选择一天")
+    updates, args = [], []
+    if "template" in body:
+        try:
+            template = validate_template(body["template"])
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
+        updates.append("template=?"); args.append(template)
+    schedule_keys = {"daily_enabled", "push_time", "weekdays"}
+    if schedule_keys & body.keys():
+        if not schedule_keys <= body.keys():
+            raise HTTPException(400, "请完整提交汇总开关、时间和星期")
+        push_time = str(body.get("push_time", "")).strip()
+        try:
+            push_time = datetime.strptime(push_time, "%H:%M").strftime("%H:%M")
+            weekdays = sorted({int(value) for value in body.get("weekdays", [])})
+        except (TypeError, ValueError) as error:
+            raise HTTPException(400, "钉钉推送时间或星期无效") from error
+        if any(value not in range(1, 8) for value in weekdays):
+            raise HTTPException(400, "钉钉推送星期无效")
+        enabled = bool(body.get("daily_enabled"))
+        if enabled and not weekdays:
+            raise HTTPException(400, "启用昨日汇总时至少选择一天")
+        updates.extend(("daily_enabled=?", "push_time=?", "weekdays=?"))
+        args.extend((int(enabled), push_time, ",".join(map(str, weekdays))))
+    if not updates:
+        raise HTTPException(400, "没有可保存的设置")
     with transaction() as db:
-        db.execute("UPDATE notification_settings SET daily_enabled=?,push_time=?,weekdays=? WHERE id=1",
-                   (int(enabled), push_time, ",".join(map(str, weekdays))))
+        db.execute(f"UPDATE notification_settings SET {','.join(updates)} WHERE id=1", args)
     return _dingtalk_settings()
 
 
+@app.post("/api/dingtalk/preview")
+async def preview_dingtalk(body: dict):
+    try:
+        stats_date = (datetime.now(BEIJING).date() - timedelta(days=1)).isoformat()
+        return {"message": await run_in_threadpool(daily_message, stats_date, body.get("template"))}
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
 @app.post("/api/dingtalk/test")
-async def test_dingtalk():
+async def test_dingtalk(body: dict | None = None):
     if not dingtalk_configured():
         raise HTTPException(400, "钉钉机器人未配置")
     try:
-        await run_in_threadpool(send_test)
+        await run_in_threadpool(send_test, (body or {}).get("template"))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
     except Exception as error:
         raise HTTPException(502, "测试推送失败") from error
     return {"ok": True}
