@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import datetime, timezone
 
-from .db import transaction
+from .db import transaction, trim_import_batches
 
 CHANNELS = {"FBP", "realFBS", "WHD"}
 SHIPPED_STATUS_PARTS = ("已签收", "运输中", "待取件", "已送达", "已完成", "已发货")
@@ -119,4 +119,5 @@ def import_csv(shop_id, channel, filename, content):
                   _number(row.get("您的价格")), _text(row.get("商品的货币代码")) or None,
                   _number(row.get("已由买家支付")), _text(row.get("买家货币代码")) or None,
                   "csv", batch))
+        trim_import_batches(db)
     return {"batch_id": batch, "rows": len(rows)}

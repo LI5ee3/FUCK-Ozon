@@ -32,6 +32,17 @@ def transaction():
             raise
 
 
+def trim_import_batches(db, keep=10):
+    old = [row[0] for row in db.execute(
+        "SELECT id FROM import_batches ORDER BY id DESC LIMIT -1 OFFSET ?", (keep,))]
+    if not old:
+        return
+    marks = ",".join("?" for _ in old)
+    db.execute(f"UPDATE orders SET import_batch_id=NULL WHERE import_batch_id IN ({marks})", old)
+    db.execute(f"UPDATE order_items SET import_batch_id=NULL WHERE import_batch_id IN ({marks})", old)
+    db.execute(f"DELETE FROM import_batches WHERE id IN ({marks})", old)
+
+
 def init_db():
     with transaction() as db:
         db.executescript("""
@@ -252,3 +263,4 @@ def init_db():
             s.observed_at,s.record_key||':'||s.observed_at,s.payload
           FROM stock_snapshots s,json_each(s.payload,'$.stocks') v
           WHERE json_valid(s.payload)""")
+        trim_import_batches(db)

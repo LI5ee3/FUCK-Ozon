@@ -708,12 +708,19 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30, q: str = "",
 
 
 @app.get("/api/complaints")
-def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, size: int = 50):
-    where, args = ["1=1"], []
+def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, size: int = 50,
+               date_from: Annotated[str | None, Query(alias="from")] = None,
+               date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    if status not in {"", "open", "closed", "unset"}:
+        raise HTTPException(400, "完结状态无效")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    where, args = ["julianday(c.complaint_at)>=julianday(?)", "julianday(c.complaint_at)<julianday(?)"], [utc_start, utc_end]
     if shop_id in (1, 2): where.append("c.shop_id=?"); args.append(shop_id)
-    if q:
+    if q.strip():
         where.append("(c.posting_number LIKE ? OR c.complaint_number LIKE ?)")
-        args += [f"%{q}%", f"%{q}%"]
+        args += [f"%{q.strip()}%", f"%{q.strip()}%"]
     if status in {"open", "closed", "unset"}:
         where.append("c.resolved IS " + {"open": "0", "closed": "1", "unset": "NULL"}[status])
     page, size = _paging(page, size)
@@ -723,8 +730,9 @@ def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, s
         items = [dict(row) for row in db.execute(f"""SELECT c.*,s.name shop_name
           FROM complaints c JOIN shops s ON s.id=c.shop_id WHERE {sql}
           ORDER BY c.complaint_at DESC LIMIT ? OFFSET ?""", args + [size, (page-1)*size])]
+        through = db.execute(f"SELECT MAX(c.complaint_at) FROM complaints c WHERE {sql}", args).fetchone()[0]
     return {"items": items, "total": total, "page": page, "size": size,
-            "data_through": max((row["complaint_at"] for row in items), default=None)}
+            "data_through": through}
 
 
 @app.post("/api/complaints")
@@ -833,8 +841,20 @@ async def save_product_rule(request: Request):
 
 
 @app.get("/api/returns")
-def returns(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id)
+def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
+            date_from: Annotated[str | None, Query(alias="from")] = None,
+            date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    filters, args = ["julianday(r.occurred_at)>=julianday(?)", "julianday(r.occurred_at)<julianday(?)"], [utc_start, utc_end]
+    if shop_id:
+        filters.append("r.shop_id=?"); args.append(shop_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append("(r.sku LIKE ? OR r.posting_number LIKE ? OR CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT) LIKE ?)")
+        args.extend([pattern, pattern, pattern])
+    where = " WHERE " + " AND ".join(filters)
     page, size = _paging(page, size)
     with connect() as db:
         totals = [dict(row) for row in db.execute(f"""
@@ -845,7 +865,10 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
         """, args)]
         total = db.execute(f"SELECT COUNT(*) FROM return_records r{where}", args).fetchone()[0]
         records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.posting_number,r.sku,r.payload,
-          (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=r.sku) short_name
+          CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT) offer_id,
+          COALESCE(
+            (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT)),
+            (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=r.sku)) short_name
           FROM return_records r JOIN shops s ON s.id=r.shop_id{where}
           ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
         through = db.execute(f"SELECT MAX(r.occurred_at) FROM return_records r{where}", args).fetchone()[0]
@@ -857,7 +880,8 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
         status = status.get("display_name") if isinstance(status, dict) else status
         items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
                       "occurred_at": row["occurred_at"], "posting_number": row["posting_number"],
-                      "sku": row["sku"], "product_name": row["short_name"] or product.get("name"),
+                      "sku": row["sku"], "offer_id": row["offer_id"],
+                      "product_name": row["short_name"] or product.get("name"),
                       "quantity": product.get("quantity"),
                       "reason": CANCEL_REASON_ZH.get(payload.get("return_reason_name"), payload.get("return_reason_name")),
                       "reason_raw": payload.get("return_reason_name"),
@@ -873,8 +897,20 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50):
 
 
 @app.get("/api/rfbs-returns")
-def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id)
+def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
+                 date_from: Annotated[str | None, Query(alias="from")] = None,
+                 date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    filters, args = ["julianday(r.created_at)>=julianday(?)", "julianday(r.created_at)<julianday(?)"], [utc_start, utc_end]
+    if shop_id:
+        filters.append("r.shop_id=?"); args.append(shop_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        filters.append("(r.sku LIKE ? OR r.offer_id LIKE ? OR r.posting_number LIKE ? OR r.return_number LIKE ?)")
+        args.extend([pattern] * 4)
+    where = " WHERE " + " AND ".join(filters)
     page, size = _paging(page, size)
     with connect() as db:
         totals = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,COUNT(*) records
@@ -883,7 +919,7 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50):
         total = db.execute(f"SELECT COUNT(*) FROM rfbs_return_records r{where}", args).fetchone()[0]
         rows = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.return_id,
           r.return_number,r.created_at,r.posting_number,r.offer_id,r.sku,r.product_name,
-          r.status_raw,r.status_name,r.order_number,r.quantity,r.reason_raw,r.reason_name,
+          r.status_raw,r.status_name,r.quantity,r.reason_raw,r.reason_name,
           r.compensation_status,r.product_amount,r.product_currency,r.logistic_return_at,
           r.buyer_comment_raw,r.payload,COALESCE(
             (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=r.offer_id),
@@ -898,7 +934,6 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50):
         item["product_name"] = item.pop("display_product_name")
         payload = json.loads(item.pop("payload"))
         product, state = payload.get("product") or {}, payload.get("state") or {}
-        item["order_number"] = item["order_number"] or payload.get("order_number")
         item["quantity"] = item["quantity"] or payload.get("quantity") or product.get("quantity") or 1
         item["product_amount"] = item["product_amount"] if item["product_amount"] is not None else product.get("price")
         item["product_currency"] = item["product_currency"] or product.get("currency_code")
@@ -1005,7 +1040,9 @@ def stock_history(shop_id: int = 0, page: int = 1, size: int = 50):
 @app.post("/api/import/{kind}")
 async def upload(kind: str, request: Request, shop_id: int):
     if shop_id not in (1, 2): raise HTTPException(400, "请选择店铺")
+    if kind not in CHANNELS: raise HTTPException(400, "未知渠道")
     filename = unquote(request.headers.get("x-filename", kind))
+    if Path(filename).suffix.lower() != ".csv": raise HTTPException(400, "仅支持CSV文件")
     content = await request.body()
     if len(content) > 50 * 1024 * 1024: raise HTTPException(413, "文件超过50MB")
     try:
@@ -1019,7 +1056,7 @@ def imports():
     with connect() as db:
         return [dict(row) for row in db.execute("""
           SELECT b.*,s.name shop_name FROM import_batches b JOIN shops s ON s.id=b.shop_id
-          WHERE b.kind IN ('FBP','realFBS','WHD') ORDER BY b.id DESC LIMIT 50
+          WHERE b.kind IN ('FBP','realFBS','WHD') ORDER BY b.id DESC LIMIT 10
         """)]
 
 
@@ -1207,21 +1244,50 @@ async def sync(module: str, request: Request, shop_id: int):
     return {"run_id": run_id, "status": "running", "progress_total": total}
 
 
+def _export_range(date_from="", date_to=""):
+    if not date_from and not date_to:
+        return None
+    if "T" in date_from or "T" in date_to:
+        try:
+            start = datetime.fromisoformat(date_from.replace("Z", "+00:00")) if date_from else None
+            end = datetime.fromisoformat(date_to.replace("Z", "+00:00")) if date_to else None
+        except ValueError as error:
+            raise HTTPException(400, "日期格式无效") from error
+        if start and start.tzinfo is None: start = start.replace(tzinfo=timezone.utc)
+        if end and end.tzinfo is None: end = end.replace(tzinfo=timezone.utc)
+        if start and end and start > end:
+            raise HTTPException(400, "开始日期不能晚于结束日期")
+        return date_from or None, date_to or None, date_from or None, date_to or None, False
+    start, end, utc_start, utc_end = _overview_range(date_from or None, date_to or None)
+    return start.isoformat(), end.isoformat(), utc_start, utc_end, True
+
+
 @app.get("/api/export/orders")
-def export_orders(shop_id: int = 0):
+def export_orders(shop_id: int = 0, date_from: str = "", date_to: str = ""):
+    if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
     clause, args = _shop_clause(shop_id)
+    export_range = _export_range(date_from, date_to)
+    range_clause = ""
+    if export_range:
+        _, _, utc_start, utc_end, exclusive_end = export_range
+        if utc_start:
+            range_clause += " AND julianday(o.created_at)>=julianday(?)"; args.append(utc_start)
+        if utc_end:
+            range_clause += f" AND julianday(o.created_at){'<' if exclusive_end else '<='}julianday(?)"; args.append(utc_end)
     def lines():
         with connect() as db:
-            shops_value = [dict(r) for r in db.execute("SELECT id,name FROM shops ORDER BY id")]
-            through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}", args).fetchone()[0]
+            shops_value = [dict(r) for r in db.execute("SELECT id,name FROM shops ORDER BY id")
+                           if shop_id not in (1, 2) or r["id"] == shop_id]
+            through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}{range_clause}", args).fetchone()[0]
             yield json.dumps({"type":"metadata","shops":shops_value,"timezone":"数据库UTC；显示北京时间",
+                              "range":{"from":export_range[0],"to":export_range[1]} if export_range else {"from":None,"to":None},
                               "order_definition":"COUNT DISTINCT posting_number","piece_definition":"SUM quantity",
                               "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
             for row in db.execute(f"""
               SELECT o.shop_id,s.name shop,o.posting_number,o.channel,o.created_at,o.status_raw,
                 o.cancel_reason_raw,o.amount_original,o.amount_currency
               FROM orders o JOIN shops s ON s.id=o.shop_id
-              WHERE {ACTIVE}{clause} ORDER BY o.created_at
+              WHERE {ACTIVE}{clause}{range_clause} ORDER BY o.created_at
             """, args):
                 yield json.dumps(_translated_order(row), ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
@@ -1232,6 +1298,7 @@ def export_orders(shop_id: int = 0):
 def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: str = ""):
     if module not in {"risk", "timeliness", "returns", "complaints", "stock", "rules"}:
         raise HTTPException(404, "未知导出模块")
+    if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
     tables = {
         "risk": ("orders o JOIN order_items i USING(shop_id,posting_number)", "o.created_at",
                  "o.shop_id,o.channel,o.posting_number,i.sku,i.offer_id,i.quantity,o.status_raw,o.cancel_reason_raw,COALESCE((SELECT g.name FROM product_group_members m JOIN product_groups g ON g.id=m.group_id WHERE (m.key_type='sku' AND m.key_value=i.sku) OR (m.key_type='offer_id' AND m.key_value=i.offer_id) ORDER BY m.key_type='sku' DESC LIMIT 1),i.sku,i.offer_id) analysis_group"),
@@ -1248,13 +1315,15 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
     table, date_column, fields = tables[module]
     where, args = ["1=1"], []
     alias = "o"
+    export_range = _export_range(date_from, date_to) if module != "rules" else None
     if shop_id in (1, 2) and module != "rules":
         where.append(f"{alias}.shop_id=?"); args.append(shop_id)
-    if date_from:
-        where.append(f"julianday({date_column})>=julianday(?)"); args.append(date_from)
-    if date_to:
-        where.append(f"julianday({date_column})<=julianday(?)")
-        args.append(date_to if "T" in date_to else date_to + "T23:59:59.999999Z")
+    if export_range:
+        _, _, utc_start, utc_end, exclusive_end = export_range
+        if utc_start:
+            where.append(f"julianday({date_column})>=julianday(?)"); args.append(utc_start)
+        if utc_end:
+            where.append(f"julianday({date_column}){'<' if exclusive_end else '<='}julianday(?)"); args.append(utc_end)
     if module in {"risk", "timeliness"}:
         where.append(ACTIVE)
     if module == "stock":
@@ -1267,7 +1336,7 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                         if shop_id not in (1, 2) or row["id"] == shop_id]
             through = db.execute(f"SELECT MAX({date_column}) FROM {table} WHERE {sql_where}", args).fetchone()[0]
             metadata = {"type": "metadata", "module": module, "shops": selected,
-              "range": {"from": date_from or None, "to": date_to or None},
+              "range": {"from": export_range[0], "to": export_range[1]} if export_range else {"from": None, "to": None},
               "timezone": "数据库UTC；页面北京时间", "currencies": "保留记录原始币种，不做跨币种汇总",
               "order_definition": "不同posting_number", "piece_definition": "SUM(quantity)",
               "filter": "统计类导出剔除发货前取消；模块互相隔离", "data_through": through}
@@ -1276,11 +1345,11 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                 legacy_where, legacy_args = ["1=1"], []
                 if shop_id in (1, 2):
                     legacy_where.append("shop_id=?"); legacy_args.append(shop_id)
-                if date_from:
-                    legacy_where.append("julianday(occurred_at)>=julianday(?)"); legacy_args.append(date_from)
-                if date_to:
-                    legacy_where.append("julianday(occurred_at)<=julianday(?)")
-                    legacy_args.append(date_to if "T" in date_to else date_to + "T23:59:59.999999Z")
+                if export_range:
+                    if utc_start:
+                        legacy_where.append("julianday(occurred_at)>=julianday(?)"); legacy_args.append(utc_start)
+                    if utc_end:
+                        legacy_where.append(f"julianday(occurred_at){'<' if exclusive_end else '<='}julianday(?)"); legacy_args.append(utc_end)
                 for row in db.execute(f"SELECT shop_id,occurred_at,posting_number,sku,payload FROM return_records WHERE {' AND '.join(legacy_where)} ORDER BY occurred_at", legacy_args):
                     value, payload = dict(row), json.loads(row["payload"])
                     product, visual = payload.get("product") or {}, payload.get("visual") or {}

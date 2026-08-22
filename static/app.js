@@ -12,6 +12,23 @@ const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时 / ${num(v/24,1)}
 const money = (amount,currency) => amount==null ? "金额暂无" : `${num(amount)} ${esc(currency||"")}`;
 const cell = (v) => v == null || v === "" ? "暂无" : esc(v);
 const channelTag = (v) => `<span class="tag channel-${({FBP:"fbp",realFBS:"fbs",WHD:"whd"}[v] || "")}">${esc(v)}</span>`;
+const triText = v => v == null ? "未填写" : v ? "是" : "否";
+const returnSelects = {};
+function createReturnSelect(id){
+  const select=$(`#${id}`),root=select.closest("[data-return-select],[data-import-select]"),button=root.querySelector("[data-select-button]"),label=root.querySelector("[data-select-label]"),options=root.querySelector("[data-select-options]");
+  options.id=`${id}Options`;button.setAttribute("aria-controls",options.id);
+  const close=()=>{options.classList.add("hidden");button.setAttribute("aria-expanded","false")};
+  const render=()=>{const selected=select.options[select.selectedIndex];label.textContent=selected?.textContent||"请选择";options.innerHTML=[...select.options].map(option=>`<button type="button" role="option" tabindex="-1" data-select-value="${esc(option.value)}" aria-selected="${option.selected}">${esc(option.textContent)}</button>`).join("")};
+  const set=value=>{select.value=value==null?"":String(value);render()};
+  const open=()=>{options.classList.remove("hidden");button.setAttribute("aria-expanded","true")};
+  button.onclick=()=>{options.classList.contains("hidden")?open():close()};
+  select.oninvalid=e=>{e.preventDefault();button.classList.add("is-invalid");button.focus()};
+  select.onchange=()=>button.classList.remove("is-invalid");
+  options.onclick=e=>{const option=e.target.closest("[data-select-value]");if(!option)return;set(option.dataset.selectValue);select.dispatchEvent(new Event("change",{bubbles:true}));close();button.focus()};
+  root.onkeydown=e=>{const choices=[...options.querySelectorAll("[role=option]")],current=choices.indexOf(document.activeElement);if(e.key==="Escape"){close();button.focus();return}if(e.key==="Enter"&&current>=0){e.preventDefault();document.activeElement.click();return}if(!["ArrowDown","ArrowUp"].includes(e.key))return;e.preventDefault();open();const selected=Math.max(0,choices.findIndex(option=>option.getAttribute("aria-selected")==="true")),next=current<0?selected:(current+(e.key==="ArrowDown"?1:-1)+choices.length)%choices.length;choices[next]?.focus()};
+  render();return {root,close,render,set};
+}
+const setReturnSelect=(id,value)=>returnSelects[id]?.set(value);
 const gmvText = (gmv) => gmv.missing_rate_orders
   ? `可折算GMV：¥${num(gmv.amount)}｜缺少汇率：${num(gmv.missing_rate_orders,0)}单`
   : `GMV：${gmv.currency==="CNY"?"¥":gmv.currency==="USD"?"$":""}${num(gmv.amount)} ${gmv.currency}`;
@@ -65,11 +82,16 @@ function showShell(){ $("#login").classList.add("hidden"); $("#shell").classList
 async function loadShops() {
   state.shops = await api("/api/shops");
   const options = state.shops.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
+  const complaintShop = $("#complaintShop").value,importShop=$("#importShop").value;
   const shops=[{id:0,name:"两店铺合并"},...state.shops];
   $("#shopOptions").innerHTML=shops.map(s=>`<button type="button" role="option" data-shop="${s.id}" aria-selected="${s.id===state.shop}">${esc(s.name)}</button>`).join("");
   $("#shopPickerValue").textContent=shops.find(s=>s.id===state.shop)?.name||"两店铺合并";
   $("#importShop").innerHTML = `<option value="">请选择</option>${options}`;
+  $("#importShop").value = importShop;
   $("#complaintShop").innerHTML = `<option value="">请选择</option>${options}`;
+  $("#complaintShop").value = complaintShop;
+  returnSelects.importShop?.render();
+  returnSelects.complaintShop?.render();
   $("#shop1").value = state.shops[0].name; $("#shop2").value = state.shops[1].name;
 }
 async function loadOverview() {
@@ -121,20 +143,28 @@ async function loadTimeliness() {
 function timelinessStatCell(label,samples,insufficient,p50,average,p90){return `<td class="timeliness-stat" data-label="${label}"><strong class="timeliness-cell-title">${label}</strong>${samples?`<strong class="timeliness-p50">P50 ${hours(p50)}</strong><span>平均 ${hours(average)}</span><span class="timeliness-p90">P90 ${hours(p90)}</span><small>有效样本 ${num(samples,0)} 单${insufficient?' · <b>样本不足</b>':''}</small>`:'<span class="timeliness-no-data">数据不足</span>'}</td>`}
 function timelinessDetailCell(label,value,duration,anomaly){return `<td class="timeliness-detail-time" data-label="${label}">${anomaly?'<strong class="timeliness-anomaly">数据异常</strong><small>实际时间无法计算</small>':value?`<strong>${bj(value)}</strong><small>${duration==null?"数据异常":hours(duration)}</small>`:'<strong class="muted">实际时间暂无</strong>'}</td>`}
 async function loadReturns() {
-  const data=await api(`/api/returns?shop_id=${state.shop}&page=${state.pages.returns}`);
+  $("#returnsRows").innerHTML='<tr><td colspan="5" class="return-empty">取消明细加载中…</td></tr>';
+  try { const query=new URLSearchParams({shop_id:state.shop,page:state.pages.returns,q:$("#returnsQuery").value,from:returnsRange.start,to:returnsRange.end}),data=await api(`/api/returns?${query}`);
   $("#returnsCount").textContent=data.total;
-  summary("returns",[["取消记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.quantity,0)} 件`,`共 ${num(s.records,0)} 条记录`])]);
-  $("#returnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.occurred_at)}</td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span></td><td class="num">${num(r.quantity,0)}</td><td><span class="cell-text" title="${esc(r.reason)}">${cell(r.reason)}</span></td><td>${cell(r.status||r.type)}</td></tr>`).join("") || '<tr><td colspan="7" class="muted">暂无数据。</td></tr>';
+  summary("returns",[["取消记录",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.quantity,0)} 件`])]);
+  $("#returnsRows").innerHTML=data.items.map(r=>`<tr><td data-label="店铺／时间"><strong>${esc(r.shop_name)}</strong><small>${bj(r.occurred_at)}</small></td><td data-label="订单号">${cell(r.posting_number)}</td><td class="return-product" data-label="商品信息"><strong title="${esc(r.product_name)}">${cell(r.product_name)}</strong><small>SKU ${cell(r.sku)} · 货号 ${cell(r.offer_id)}</small></td><td data-label="数量"><strong>${num(r.quantity,0)} 件</strong></td><td data-label="取消原因／状态"><strong title="${esc(r.reason_raw)}">${cell(r.reason)}</strong><small>${cell(r.status||r.type)}</small></td></tr>`).join("") || '<tr><td colspan="5" class="return-empty">当前筛选范围内没有取消记录。</td></tr>';
   pager("returns",data,loadReturns);
+  } catch(error){$("#returnsRows").innerHTML=`<tr><td colspan="5" class="return-empty error">${esc(error.message)}</td></tr>`;throw error}
 }
 async function loadRfbsReturns() {
-  const data=await api(`/api/rfbs-returns?shop_id=${state.shop}&page=${state.pages.rfbsReturns}`);
+  $("#rfbsReturnsRows").innerHTML='<tr><td colspan="6" class="return-empty">退货明细加载中…</td></tr>';
+  try { const query=new URLSearchParams({shop_id:state.shop,page:state.pages.rfbsReturns,q:$("#rfbsReturnsQuery").value,from:returnsRange.start,to:returnsRange.end}),data=await api(`/api/rfbs-returns?${query}`);
   $("#rfbsReturnsCount").textContent=data.total;
   summary("rfbsReturns",[["退货申请",num(data.summary.records,0)],...data.summary.shops.map(s=>[s.shop_name,`${num(s.records,0)} 条申请`])]);
-  $("#rfbsReturnsRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${bj(r.created_at)}</td><td>${cell(r.return_number)}<br><small>${cell(r.order_number)}</small></td><td>${cell(r.status_name||r.status_raw)}<br><small>${cell(r.compensation_status)}</small></td><td>${cell(r.posting_number)}</td><td><span class="cell-text" title="${esc(r.product_name)}">${cell(r.sku)} / ${cell(r.product_name)}</span>${r.buyer_comment_raw?`<br><small>买家原文：${esc(r.buyer_comment_raw)}</small>`:""}</td><td>${num(r.quantity,0)} / ${metric(r.product_amount)} ${esc(r.product_currency||"")}</td><td>${cell(r.reason_name||r.reason_raw)}<br><small>${bj(r.logistic_return_at)}</small></td></tr>`).join("") || '<tr><td colspan="8" class="muted">暂无退货申请。</td></tr>';
+  $("#rfbsReturnsRows").innerHTML=data.items.map(r=>`<tr><td data-label="店铺／申请时间"><strong>${esc(r.shop_name)}</strong><small>${bj(r.created_at)}</small></td><td data-label="申请编号／订单号"><strong>${cell(r.return_number)}</strong><small>订单 ${cell(r.posting_number)}</small></td><td class="return-product" data-label="商品信息"><strong title="${esc(r.product_name)}">${cell(r.product_name)}</strong><small>SKU ${cell(r.sku)} · 货号 ${cell(r.offer_id)}</small></td><td data-label="状态／赔偿"><strong>${cell(r.status_name||r.status_raw)}</strong><small>赔偿 ${cell(r.compensation_status)}</small></td><td data-label="数量／金额"><strong>${num(r.quantity,0)} 件</strong><small>${money(r.product_amount,r.product_currency)}</small></td><td data-label="原因／退回信息"><strong title="${esc(r.reason_raw)}">${cell(r.reason_name||r.reason_raw)}</strong><small>退回 ${bj(r.logistic_return_at)}</small>${r.buyer_comment_raw?`<details class="return-text"><summary>买家原文</summary><p lang="ru">${esc(r.buyer_comment_raw)}</p></details>`:""}</td></tr>`).join("") || '<tr><td colspan="6" class="return-empty">当前筛选范围内没有退货申请。</td></tr>';
   pager("rfbsReturns",data,loadRfbsReturns);
+  } catch(error){$("#rfbsReturnsRows").innerHTML=`<tr><td colspan="6" class="return-empty error">${esc(error.message)}</td></tr>`;throw error}
 }
-async function loadComplaints(){const q=encodeURIComponent($("#complaintQuery").value),status=$("#complaintStatus").value,data=await api(`/api/complaints?shop_id=${state.shop}&q=${q}&status=${status}&page=${state.pages.complaints}`);state.complaints=data.items;$("#complaintsCount").textContent=data.total;$("#complaintRows").innerHTML=data.items.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(r.posting_number)}</td><td>${esc(r.complaint_number)}</td><td>${bj(r.complaint_at)} / ${esc(r.channel)}</td><td>${r.resolved==null?"未填写":r.resolved?"是":"否"}</td><td>${r.package_returned==null?"未填写":r.package_returned?"是":"否"}</td><td>${r.compensation_amount==null?"暂无":`${num(r.compensation_amount)} ${esc(r.compensation_currency)}`}</td><td>${esc(r.notes||"")} <button data-edit-complaint="${r.shop_id}:${esc(r.complaint_number)}">编辑</button></td></tr>`).join("")||'<tr><td colspan="8" class="muted">暂无投诉。</td></tr>';pager("complaints",data,loadComplaints)}
+async function loadComplaints(){
+  $("#complaintRows").innerHTML='<tr><td colspan="5" class="return-empty">投诉记录加载中…</td></tr>';
+  try { const query=new URLSearchParams({shop_id:state.shop,q:$("#complaintQuery").value,status:$("#complaintStatus").value,page:state.pages.complaints,from:returnsRange.start,to:returnsRange.end}),data=await api(`/api/complaints?${query}`);state.complaints=data.items;$("#complaintsCount").textContent=data.total;$("#complaintRows").innerHTML=data.items.map(r=>`<tr><td data-label="店铺／订单号"><strong>${esc(r.shop_name)}</strong><small>${esc(r.posting_number)}</small></td><td data-label="投诉编号／时间／渠道"><strong>${esc(r.complaint_number)}</strong><small>${bj(r.complaint_at)} · ${esc(r.channel)}</small></td><td data-label="完结状态"><span class="complaint-state ${r.resolved==1?'done':r.resolved==0?'open':''}">${triText(r.resolved)}</span></td><td data-label="包裹／赔付"><strong>退回 ${triText(r.package_returned)}</strong><small>${r.compensation_amount==null?"赔付暂无":`${num(r.compensation_amount)} ${esc(r.compensation_currency)}`}</small></td><td class="complaint-note-cell" data-label="备注／操作"><span title="${esc(r.notes)}">${esc(r.notes||"备注暂无")}</span><button type="button" data-edit-complaint="${r.shop_id}:${esc(r.complaint_number)}">编辑</button></td></tr>`).join("")||'<tr><td colspan="5" class="return-empty">当前筛选范围内没有投诉记录。</td></tr>';pager("complaints",data,loadComplaints)
+  } catch(error){$("#complaintRows").innerHTML=`<tr><td colspan="5" class="return-empty error">${esc(error.message)}</td></tr>`;throw error}
+}
 const loadReturnPage=()=>Promise.all([loadReturns(),loadRfbsReturns(),loadComplaints()]);
 async function loadStock() {
   const data=await api(`/api/stock?shop_id=${state.shop}&page=${state.pages.stock}`);
@@ -144,8 +174,10 @@ async function loadStock() {
   pager("stock",data,loadStock);
 }
 async function loadImports() {
+  updateExportScope();
+  $("#importRows").innerHTML='<tr><td colspan="4" class="transfer-empty">导入记录加载中…</td></tr>';
   const rows=await api("/api/imports");
-  $("#importRows").innerHTML=rows.map(r=>`<tr><td>${esc(r.shop_name)}</td><td>${esc(r.kind)}</td><td>${esc(r.filename)}</td><td class="num">${r.row_count}</td><td>${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">暂无导入记录。</td></tr>';
+  $("#importRows").innerHTML=rows.map(r=>`<tr><td class="import-filename" data-label="文件"><strong title="${esc(r.filename)}">${esc(r.filename)}</strong></td><td data-label="店铺／渠道"><strong>${esc(r.shop_name)}</strong>${channelTag(r.kind)}</td><td class="num" data-label="导入行数">${num(r.row_count,0)} 行</td><td data-label="导入时间">${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="4" class="transfer-empty">暂无导入记录。</td></tr>';
 }
 async function loadSync() {
   const rows=await api("/api/sync");
@@ -175,6 +207,13 @@ function openPage(page) {
   $("#pageTitle").textContent=titles[page]; loadPage(page).catch(e=>toast(e.message,true));
 }
 
+for(const id of ["complaintShop","complaintResolved","complaintReturned","complaintStatus","importShop","importKind"]) returnSelects[id]=createReturnSelect(id);
+function activateReturnTab(name,focus=false){
+  document.querySelectorAll("[data-return-tab]").forEach(button=>{const active=button.dataset.returnTab===name;button.classList.toggle("active",active);button.setAttribute("aria-selected",String(active));button.tabIndex=active?0:-1;if(active&&focus)button.focus()});
+  document.querySelectorAll(".return-tab").forEach(panel=>{const active=panel.id===`returns-${name}`;panel.classList.toggle("active",active);panel.hidden=!active});
+}
+function resetComplaintForm(close=false){$("#complaintForm").reset();setReturnSelect("complaintShop","");setReturnSelect("complaintResolved","");setReturnSelect("complaintReturned","");$("#complaintEditorTitle").textContent="新增投诉";if(close)$("#complaintEditor").open=false}
+
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await loadOverview()}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{const button=e.target.closest("[data-page]");if(button)openPage(button.dataset.page)});
 $("#shopPickerButton").onclick=()=>{const hidden=$("#shopOptions").classList.toggle("hidden");$("#shopPickerButton").setAttribute("aria-expanded",String(!hidden))};
@@ -182,27 +221,51 @@ $("#shopOptions").onclick=e=>{const option=e.target.closest("[data-shop]");if(!o
 $("#channelPickerButton").onclick=()=>{const hidden=$("#channelOptions").classList.toggle("hidden");$("#channelPickerButton").setAttribute("aria-expanded",String(!hidden))};
 $("#channelOptions").onclick=e=>{const option=e.target.closest("[data-channel]");if(!option)return;$("#channelFilter").value=option.dataset.channel;$("#channelPickerValue").textContent=option.textContent;document.querySelectorAll("#channelOptions [data-channel]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelFilter").dispatchEvent(new Event("change"))};
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
-$("#orderList").onclick=e=>{const button=e.target.closest("[data-add-complaint]"),posting=button?.dataset.addComplaint;if(!posting)return;openPage("returns");$("#complaintPosting").value=posting;$("#complaintShop").value=button.dataset.complaintShop;document.querySelector('[data-return-tab="complaints"]').click();$("#complaintNumber").focus()};
+$("#orderList").onclick=e=>{const button=e.target.closest("[data-add-complaint]"),posting=button?.dataset.addComplaint;if(!posting)return;openPage("returns");resetComplaintForm();$("#complaintPosting").value=posting;setReturnSelect("complaintShop",button.dataset.complaintShop);activateReturnTab("complaints");$("#complaintEditor").open=true;$("#complaintNumber").focus()};
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
 $("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#riskGrouped").addEventListener("change",()=>loadRisk().catch(err=>toast(err.message,true)));
 $("#riskSearch").addEventListener("input",renderRiskItems);
 $("#timelinessFilterForm").addEventListener("submit",e=>{e.preventDefault();state.pages.timeliness=1;loadTimeliness().catch(err=>toast(err.message,true))});
 $("#timelinessClear").onclick=()=>{$("#timelinessSearch").value="";state.pages.timeliness=1;loadTimeliness().catch(err=>toast(err.message,true))};
-$("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(!tab)return;document.querySelectorAll("[data-return-tab]").forEach(button=>button.classList.toggle("active",button.dataset.returnTab===tab));document.querySelectorAll(".return-tab").forEach(panel=>panel.classList.toggle("active",panel.id===`returns-${tab}`))};
+$("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(tab)activateReturnTab(tab)};
+$("#returnTabs").onkeydown=e=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(e.key))return;e.preventDefault();const tabs=[...$("#returnTabs").querySelectorAll("[role=tab]")],current=tabs.indexOf(document.activeElement),index=e.key==="Home"?0:e.key==="End"?tabs.length-1:(current+(e.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;activateReturnTab(tabs[index].dataset.returnTab,true)};
+$("#returnsSearch").onsubmit=e=>{e.preventDefault();state.pages.returns=1;loadReturns().catch(err=>toast(err.message,true))};
+$("#returnsClear").onclick=()=>{$("#returnsQuery").value="";state.pages.returns=1;loadReturns().catch(err=>toast(err.message,true))};
+$("#rfbsReturnsSearch").onsubmit=e=>{e.preventDefault();state.pages.rfbsReturns=1;loadRfbsReturns().catch(err=>toast(err.message,true))};
+$("#rfbsReturnsClear").onclick=()=>{$("#rfbsReturnsQuery").value="";state.pages.rfbsReturns=1;loadRfbsReturns().catch(err=>toast(err.message,true))};
 $("#complaintSearch").onsubmit=e=>{e.preventDefault();state.pages.complaints=1;loadComplaints().catch(err=>toast(err.message,true))};
-$("#complaintRows").onclick=e=>{const key=e.target.dataset.editComplaint;if(!key)return;const [shop,...number]=key.split(":"),r=state.complaints.find(x=>x.shop_id===Number(shop)&&x.complaint_number===number.join(":"));if(!r)return;$("#complaintShop").value=r.shop_id;$("#complaintPosting").value=r.posting_number;$("#complaintNumber").value=r.complaint_number;$("#complaintAt").value=new Date(r.complaint_at).toISOString().slice(0,16);$("#complaintChannel").value=r.channel;$("#complaintResolved").value=r.resolved==null?"":String(Boolean(r.resolved));$("#complaintReturned").value=r.package_returned==null?"":String(Boolean(r.package_returned));$("#complaintAmount").value=r.compensation_amount??"";$("#complaintCurrency").value=r.compensation_currency??"";$("#complaintNotes").value=r.notes??"";$("#complaintForm").scrollIntoView({behavior:"smooth"})};
+$("#complaintRows").onclick=e=>{const key=e.target.dataset.editComplaint;if(!key)return;const [shop,...number]=key.split(":"),r=state.complaints.find(x=>x.shop_id===Number(shop)&&x.complaint_number===number.join(":"));if(!r)return;setReturnSelect("complaintShop",r.shop_id);$("#complaintPosting").value=r.posting_number;$("#complaintNumber").value=r.complaint_number;$("#complaintAt").value=new Date(new Date(r.complaint_at).getTime()+8*3600000).toISOString().slice(0,16);$("#complaintChannel").value=r.channel;setReturnSelect("complaintResolved",r.resolved==null?"":String(Boolean(r.resolved)));setReturnSelect("complaintReturned",r.package_returned==null?"":String(Boolean(r.package_returned)));$("#complaintAmount").value=r.compensation_amount??"";$("#complaintCurrency").value=r.compensation_currency??"";$("#complaintNotes").value=r.notes??"";$("#complaintEditorTitle").textContent=`编辑投诉·${r.complaint_number}`;$("#complaintEditor").open=true;$("#complaintEditor").scrollIntoView({behavior:"smooth"})};
+$("#complaintReset").onclick=()=>resetComplaintForm();
 $("#reasonRows").onclick=async e=>{const reason=e.target.closest("[data-reason]")?.dataset.reason;if(!reason)return;const target=$("#reasonDetails"),query=new URLSearchParams({shop_id:state.shop,reason,from:riskRange.start,to:riskRange.end});target.classList.remove("hidden");target.innerHTML="原因订单加载中…";try{const data=await api(`/api/risk/reasons?${query}`);target.innerHTML=`<h3>${esc(e.target.textContent)}对应订单</h3><div>${data.details.map(r=>`<span>${esc(r.shop_name)} · ${channelTag(r.channel)} · ${esc(r.posting_number)} · ${num(r.pieces,0)}件</span>`).join("")||'<span class="muted">当前时间范围内没有对应订单。</span>'}</div>`}catch(error){target.innerHTML=`<span class="error">${esc(error.message)}</span>`}};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 $("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
 $("#probeShops").onclick=async e=>{const button=e.target.closest("[data-probe]");if(!button)return;const id=button.dataset.probe,target=$("#probeResult"+id);button.disabled=true;target.classList.remove("hidden");target.innerHTML='<span class="probe-state">正在检测</span><p>正在验证凭据与权限，请稍候。</p>';try{target.innerHTML=probeResult(await api(`/api/ozon/probe/${id}`,{method:"POST"}))}catch(error){target.innerHTML=probeResult({valid:false,error:error.message})}finally{button.disabled=false}};
 $("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("钉钉设置已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
 $("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST"});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
-$("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});
-const exportNames={orders:"订单",risk:"SKU风险及原因",timeliness:"发货配送时效",returns:"退货",complaints:"投诉",stock:"库存",rules:"商品规则"};
-$("#exportButtons").innerHTML=Object.entries(exportNames).map(([key,name])=>`<button data-export="${key}">${name} JSONL</button>`).join("");
-$("#exportButtons").onclick=e=>{if(e.target.dataset.export)location.href=`/api/export/${e.target.dataset.export}?shop_id=${state.shop}`};
-$("#complaintForm").onsubmit=async e=>{e.preventDefault();const tri=id=>$(id).value===""?null:$(id).value==="true";await api("/api/complaints",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:Number($("#complaintShop").value),posting_number:$("#complaintPosting").value,complaint_number:$("#complaintNumber").value,complaint_at:new Date($("#complaintAt").value).toISOString(),channel:$("#complaintChannel").value,resolved:tri("#complaintResolved"),package_returned:tri("#complaintReturned"),compensation_amount:$("#complaintAmount").value||null,compensation_currency:$("#complaintCurrency").value,notes:$("#complaintNotes").value})});toast("投诉已保存");await loadComplaints()};
+let importing=false;
+const importFileValid=file=>file?.name.toLowerCase().endsWith(".csv");
+function updateImportReady(message=""){
+  const file=$("#importFile").files[0],ready=Boolean($("#importShop").value&&$("#importKind").value&&importFileValid(file));
+  $("#importSubmit").disabled=importing||!ready;
+  if(message)$("#importStatus").textContent=message;else if(!importing)$("#importStatus").textContent=ready?"已就绪，可以导入":"请选择店铺、渠道和 CSV 文件";
+}
+function showImportFile(file){
+  const valid=importFileValid(file);$("#importFileName").textContent=file?.name||"尚未选择文件";$("#importFileName").title=file?.name||"";$("#importFileSize").textContent=file?`${num(file.size/1024,1)} KB${valid?"":" · 仅支持 .csv"}`:"仅支持 .csv，最大 50MB";$("#importChooseFile").textContent=file?"更换文件":"选择文件";$("#importFilePanel").classList.toggle("is-invalid",Boolean(file&&!valid));updateImportReady(file&&!valid?"请选择 CSV 文件":"");
+}
+$("#importChooseFile").onclick=()=>$("#importFile").click();
+$("#importFilePanel").onclick=e=>{if(!e.target.closest("button"))$("#importFile").click()};
+$("#importFile").onchange=()=>showImportFile($("#importFile").files[0]);
+for(const id of ["importShop","importKind"])$("#"+id).addEventListener("change",()=>updateImportReady());
+$("#importFilePanel").ondragover=e=>{e.preventDefault();e.currentTarget.classList.add("is-dragging")};
+$("#importFilePanel").ondragleave=e=>e.currentTarget.classList.remove("is-dragging");
+$("#importFilePanel").ondrop=e=>{e.preventDefault();e.currentTarget.classList.remove("is-dragging");const file=e.dataTransfer.files[0];if(!file)return;const transfer=new DataTransfer();transfer.items.add(file);$("#importFile").files=transfer.files;showImportFile(file)};
+$("#importForm").addEventListener("submit",async e=>{e.preventDefault();if(importing)return;const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop||!kind||!importFileValid(file)){updateImportReady("请完整选择店铺、渠道和 CSV 文件");return}importing=true;$("#importSubmit").textContent="正在导入";updateImportReady("正在导入，请稍候…");try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});$("#importFile").value="";showImportFile();updateImportReady(`成功导入 ${num(result.rows,0)} 行`);toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){updateImportReady(`导入失败：${err.message}`);toast(err.message,true)}finally{importing=false;$("#importSubmit").textContent="导入数据";updateImportReady($("#importStatus").textContent)}});
+const exportNames={orders:["订单","订单号、渠道、时间、状态及金额"],risk:["SKU风险及原因","SKU、渠道、货件及固定取消原因"],timeliness:["发货配送时效","创建、实际发货和实际签收时间"],returns:["退货","取消记录和退货申请"],complaints:["投诉","投诉编号、状态、赔付及备注"],stock:["库存","库存来源、仓库和库存数量"],rules:["商品规则","短名称、合并组和品牌规则"]};
+$("#exportButtons").innerHTML=Object.entries(exportNames).map(([key,[name,description]])=>`<article class="export-card"><div><strong>${name}</strong><p>${description}</p><small>${key==="rules"?"当前规则，不受时间筛选影响":"受当前时间范围影响"}</small></div><button type="button" data-export="${key}">导出</button></article>`).join("");
+function updateExportScope(){const shop=state.shop?state.shops.find(item=>item.id===state.shop)?.name:"两店铺合并";$("#exportScope").textContent=`当前店铺：${shop||"两店铺合并"}｜时间范围：${exportRange.start} 至 ${exportRange.end}`}
+$("#exportButtons").onclick=e=>{const button=e.target.closest("[data-export]"),module=button?.dataset.export;if(!module)return;const query=new URLSearchParams({shop_id:state.shop});if(module!=="rules"){query.set("date_from",exportRange.start);query.set("date_to",exportRange.end)}button.disabled=true;const text=button.textContent;button.textContent="正在准备…";location.href=`/api/export/${module}?${query}`;setTimeout(()=>{button.disabled=false;button.textContent=text},800)};
+$("#complaintForm").onsubmit=async e=>{e.preventDefault();const tri=id=>$(id).value===""?null:$(id).value==="true";await api("/api/complaints",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:Number($("#complaintShop").value),posting_number:$("#complaintPosting").value,complaint_number:$("#complaintNumber").value,complaint_at:new Date(`${$("#complaintAt").value}:00+08:00`).toISOString(),channel:$("#complaintChannel").value,resolved:tri("#complaintResolved"),package_returned:tri("#complaintReturned"),compensation_amount:$("#complaintAmount").value||null,compensation_currency:$("#complaintCurrency").value,notes:$("#complaintNotes").value})});toast("投诉已保存");resetComplaintForm(true);state.pages.complaints=1;await loadComplaints()};
 $("#shortNameForm").onsubmit=async e=>{e.preventDefault();await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"short_name",key_type:$("#shortKeyType").value,key_value:$("#shortKeyValue").value,short_name:$("#shortName").value})});toast("短名称已保存");await loadRules()};
 $("#brandForm").onsubmit=async e=>{e.preventDefault();await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"brand",brand_name:$("#brandName").value,keyword:$("#brandKeyword").value,priority:Number($("#brandPriority").value),enabled:$("#brandEnabled").checked})});toast("品牌规则已保存");await loadRules()};
 $("#groupForm").onsubmit=async e=>{e.preventDefault();const members=$("#groupMembers").value.split(/\n+/).filter(Boolean).map(line=>{const [key_type,...rest]=line.split(":");return {key_type,key_value:rest.join(":").trim()}});await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"group",name:$("#groupName").value,members})});toast("合并组已保存");await loadRules()};
@@ -232,10 +295,12 @@ const overviewRange=createDateRange("#overviewDateRange",()=>loadOverview().catc
 const orderRange=createDateRange("#orderDateRange",()=>{state.page=1;loadOrders().catch(error=>toast(error.message,true))});
 const riskRange=createDateRange("#riskDateRange",()=>loadRisk().catch(error=>toast(error.message,true)));
 const timelinessRange=createDateRange("#timelinessDateRange",()=>{state.pages.timeliness=1;loadTimeliness().catch(error=>toast(error.message,true))});
+const returnsRange=createDateRange("#returnsDateRange",()=>{state.pages.returns=state.pages.rfbsReturns=state.pages.complaints=1;loadReturnPage().catch(error=>toast(error.message,true))});
+const exportRange=createDateRange("#exportDateRange",()=>updateExportScope());
 const syncRange=createDateRange("#syncDateRange",()=>{});
-document.addEventListener("click",e=>{if(!e.target.closest(".date-range-wrap"))document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));if(!e.target.closest(".shop-label")){$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}if(!e.target.closest(".channel-picker")){$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false")}if(!e.target.closest("#orderTrend"))$("#orderTrend .trend-tooltip")?.classList.add("hidden")});
+document.addEventListener("click",e=>{if(!e.target.closest(".date-range-wrap"))document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));if(!e.target.closest(".shop-label")){$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}if(!e.target.closest(".channel-picker")){$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false")}if(!e.target.closest("[data-return-select],[data-import-select]"))Object.values(returnSelects).forEach(select=>select.close());if(!e.target.closest("#orderTrend"))$("#orderTrend .trend-tooltip")?.classList.add("hidden")});
 $("#overviewExceptions").onclick=e=>{const page=e.target.closest("[data-overview-page]")?.dataset.overviewPage;if(page)openPage(page)};
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-button").forEach(button=>button.setAttribute("aria-expanded","false"));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false")}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-button").forEach(button=>button.setAttribute("aria-expanded","false"));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");Object.values(returnSelects).forEach(select=>select.close())}});
 $("#trendGranularity").onclick=e=>{const value=e.target.dataset.granularity;if(!value)return;state.overviewGranularity=value;$("#trendGranularity").querySelectorAll("button").forEach(button=>button.classList.toggle("active",button===e.target));loadOverview().catch(error=>toast(error.message,true))};
 $("#sync > .panel:first-child > .muted").textContent="每个按钮只调用本模块；长时段按自然月串行拉取，某月失败即停止。库存仅拉取一次当前快照。";
 async function waitForSync(runId,module){for(;;){const task=await api(`/api/sync/${runId}`);await loadSync();if(task.status!=="running"){if(task.status==="success")toast(`${syncNames[module]}拉取完成：${num(task.records,0)} 条`);else toast(task.error||"拉取失败",true);return}await new Promise(resolve=>setTimeout(resolve,1000))}}
