@@ -16,13 +16,16 @@ class TableLayoutTest(unittest.TestCase):
             self.assertIn(f"{selector} table{{min-width:", styles)
             self.assertIn(f"{selector} th:nth-child", styles)
 
-    def test_stock_uses_responsive_sku_cards(self):
+    def test_stock_uses_responsive_decision_table(self):
         html = (ROOT / "static/index.html").read_text()
         script = (ROOT / "static/app.js").read_text()
         styles = (ROOT / "static/style.css").read_text()
-        self.assertIn('id="stockRows" class="stock-grid"', html)
-        self.assertIn('class="stock-card"', script)
-        self.assertIn('.stock-channel-grid{display:grid;grid-template-columns:repeat(3', styles)
+        self.assertIn('class="stock-table"', html)
+        self.assertIn('id="stockFilterForm"', html)
+        self.assertIn('data-label="FBP备货决策"', script)
+        self.assertIn('.stock-table thead{display:none}', styles)
+        self.assertNotIn("API快照", html + script)
+        self.assertNotIn("stockFormula", html + script)
 
 
 if __name__ == "__main__":

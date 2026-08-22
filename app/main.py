@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import math
 import secrets
 import statistics
 import threading
@@ -956,70 +957,116 @@ def _latest_snapshots(db, table, shop_id):
 
 
 @app.get("/api/stock")
-def stock(shop_id: int = 0, page: int = 1, size: int = 50):
+def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
+          offer_id: str = "", product_name: str = ""):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
     page, size = _paging(page, size)
+    now = datetime.now(timezone.utc)
+    cutoffs = [(now - timedelta(days=days)).isoformat() for days in (7, 15, 30)]
+    shop_clause, shop_args = _shop_clause(shop_id)
     with connect() as db:
         records = _latest_snapshots(db, "stock_snapshots", shop_id)
         sales = {(row["shop_id"], row["sku"]): dict(row) for row in db.execute(f"""SELECT i.shop_id,i.sku,
-          SUM(CASE WHEN o.created_at>=datetime('now','-7 days') THEN i.quantity ELSE 0 END) sales_7,
-          SUM(CASE WHEN o.created_at>=datetime('now','-30 days') THEN i.quantity ELSE 0 END) sales_30
+          SUM(CASE WHEN julianday(o.created_at)>=julianday(?) THEN i.quantity ELSE 0 END) sales_7,
+          SUM(CASE WHEN julianday(o.created_at)>=julianday(?) THEN i.quantity ELSE 0 END) sales_15,
+          SUM(i.quantity) sales_30
           FROM order_items i JOIN orders o USING(shop_id,posting_number)
-          WHERE {ACTIVE.replace('o.', 'o.')}{_shop_clause(shop_id)[0]}
-          GROUP BY i.shop_id,i.sku""", _shop_clause(shop_id)[1])}
-    items, shops = [], {}
+          WHERE {ACTIVE} AND o.channel IN ('FBP','realFBS')
+            AND julianday(o.created_at)>=julianday(?) {shop_clause}
+          GROUP BY i.shop_id,i.sku""", cutoffs + shop_args)}
+        metadata = {}
+        for row in db.execute(f"""SELECT i.shop_id,i.sku,i.offer_id,i.product_name_raw,i.source,o.created_at
+          FROM order_items i JOIN orders o USING(shop_id,posting_number)
+          WHERE 1=1 {shop_clause}
+          ORDER BY (i.source='api') DESC,julianday(o.created_at) DESC""", shop_args):
+            item = metadata.setdefault((row["shop_id"], row["sku"]), {"offer_id": "", "product_name_raw": ""})
+            item["offer_id"] = item["offer_id"] or row["offer_id"] or ""
+            item["product_name_raw"] = item["product_name_raw"] or row["product_name_raw"] or ""
+        shop_names = {row["id"]: row["name"] for row in db.execute("SELECT id,name FROM shops")}
+        short_names = {(row["key_type"], row["key_value"]): row["short_name"] for row in
+                       db.execute("SELECT key_type,key_value,short_name FROM product_short_names")}
+        sales_through = db.execute(f"""SELECT MAX(data_through) FROM sync_runs o
+          WHERE module='orders' AND status='success'{shop_clause}""", shop_args).fetchone()[0]
+        if not sales_through:
+            sales_through = db.execute(f"""SELECT MAX(o.created_at) FROM orders o
+              WHERE o.channel IN ('FBP','realFBS'){shop_clause}""", shop_args).fetchone()[0]
+    grouped = {}
+    channel_names = {"fbp": "FBP", "rfbs": "realFBS", "fbo": "WHD"}
     for row in records:
         payload = json.loads(row["payload"])
         for value in payload.get("stocks") or []:
-            items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
-              "observed_at": row["observed_at"], "product_id": payload.get("product_id"),
-              "offer_id": payload.get("offer_id"), "sku": str(value.get("sku") or payload.get("product_id") or ""),
-              "warehouse_id": ",".join(map(str, value.get("warehouse_ids") or [])),
-              "present": int(value.get("present") or 0), "reserved": int(value.get("reserved") or 0),
-              "types": value.get("type") or value.get("shipment_type") or "", "source": "API快照"})
-    channel_names = {"fbp": "FBP", "rfbs": "realFBS", "fbo": "WHD"}
-    grouped = {}
-    for item in items:
-        if item["present"] <= 0 and item["reserved"] <= 0:
-            continue
-        key = item["shop_id"], item["sku"]
-        group = grouped.setdefault(key, {"shop_id": item["shop_id"], "shop_name": item["shop_name"],
-          "sku": item["sku"], "offer_id": item.get("offer_id"), "product_id": item.get("product_id"),
-          "_channels": {}})
-        group["offer_id"] = group["offer_id"] or item.get("offer_id")
-        group["product_id"] = group["product_id"] or item.get("product_id")
-        channel = channel_names.get(str(item.get("types") or "").lower(), "库存事件")
-        source = group["_channels"].setdefault(channel, {}).setdefault(item["source"], {
-          "channel": channel, "source": item["source"], "present": 0, "reserved": 0,
-          "observed_at": item["observed_at"], "warehouses": set()})
-        source["present"] += item["present"]
-        source["reserved"] += item["reserved"]
-        source["observed_at"] = max(source["observed_at"] or "", item["observed_at"] or "")
-        source["warehouses"].update(filter(None, str(item.get("warehouse_id") or "").split(",")))
+            item_sku = str(value.get("sku") or payload.get("product_id") or "")
+            channel = channel_names.get(str(value.get("type") or "").lower())
+            if not item_sku or not channel:
+                continue
+            key = row["shop_id"], item_sku
+            group = grouped.setdefault(key, {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+              "sku": item_sku, "offer_id": str(payload.get("offer_id") or ""),
+              "product_id": payload.get("product_id"), "_channels": {}})
+            group["offer_id"] = group["offer_id"] or str(payload.get("offer_id") or "")
+            stock_value = group["_channels"].setdefault(channel, {"channel": channel, "source": "api",
+              "present": 0, "reserved": 0, "observed_at": row["observed_at"]})
+            stock_value["present"] += int(value.get("present") or 0)
+            stock_value["reserved"] += int(value.get("reserved") or 0)
+            stock_value["observed_at"] = max(stock_value["observed_at"] or "", row["observed_at"] or "")
+    for key in sales:
+        grouped.setdefault(key, {"shop_id": key[0], "shop_name": shop_names.get(key[0], f"店铺{key[0]}"),
+          "sku": key[1], "offer_id": "", "product_id": None, "_channels": {}})
     cards = []
-    channel_order = {"FBP": 0, "realFBS": 1, "WHD": 2, "库存事件": 3}
     for group in grouped.values():
-        channels = [max(sources.values(), key=lambda value: value["observed_at"] or "")
-                    for sources in group.pop("_channels").values()]
-        for channel in channels:
-            channel["warehouse_id"] = ", ".join(sorted(channel.pop("warehouses")))
-        channels.sort(key=lambda value: channel_order[value["channel"]])
+        channels_by_name = group.pop("_channels")
+        channels = [channels_by_name.get(channel, {"channel": channel, "source": "api",
+                    "present": 0, "reserved": 0, "observed_at": None})
+                    for channel in ("FBP", "realFBS", "WHD")]
         sold = sales.get((group["shop_id"], group["sku"]), {})
+        meta = metadata.get((group["shop_id"], group["sku"]), {})
+        group["offer_id"] = group["offer_id"] or meta.get("offer_id") or ""
+        group["product_name_raw"] = meta.get("product_name_raw") or ""
+        group["short_name"] = (short_names.get(("offer_id", group["offer_id"])) or
+                               short_names.get(("sku", group["sku"])) or "")
+        group["display_name"] = group["short_name"] or group["product_name_raw"] or "产品名称暂无"
         group["channels"] = channels
         group["present"] = sum(value["present"] for value in channels)
         group["reserved"] = sum(value["reserved"] for value in channels)
         group["sales_7"] = int(sold.get("sales_7") or 0)
+        group["sales_15"] = int(sold.get("sales_15") or 0)
         group["sales_30"] = int(sold.get("sales_30") or 0)
-        group["days_available"] = round(group["present"] / (group["sales_30"] / 30), 1) if group["sales_30"] else None
-        group["observed_at"] = max(value["observed_at"] for value in channels)
-        summary = shops.setdefault(group["shop_id"], {"shop_id": group["shop_id"],
-          "shop_name": group["shop_name"], "products": 0, "present": 0, "reserved": 0})
-        summary["products"] += 1; summary["present"] += group["present"]; summary["reserved"] += group["reserved"]
+        daily = .5 * group["sales_7"] / 7 + .3 * group["sales_15"] / 15 + .2 * group["sales_30"] / 30
+        fbp = channels[0]
+        group["daily_sales"] = round(daily, 2)
+        group["fbp_present"], group["fbp_reserved"] = fbp["present"], fbp["reserved"]
+        group["days_available"] = round(fbp["present"] / daily, 1) if daily else None
+        group["replenishment"] = math.ceil(max(daily * 60 - max(fbp["present"] - daily * 30, 0), 0)) if daily else None
+        if not daily:
+            group["risk_status"] = "暂无FBP及realFBS有效销量，无法估算"
+        elif not fbp["present"]:
+            group["risk_status"] = "FBP无库存，建议备货"
+        elif group["days_available"] < 30:
+            group["risk_status"] = "预计到货前缺货"
+        elif group["days_available"] < 90:
+            group["risk_status"] = "建议FBP备货"
+        else:
+            group["risk_status"] = "暂不需要FBP备货"
+        group["observed_at"] = max((value["observed_at"] or "" for value in channels), default="") or None
+        filters = ((sku, group["sku"]), (offer_id, group["offer_id"]),
+                   (product_name, f"{group['product_name_raw']} {group['short_name']}"))
+        if any(value.strip().lower() not in target.lower() for value, target in filters if value.strip()):
+            continue
         cards.append(group)
-    cards.sort(key=lambda value: (value["shop_id"], value["sku"]))
+    risk_order = {"FBP无库存，建议备货": 0, "预计到货前缺货": 1, "建议FBP备货": 2,
+                  "暂不需要FBP备货": 3, "暂无FBP及realFBS有效销量，无法估算": 4}
+    cards.sort(key=lambda value: (value["shop_id"], risk_order[value["risk_status"]], value["sku"]))
     total = len(cards); start = (page - 1) * size
-    through = max((item["observed_at"] for item in cards), default=None)
-    return {"summary": {"records": total, "shops": list(shops.values())}, "items": cards[start:start + size],
+    through = max((item["observed_at"] for item in cards if item["observed_at"]), default=None)
+    summary = {"active_skus": total,
+               "fbp_present": sum(item["fbp_present"] for item in cards),
+               "fbp_reserved": sum(item["fbp_reserved"] for item in cards),
+               "replenishment_skus": sum(item["daily_sales"] > 0 and item["days_available"] < 90 for item in cards),
+               "shortage_skus": sum(item["daily_sales"] > 0 and item["days_available"] < 30 for item in cards)}
+    return {"summary": summary, "items": cards[start:start + size],
             "total": total, "page": page, "size": size, "data_through": through,
+            "sales_through": sales_through,
             "formula": "预计可售天数=当前可售库存÷(近30天有效货件数÷30)；无销量时无法估算"}
 
 

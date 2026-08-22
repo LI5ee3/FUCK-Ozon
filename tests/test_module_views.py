@@ -23,7 +23,8 @@ class ModuleViewsTest(unittest.TestCase):
                                             "visual": {"status": {"display_name": "На складе"}}}),
                                 "2026-08-02T00:00:00Z"))
             connection.execute("INSERT INTO stock_snapshots VALUES(1,'S-1','2026-08-03T00:00:00Z',?)",
-                               (json.dumps({"offer_id": "O-1", "stocks": [{"present": 2, "reserved": 1}]}),))
+                               (json.dumps({"offer_id": "O-1", "stocks": [
+                                   {"sku": "S-1", "type": "fbp", "present": 2, "reserved": 1}]}),))
             connection.execute("""INSERT INTO rfbs_return_records(
               shop_id,return_id,return_number,created_at,posting_number,offer_id,sku,product_name,
               status_raw,status_name,payload,fetched_at) VALUES(
@@ -90,7 +91,7 @@ class ModuleViewsTest(unittest.TestCase):
         self.assertEqual(item["status_raw"], "等待登记")
         self.assertEqual(item["cancel_reason_raw"], "买家取消：配送时效不符合预期")
 
-    def test_stock_groups_channels_by_sku_and_hides_zero_inventory(self):
+    def test_stock_groups_channels_by_sku_and_keeps_zero_inventory(self):
         payload = lambda sku, values: json.dumps({"offer_id": f"O-{sku}", "stocks": [
           {"sku": sku, "type": channel, "present": present, "reserved": reserved}
           for channel, present, reserved in values]})
@@ -101,11 +102,11 @@ class ModuleViewsTest(unittest.TestCase):
             connection.execute("INSERT INTO stock_snapshots VALUES(1,'B','2026-08-05T00:00:00Z',?)",
                                (payload("S-0", [("fbp", 0, 0), ("rfbs", 0, 0)]),))
         data = stock(1)
-        self.assertEqual(data["total"], 1)
-        self.assertEqual(data["items"][0]["sku"], "S-1")
-        self.assertEqual([row["channel"] for row in data["items"][0]["channels"]],
+        self.assertEqual(data["total"], 2)
+        item = next(row for row in data["items"] if row["sku"] == "S-1")
+        self.assertEqual([row["channel"] for row in item["channels"]],
                          ["FBP", "realFBS", "WHD"])
-        self.assertEqual(data["items"][0]["present"], 9)
+        self.assertEqual(item["present"], 9)
 
 
 if __name__ == "__main__":
