@@ -27,6 +27,16 @@ from .security import (clear_login_failures, login_limited, migrate_env_password
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
+BUYER_UNCLAIMED_REASONS = (
+    "Покупатель не забрал заказ",
+    "Покупатель отменил заказ",
+    "Покупатель отменил заказ: не устроил срок доставки",
+    "Покупатель отказался при вручении: товар не подошел",
+    "Покупатель отменил заказ: нашел дешевле",
+)
+RISK_REASON_ZH = CANCEL_REASON_ZH | {
+    "Покупатель отменил заказ: не устроил срок доставки": "买家取消：对配送时间不满意",
+}
 SYNC_MODULES = {"orders", "returns", "stock"}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
@@ -448,16 +458,21 @@ def _translated_order(row):
 
 
 @app.get("/api/orders")
-def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size: int = 30):
-    where, args = ["1=1"], []
+def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size: int = 30,
+           date_from: Annotated[str | None, Query(alias="from")] = None,
+           date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    where, args = ["julianday(o.created_at)>=julianday(?)", "julianday(o.created_at)<julianday(?)"], [utc_start, utc_end]
     if shop_id in (1, 2):
         where.append("o.shop_id=?"); args.append(shop_id)
     if channel:
         if channel not in CHANNELS: raise HTTPException(400, "未知渠道")
         where.append("o.channel=?"); args.append(channel)
     if q:
-        where.append("(o.posting_number LIKE ? OR EXISTS(SELECT 1 FROM order_items x WHERE x.shop_id=o.shop_id AND x.posting_number=o.posting_number AND (x.sku LIKE ? OR x.product_name_raw LIKE ?)))")
-        args.extend([f"%{q}%"] * 3)
+        where.append("(o.posting_number LIKE ? OR EXISTS(SELECT 1 FROM order_items x WHERE x.shop_id=o.shop_id AND x.posting_number=o.posting_number AND (x.sku LIKE ? OR x.offer_id LIKE ? OR x.product_name_raw LIKE ?)))")
+        args.extend([f"%{q}%"] * 4)
     page, size = max(page, 1), min(max(size, 1), 100)
     sql_where = " AND ".join(where)
     with connect() as db:
@@ -477,57 +492,109 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
                   quantity,unit_price,price_currency FROM order_items
                   WHERE shop_id=? AND posting_number=? ORDER BY sku""",
                 (order["shop_id"], order["posting_number"]))]
+            order["sku_types"] = len(order["items"])
+            order["pieces"] = sum(item["quantity"] for item in order["items"])
     return {"items": result, "total": total, "page": page, "size": size}
 
 
 @app.get("/api/risk")
-def risk(shop_id: int = 0, grouped: bool = False):
+def risk(shop_id: int = 0, grouped: bool = False,
+         date_from: Annotated[str | None, Query(alias="from")] = None,
+         date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    start, end, utc_start, utc_end = _overview_range(date_from, date_to)
     clause, args = _shop_clause(shop_id)
     group_join = """LEFT JOIN product_groups g ON g.id=COALESCE(
       (SELECT group_id FROM product_group_members m WHERE m.key_type='offer_id' AND m.key_value=i.offer_id),
       (SELECT group_id FROM product_group_members m WHERE m.key_type='sku' AND m.key_value=i.sku))""" if grouped else ""
-    sku_value = "COALESCE(g.name,i.sku)" if grouped else "i.sku"
+    group_key = "CASE WHEN g.id IS NULL THEN 'sku:'||COALESCE(i.sku,'') ELSE 'group:'||g.id END" if grouped else "'sku:'||COALESCE(i.sku,'')"
+    group_name = "g.name" if grouped else "NULL"
+    unclaimed = ",".join("?" for _ in BUYER_UNCLAIMED_REASONS)
     with connect() as db:
         rows = [dict(row) for row in db.execute(f"""
-          SELECT o.shop_id,s.name shop_name,o.channel,{sku_value} sku,MAX(COALESCE(
+          SELECT o.shop_id,s.name shop_name,o.channel,{group_key} item_key,{group_name} group_name,
+            GROUP_CONCAT(DISTINCT i.sku) member_skus,
+            GROUP_CONCAT(DISTINCT COALESCE(i.sku,'')||' '||COALESCE(i.offer_id,'')||' '||COALESCE(i.product_name_raw,'')) search_text,
+            MAX(COALESCE(
             (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=i.offer_id),
             (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=i.sku),
             i.product_name_raw)) product_name,
             SUM(i.quantity) valid_pieces,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 THEN i.quantity ELSE 0 END) cancelled_pieces,
-            SUM(CASE WHEN o.cancel_reason_raw='Покупатель не забрал заказ' THEN i.quantity ELSE 0 END) unclaimed_pieces,
-            SUM(CASE WHEN o.cancel_reason_raw='Отправление не прошло таможенное оформление' THEN i.quantity ELSE 0 END) customs_pieces
+            SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw IN ({unclaimed}) THEN i.quantity ELSE 0 END) unclaimed_pieces,
+            SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw='Отправление не прошло таможенное оформление' THEN i.quantity ELSE 0 END) customs_pieces
           FROM orders o JOIN shops s ON s.id=o.shop_id JOIN order_items i USING(shop_id,posting_number)
-          {group_join} WHERE {ACTIVE}{clause} GROUP BY o.shop_id,o.channel,{sku_value}
-          ORDER BY cancelled_pieces DESC,valid_pieces DESC
-        """, args)]
-    for row in rows:
+          {group_join} WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
+            AND julianday(o.created_at)<julianday(?){clause}
+          GROUP BY o.shop_id,o.channel,{group_key},{group_name}
+        """, [*BUYER_UNCLAIMED_REASONS, utc_start, utc_end, *args])]
+
+    def stats(values):
+        result = {key: sum(int(row[f"{key}_pieces"] or 0) for row in values)
+                  for key in ("valid", "cancelled", "unclaimed", "customs")}
         for key in ("cancelled", "unclaimed", "customs"):
-            row[f"{key}_rate"] = row[f"{key}_pieces"] / row["valid_pieces"] if row["valid_pieces"] else 0
-    return rows
+            result[f"{key}_rate"] = result[key] / result["valid"] if result["valid"] else None
+        return result
+
+    items = []
+    for item_key in sorted({(row["shop_id"], row["item_key"]) for row in rows}):
+        values = [row for row in rows if (row["shop_id"], row["item_key"]) == item_key]
+        skus = sorted({sku for row in values for sku in (row["member_skus"] or "").split(",") if sku})
+        items.append({"shop_id": values[0]["shop_id"], "shop_name": values[0]["shop_name"],
+                      "item_key": item_key[1], "sku": skus[0] if len(skus) == 1 else "、".join(skus),
+                      "group_name": values[0]["group_name"], "member_count": len(skus),
+                      "product_name": max((row["product_name"] or "" for row in values), default=""),
+                      "search_text": " ".join(row["search_text"] or "" for row in values),
+                      "total": stats(values),
+                      "channels": {channel: stats([row for row in values if row["channel"] == channel])
+                                   if any(row["channel"] == channel for row in values) else None
+                                   for channel in ("FBP", "realFBS", "WHD")}})
+    items.sort(key=lambda row: (-row["total"]["cancelled"], -row["total"]["valid"],
+                                row["shop_id"], row["item_key"]))
+    return {"range": {"from": start.isoformat(), "to": end.isoformat()}, "summary": stats(rows),
+            "items": items}
 
 
 @app.get("/api/risk/reasons")
-def risk_reasons(shop_id: int = 0, reason: str = ""):
+def risk_reasons(shop_id: int = 0, reason: str = "",
+                 date_from: Annotated[str | None, Query(alias="from")] = None,
+                 date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    start, end, utc_start, utc_end = _overview_range(date_from, date_to)
     clause, args = _shop_clause(shop_id)
     extra = ""
     if reason:
-        extra = " AND o.cancel_reason_raw=?"; args.append(reason)
+        extra = " AND COALESCE(NULLIF(o.cancel_reason_raw,''),'原因暂缺')=?"; args.append(reason)
     with connect() as db:
         rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,o.channel,
           COALESCE(NULLIF(o.cancel_reason_raw,''),'原因暂缺') reason_raw,
           COUNT(DISTINCT o.posting_number) orders,SUM(i.quantity) pieces
           FROM orders o JOIN shops s ON s.id=o.shop_id JOIN order_items i USING(shop_id,posting_number)
-          WHERE o.status_raw='已取消' AND o.shipped=1{clause}{extra}
-          GROUP BY o.shop_id,o.channel,reason_raw ORDER BY pieces DESC""", args)]
+          WHERE o.status_raw='已取消' AND o.shipped=1 AND julianday(o.created_at)>=julianday(?)
+            AND julianday(o.created_at)<julianday(?){clause}{extra}
+          GROUP BY o.shop_id,o.channel,reason_raw ORDER BY pieces DESC""", [utc_start, utc_end, *args])]
         details = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,o.channel,
           o.posting_number,SUM(i.quantity) pieces FROM orders o JOIN shops s ON s.id=o.shop_id
           JOIN order_items i USING(shop_id,posting_number)
-          WHERE o.status_raw='已取消' AND o.shipped=1{clause}{extra}
-          GROUP BY o.shop_id,o.channel,o.posting_number ORDER BY o.posting_number""", args)] if reason else []
-    for row in rows:
-        row["reason_name"] = CANCEL_REASON_ZH.get(row["reason_raw"], row["reason_raw"])
-    return {"items": rows, "details": details}
+          WHERE o.status_raw='已取消' AND o.shipped=1 AND julianday(o.created_at)>=julianday(?)
+            AND julianday(o.created_at)<julianday(?){clause}{extra}
+          GROUP BY o.shop_id,o.channel,o.posting_number ORDER BY o.posting_number""",
+          [utc_start, utc_end, *args])] if reason else []
+    items = []
+    for reason_raw in sorted({row["reason_raw"] for row in rows}):
+        values = [row for row in rows if row["reason_raw"] == reason_raw]
+        items.append({"reason_raw": reason_raw,
+                      "reason_name": RISK_REASON_ZH.get(reason_raw, reason_raw),
+                      "total": {"orders": sum(row["orders"] for row in values),
+                                "pieces": sum(row["pieces"] for row in values)},
+                      "channels": {channel: {"orders": sum(row["orders"] for row in values if row["channel"] == channel),
+                                             "pieces": sum(row["pieces"] for row in values if row["channel"] == channel)}
+                                   for channel in ("FBP", "realFBS", "WHD")}})
+    items.sort(key=lambda row: (-row["total"]["pieces"], row["reason_raw"]))
+    return {"range": {"from": start.isoformat(), "to": end.isoformat()},
+            "items": items, "details": details}
 
 
 def _percentile(values, fraction):
@@ -560,19 +627,37 @@ def _duration_hours(start, end):
 
 
 @app.get("/api/timeliness")
-def timeliness(shop_id: int = 0, page: int = 1, size: int = 30):
-    clause, args = _shop_clause(shop_id)
+def timeliness(shop_id: int = 0, page: int = 1, size: int = 30, q: str = "",
+               date_from: Annotated[str | None, Query(alias="from")] = None,
+               date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    start_date, end_date, utc_start, utc_end = _overview_range(date_from, date_to)
+    clause, shop_args = _shop_clause(shop_id)
     page, size = _paging(page, size)
+    base_where = f"{ACTIVE} AND julianday(o.created_at)>=julianday(?) AND julianday(o.created_at)<julianday(?){clause}"
+    base_args = [utc_start, utc_end, *shop_args]
+    detail_where, detail_args = base_where, list(base_args)
+    if q.strip():
+        detail_where += " AND o.posting_number LIKE ?"
+        detail_args.append(f"%{q.strip()}%")
     with connect() as db:
         all_rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,
           o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at
-          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {ACTIVE}{clause}
-          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC""", args)]
-        through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}", args).fetchone()[0]
+          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {base_where}
+          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC""", base_args)]
+        through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {base_where}", base_args).fetchone()[0]
+        total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {detail_where}", detail_args).fetchone()[0]
+        rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,
+          o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at
+          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {detail_where}
+          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC LIMIT ? OFFSET ?""",
+          [*detail_args, size, (page - 1) * size])]
     ship_values, delivery_values = [], []
     grouped = {}
     for row in all_rows:
-        if row["channel"] in ("FBP", "realFBS") and row["delivered_at"] == row["shipped_at"]:
+        shipped_moment, delivered_moment = _utc_moment(row["shipped_at"]), _utc_moment(row["delivered_at"])
+        if row["channel"] in ("FBP", "realFBS") and delivered_moment and delivered_moment == shipped_moment:
             row["delivered_at"] = None
         ship_hours = _duration_hours(row["created_at"], row["shipped_at"])
         delivery_hours = _duration_hours(row["shipped_at"], row["delivered_at"])
@@ -609,12 +694,16 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30):
           "shipped_completeness": group["shipped"] / orders_count if orders_count else 0,
           "delivered_completeness": group["delivered"] / orders_count if orders_count else 0})
     groups.sort(key=lambda value: (value["shop_id"], {"FBP": 0, "realFBS": 1, "WHD": 2}[value["channel"]]))
-    start = (page - 1) * size
-    rows = all_rows[start:start + size]
     for row in rows:
+        shipped_moment, delivered_moment = _utc_moment(row["shipped_at"]), _utc_moment(row["delivered_at"])
+        if row["channel"] in ("FBP", "realFBS") and delivered_moment and delivered_moment == shipped_moment:
+            row["delivered_at"] = None
         row["ship_hours"] = _duration_hours(row["created_at"], row["shipped_at"])
         row["delivery_hours"] = _duration_hours(row["shipped_at"], row["delivered_at"])
-    return {"summary": summary, "items": rows, "total": len(all_rows), "page": page, "size": size,
+        row["ship_anomaly"] = bool(row["shipped_at"]) and row["ship_hours"] is None
+        row["delivery_anomaly"] = bool(row["delivered_at"]) and row["delivery_hours"] is None
+    return {"range": {"from": start_date.isoformat(), "to": end_date.isoformat()},
+            "summary": summary, "items": rows, "total": total, "page": page, "size": size,
             "groups": groups, "data_through": through}
 
 

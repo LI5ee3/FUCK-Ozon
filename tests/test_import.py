@@ -284,17 +284,16 @@ class ImportRegressionTest(unittest.TestCase):
         script = (ROOT / "static/app.js").read_text()
         self.assertIn('${num(v,1)} 小时 / ${num(v/24,1)} 天', script)
 
-    def test_timeliness_group_uses_responsive_metric_cards(self):
+    def test_timeliness_group_uses_responsive_matrix(self):
         html = (ROOT / "static/index.html").read_text()
         script = (ROOT / "static/app.js").read_text()
         styles = (ROOT / "static/style.css").read_text()
-        self.assertIn('id="timelinessGroupRows" class="timeliness-grid"', html)
-        self.assertNotIn('<tbody id="timelinessGroupRows">', html)
-        self.assertIn('class="timing-card"', script)
-        self.assertIn('timingMetric("中位数 P50",p50,true)', script)
+        self.assertIn('<tbody id="timelinessGroupRows">', html)
+        self.assertIn('class="timeliness-matrix"', html)
+        self.assertIn('timelinessStatCell("发货时效"', script)
         self.assertIn('样本不足', script)
-        self.assertIn('.timing-metric.featured', styles)
-        self.assertIn('.timeliness-grid{display:grid', styles)
+        self.assertIn('.timeliness-p50{', styles)
+        self.assertIn('.timeliness-matrix{', styles)
 
 
 if __name__ == "__main__":

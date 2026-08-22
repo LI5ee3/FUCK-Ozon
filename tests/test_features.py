@@ -68,7 +68,7 @@ class FeatureRegressionTest(unittest.TestCase):
             connection.execute("""UPDATE orders SET status_raw='已取消',cancel_reason_raw='未知俄语',
               cancelled_after_ship=1 WHERE posting_number='P-1'""")
         reason = risk_reasons(1)["items"][0]
-        self.assertEqual((reason["reason_name"], reason["pieces"]), ("未知俄语", 2))
+        self.assertEqual((reason["reason_name"], reason["total"]["pieces"]), ("未知俄语", 2))
 
     def test_timeliness_rejects_historical_fbs_delivery_fallback(self):
         with db.transaction() as connection:
@@ -82,7 +82,7 @@ class FeatureRegressionTest(unittest.TestCase):
         orders = [
           ("V1", "2026-08-01T00:00:00Z", "2026-08-01T01:00:00Z", "2026-08-01T03:00:00Z", "已签收", 1),
           ("V2", "2026-08-01T00:00:00Z", "2026-08-01T02:00:00Z", "2026-08-01T05:00:00Z", "已签收", 1),
-          ("V3", "坏时间", "2026-08-01T03:00:00Z", "2026-08-01T07:00:00Z", "已签收", 1),
+          ("V3", "2026-08-01T00:00:00Z", "坏时间", "坏时间", "已签收", 1),
           ("V4", "2026-08-01T00:00:00Z", None, "2026-08-01T08:00:00Z", "已签收", 1),
           ("V5", "2026-08-01T00:00:00Z", "2026-08-01T04:00:00Z", None, "配送中", 1),
           ("V6", "2026-08-01T05:00:00Z", "2026-08-01T04:00:00Z", "2026-08-01T06:00:00Z", "已签收", 1),
@@ -100,18 +100,20 @@ class FeatureRegressionTest(unittest.TestCase):
         data = timeliness(1)
         group = data["groups"][0]
         self.assertEqual(data["total"], 7)
-        self.assertEqual((group["ship_samples"], group["delivery_samples"]), (4, 4))
+        self.assertEqual((group["ship_samples"], group["delivery_samples"]), (4, 3))
         self.assertAlmostEqual(group["p50_ship_hours"], 2.5)
         self.assertAlmostEqual(group["avg_ship_hours"], 2.5)
         self.assertAlmostEqual(group["p90_ship_hours"], 3.7)
-        self.assertAlmostEqual(group["p50_delivery_hours"], 2.5)
-        self.assertAlmostEqual(group["avg_delivery_hours"], 2.75)
-        self.assertAlmostEqual(group["p90_delivery_hours"], 3.7)
+        self.assertAlmostEqual(group["p50_delivery_hours"], 2)
+        self.assertAlmostEqual(group["avg_delivery_hours"], 7 / 3)
+        self.assertAlmostEqual(group["p90_delivery_hours"], 2.8)
         self.assertEqual((group["created_completeness"], group["shipped_completeness"],
-                          group["delivered_completeness"]), (6 / 7, 6 / 7, 6 / 7))
+                          group["delivered_completeness"]), (1, 5 / 7, 5 / 7))
         self.assertTrue(group["ship_sample_insufficient"])
         self.assertTrue(group["delivery_sample_insufficient"])
         rows = {row["posting_number"]: row for row in data["items"]}
+        self.assertTrue(rows["V3"]["ship_anomaly"])
+        self.assertTrue(rows["V3"]["delivery_anomaly"])
         self.assertIsNone(rows["V4"]["ship_hours"])
         self.assertIsNone(rows["V6"]["ship_hours"])
         self.assertIsNone(rows["V7"]["delivery_hours"])
