@@ -5,12 +5,13 @@ import secrets
 import statistics
 import threading
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -216,27 +217,227 @@ def _paging(page, size):
     return max(page, 1), min(max(size, 1), 100)
 
 
-@app.get("/api/summary")
-def summary(shop_id: int = 0):
+def _months_before(value, months=3):
+    month = value.month - months - 1
+    year, month = value.year + month // 12, month % 12 + 1
+    next_month = date(year + (month == 12), month % 12 + 1, 1)
+    return date(year, month, min(value.day, (next_month - timedelta(days=1)).day))
+
+
+def _overview_range(date_from=None, date_to=None, now=None):
+    today = (now or datetime.now(BEIJING)).date()
+    try:
+        end = date.fromisoformat(date_to) if date_to else today
+        start = date.fromisoformat(date_from) if date_from else _months_before(end)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "日期格式必须为 YYYY-MM-DD") from error
+    if start > end:
+        raise HTTPException(400, "开始日期不能晚于结束日期")
+    utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
+    utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
+    return start, end, utc_start.isoformat(), utc_end.isoformat()
+
+
+def _bucket_start(value, granularity):
+    if granularity == "week":
+        return value - timedelta(days=value.weekday())
+    if granularity == "month":
+        return value.replace(day=1)
+    return value
+
+
+def _next_bucket(value, granularity):
+    if granularity == "day":
+        return value + timedelta(days=1)
+    if granularity == "week":
+        return value + timedelta(days=7)
+    return date(value.year + (value.month == 12), value.month % 12 + 1, 1)
+
+
+def _beijing_date(value):
+    moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(BEIJING).date()
+
+
+def _gmv_summary(rows, shop_id):
+    currency = "USD" if shop_id == 1 else "CNY"
+    amount = 0.0
+    missing = 0
+    for row in rows:
+        value = row["amount_original"] if row["amount_original"] is not None else row["item_amount"]
+        value_currency = row["amount_currency"] or row["item_currency"] or row["settlement_currency"]
+        if value is None or (shop_id == 0 and value_currency != "CNY") or (shop_id and value_currency != currency):
+            missing += 1
+        else:
+            amount += value
+    return {"amount": round(amount, 2), "currency": currency if shop_id else "CNY",
+            "missing_rate_orders": missing}
+
+
+RETURN_PENDING_STATUSES = {
+    "AwaitingProcessing", "OnSellerApproval", "OnWayToOzon", "CheckingStatus",
+    "PassedToPartner", "ApprovedOnPreModerationByOzon", "Approved", "OnWay",
+    "UtilizingByOzon", "OnSellerClarificationAfterPartialCompensation",
+}
+
+
+def _overview_timeliness(rows):
+    grouped = {channel: {"ship": [], "delivery": []} for channel in ("FBP", "realFBS", "WHD")}
+    for row in rows:
+        delivered_at = row["delivered_at"]
+        if row["channel"] in ("FBP", "realFBS") and delivered_at == row["shipped_at"]:
+            delivered_at = None
+        ship = _duration_hours(row["created_at"], row["shipped_at"])
+        delivery = _duration_hours(row["shipped_at"], delivered_at)
+        if ship is not None:
+            grouped[row["channel"]]["ship"].append(ship)
+        if delivery is not None:
+            grouped[row["channel"]]["delivery"].append(delivery)
+    return [{"channel": channel,
+             "ship_samples": len(values["ship"]),
+             "delivery_samples": len(values["delivery"]),
+             "p50_ship_hours": _percentile(values["ship"], .5),
+             "p50_delivery_hours": _percentile(values["delivery"], .5),
+             "p90_delivery_hours": _percentile(values["delivery"], .9),
+             "ship_sample_insufficient": len(values["ship"]) < 30,
+             "delivery_sample_insufficient": len(values["delivery"]) < 30}
+            for channel, values in grouped.items()]
+
+
+def _overview_stock_alerts(db, shop_id):
+    records = _latest_snapshots(db, "stock_snapshots", shop_id)
+    latest = {}
+    for row in records:
+        payload = json.loads(row["payload"])
+        for value in payload.get("stocks") or []:
+            sku = str(value.get("sku") or payload.get("product_id") or "")
+            if sku:
+                item = latest.setdefault((row["shop_id"], sku), {"present": 0})
+                item["present"] += int(value.get("present") or 0)
+    if not latest:
+        return None, None
     clause, args = _shop_clause(shop_id)
+    sales = {(row["shop_id"], row["sku"]): row["pieces"] for row in db.execute(f"""
+      SELECT i.shop_id,i.sku,SUM(i.quantity) pieces FROM order_items i
+      JOIN orders o USING(shop_id,posting_number)
+      WHERE {ACTIVE} AND julianday(o.created_at)>=julianday('now','-30 days'){clause}
+      GROUP BY i.shop_id,i.sku""", args)}
+    stockouts = sum(item["present"] <= 0 for item in latest.values())
+    low_stock = sum(0 < item["present"] / (sales.get(key, 0) / 30) <= 7
+                    for key, item in latest.items() if sales.get(key, 0))
+    return stockouts, low_stock
+
+
+def _overview_top_products(db, utc_start, utc_end, shop_id):
+    clause, shop_args = _shop_clause(shop_id)
+    rows = db.execute(f"""SELECT o.shop_id,o.posting_number,o.status_raw,o.shipped,
+      i.sku,i.offer_id,i.product_name_raw,i.quantity,g.id group_id,g.name group_name,
+      COALESCE(
+        (SELECT short_name FROM product_short_names n WHERE n.key_type='offer_id' AND n.key_value=i.offer_id),
+        (SELECT short_name FROM product_short_names n WHERE n.key_type='sku' AND n.key_value=i.sku)) short_name
+      FROM orders o JOIN order_items i USING(shop_id,posting_number)
+      LEFT JOIN product_groups g ON g.id=COALESCE(
+        (SELECT group_id FROM product_group_members m WHERE m.key_type='offer_id' AND m.key_value=i.offer_id),
+        (SELECT group_id FROM product_group_members m WHERE m.key_type='sku' AND m.key_value=i.sku))
+      WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
+        AND julianday(o.created_at)<julianday(?) {clause}""", [utc_start, utc_end] + shop_args)
+    products = {}
+    for row in rows:
+        key = f"group:{row['group_id']}" if row["group_id"] else f"sku:{row['shop_id']}:{row['sku']}"
+        item = products.setdefault(key, {"name": row["short_name"] or row["group_name"] or
+                                             row["product_name_raw"] or row["sku"],
+                                         "pieces": 0, "orders": set(), "cancelled": set()})
+        item["pieces"] += row["quantity"]
+        posting = row["shop_id"], row["posting_number"]
+        item["orders"].add(posting)
+        if row["status_raw"] == "已取消" and row["shipped"] == 1:
+            item["cancelled"].add(posting)
+    result = [{"name": item["name"], "pieces": item["pieces"], "orders": len(item["orders"]),
+               "cancel_rate": len(item["cancelled"]) / len(item["orders"])}
+              for item in products.values()]
+    return sorted(result, key=lambda item: (-item["pieces"], -item["orders"], item["name"]))[:5]
+
+
+@app.get("/api/summary")
+def summary(shop_id: int = 0,
+            date_from: Annotated[str | None, Query(alias="from")] = None,
+            date_to: Annotated[str | None, Query(alias="to")] = None,
+            granularity: str = "week"):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    if granularity not in ("day", "week", "month"):
+        raise HTTPException(400, "granularity 必须为 day、week 或 month")
+    start, end, utc_start, utc_end = _overview_range(date_from, date_to)
+    clause, shop_args = _shop_clause(shop_id)
+    args = [utc_start, utc_end] + shop_args
     with connect() as db:
-        totals = dict(db.execute(f"""
-          SELECT COUNT(DISTINCT o.posting_number) orders,
+        rows = [dict(row) for row in db.execute(f"""
+          SELECT o.shop_id,o.posting_number,o.channel,o.created_at,o.status_raw,o.shipped,
+            o.shipped_at,o.delivered_at,o.data_anomaly,
+            o.amount_original,o.amount_currency,s.settlement_currency,
             COALESCE(SUM(i.quantity),0) pieces,
-            COUNT(DISTINCT CASE WHEN o.status_raw='已取消' AND o.shipped=1 THEN o.posting_number END) cancelled_orders,
-            COALESCE(SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 THEN i.quantity ELSE 0 END),0) cancelled_pieces
-          FROM orders o JOIN order_items i USING(shop_id,posting_number)
-          WHERE {ACTIVE}{clause}
-        """, args).fetchone())
-        by_channel = [dict(row) for row in db.execute(f"""
-          SELECT o.channel, COUNT(DISTINCT o.posting_number) orders, SUM(i.quantity) pieces,
-            SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 THEN i.quantity ELSE 0 END) cancelled_pieces
-          FROM orders o JOIN order_items i USING(shop_id,posting_number)
-          WHERE {ACTIVE}{clause} GROUP BY o.channel ORDER BY CASE o.channel WHEN 'FBP' THEN 1 WHEN 'realFBS' THEN 2 ELSE 3 END
+            CASE WHEN o.amount_original IS NULL AND COUNT(i.sku)>0
+              AND COUNT(i.unit_price)=COUNT(i.sku) AND COUNT(DISTINCT i.price_currency)=1
+              THEN SUM(i.unit_price*i.quantity) END item_amount,
+            CASE WHEN COUNT(DISTINCT i.price_currency)=1 THEN MIN(i.price_currency) END item_currency
+          FROM orders o JOIN shops s ON s.id=o.shop_id
+          LEFT JOIN order_items i USING(shop_id,posting_number)
+          WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
+            AND julianday(o.created_at)<julianday(?) {clause}
+          GROUP BY o.shop_id,o.posting_number
+          ORDER BY o.created_at
         """, args)]
-        through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE 1=1{clause}", args).fetchone()[0]
-    totals["cancel_rate"] = totals["cancelled_pieces"] / totals["pieces"] if totals["pieces"] else 0
-    return {"totals": totals, "channels": by_channel, "data_through": through}
+        complaint_clause, complaint_args = _record_clause(shop_id, "c")
+        unresolved_complaints = db.execute(
+            f"SELECT COUNT(*) FROM complaints c{complaint_clause}{' AND' if complaint_clause else ' WHERE'} c.resolved IS NOT 1",
+            complaint_args).fetchone()[0]
+        return_clause, return_args = _record_clause(shop_id, "r")
+        placeholders = ",".join("?" for _ in RETURN_PENDING_STATUSES)
+        pending_returns = db.execute(
+            f"SELECT COUNT(*) FROM rfbs_return_records r{return_clause}{' AND' if return_clause else ' WHERE'} r.status_raw IN ({placeholders})",
+            return_args + sorted(RETURN_PENDING_STATUSES)).fetchone()[0]
+        stockouts, low_stock = _overview_stock_alerts(db, shop_id)
+        top_products = _overview_top_products(db, utc_start, utc_end, shop_id)
+    totals = {"orders": len(rows), "pieces": sum(row["pieces"] for row in rows),
+              "cancelled_orders": sum(row["status_raw"] == "已取消" and row["shipped"] == 1 for row in rows)}
+    totals["cancelled_pieces"] = sum(row["pieces"] for row in rows
+                                     if row["status_raw"] == "已取消" and row["shipped"] == 1)
+    totals["cancel_rate"] = totals["cancelled_orders"] / totals["orders"] if totals["orders"] else 0
+    channels = []
+    for channel in ("FBP", "realFBS", "WHD"):
+        channel_rows = [row for row in rows if row["channel"] == channel]
+        channels.append({"channel": channel, "orders": len(channel_rows),
+                         "pieces": sum(row["pieces"] for row in channel_rows),
+                         "cancelled_pieces": sum(row["pieces"] for row in channel_rows
+                             if row["status_raw"] == "已取消" and row["shipped"] == 1)})
+    bucket_dates = []
+    cursor = _bucket_start(start, granularity)
+    while cursor <= end:
+        bucket_dates.append(cursor)
+        cursor = _next_bucket(cursor, granularity)
+    buckets = []
+    for bucket_date in bucket_dates:
+        next_date = _next_bucket(bucket_date, granularity)
+        bucket_rows = [row for row in rows
+                       if _bucket_start(_beijing_date(row["created_at"]), granularity) == bucket_date]
+        channel_values = {}
+        for channel in ("FBP", "realFBS", "WHD"):
+            values = [row for row in bucket_rows if row["channel"] == channel]
+            channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id)}
+        buckets.append({"key": bucket_date.isoformat(),
+                        "from": max(bucket_date, start).isoformat(),
+                        "to": min(next_date - timedelta(days=1), end).isoformat(),
+                        "orders": len(bucket_rows), "gmv": _gmv_summary(bucket_rows, shop_id),
+                        "channels": channel_values})
+    return {"range": {"from": start.isoformat(), "to": end.isoformat()},
+            "granularity": granularity, "totals": totals, "channels": channels,
+            "buckets": buckets, "gmv": _gmv_summary(rows, shop_id),
+            "exceptions": {"unresolved_complaints": unresolved_complaints,
+                           "pending_returns": pending_returns, "stockout_skus": stockouts,
+                           "low_stock_skus": low_stock,
+                           "anomaly_orders": sum(bool(row["data_anomaly"]) for row in rows)},
+            "timeliness": _overview_timeliness(rows), "top_products": top_products,
+            "data_through": max((row["created_at"] for row in rows), default=None)}
 
 
 def _translated_order(row):

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v=20260822-10">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/style.css?v=20260822-12">
 </head>
 <body>
   <div id="login" class="login hidden">
@@ -31,11 +31,18 @@
       <div id="notice" role="status"></div>
 
       <section id="overview" class="page active">
+        <div id="overviewDateRange"></div>
         <div class="cards">
           <article class="metric peach"><span>有效订单数</span><strong id="totalOrders">0</strong><small>不同订单号</small></article>
           <article class="metric mint"><span>有效货件数</span><strong id="totalPieces">0</strong><small>商品数量合计</small></article>
           <article class="metric lavender"><span>发货后取消订单</span><strong id="cancelOrders">0</strong><small>按订单数</small></article>
-          <article class="metric blue"><span>SKU取消率</span><strong id="cancelRate">0%</strong><small>按货件数</small></article>
+          <article class="metric blue"><span>发货后取消率</span><strong id="cancelRate">0%</strong><small>按订单数</small></article>
+        </div>
+        <div class="panel trend-panel"><div class="panel-title"><div><h2>订单量趋势</h2><span class="muted">柱高表示有效订单数；按北京时间归组</span></div><div id="trendGranularity" class="trend-switch" role="group" aria-label="趋势粒度"><button type="button" data-granularity="day">日</button><button type="button" data-granularity="week" class="active">周</button><button type="button" data-granularity="month">月</button></div></div><div id="trendScroll" class="trend-scroll"><div id="orderTrend" class="trend-stage" aria-label="订单量堆叠柱状图"></div></div></div>
+        <div class="panel overview-alert-panel"><div class="panel-title"><div><h2>运营异常摘要</h2><span class="muted">库存、投诉与退货为当前状态；异常订单跟随所选时间</span></div></div><div id="overviewExceptions" class="overview-alerts"></div></div>
+        <div class="overview-analysis-grid">
+          <div class="panel"><div class="panel-title"><div><h2>时效概览</h2><span class="muted">P50 与 P90；样本不足时不展示数值</span></div></div><div id="overviewTimeliness" class="overview-timing"></div></div>
+          <div class="panel"><div class="panel-title"><div><h2>热销商品 Top 5</h2><span class="muted">按有效货件数排序</span></div></div><div id="overviewTopProducts" class="overview-products"></div></div>
         </div>
         <div class="panel"><div class="panel-title"><h2>渠道概览</h2><span class="muted">剔除发货前取消</span></div>
           <div class="table-wrap"><table><thead><tr><th>渠道</th><th class="num">订单数</th><th class="num">货件数</th><th class="risk-col">发货后取消货件</th></tr></thead><tbody id="channelRows"></tbody></table></div>
@@ -55,7 +62,7 @@
         <div class="panel"><h2>最近导入</h2><div class="table-wrap"><table><thead><tr><th>店铺</th><th>类型</th><th>文件</th><th class="num">行数</th><th>导入时间</th></tr></thead><tbody id="importRows"></tbody></table></div></div>
       </section>
 
-      <section id="sync" class="page"><div class="panel"><h2>独立同步中心</h2><p class="muted">每个按钮只调用本模块；没有“同步全部”，页面打开也不会自动同步。</p><div class="date-range-wrap"><button id="dateRangeButton" class="date-range-button" type="button" aria-haspopup="dialog" aria-expanded="false"><span>日期范围：</span><strong id="dateRangeLabel">三个月内</strong><span aria-hidden="true">⌄</span></button><div id="dateRangePanel" class="date-range-panel hidden" role="dialog" aria-label="选择拉取日期范围"><div class="range-calendars"><div class="range-calendar"><div class="range-month-head"><button id="rangePrev" type="button" aria-label="上个月">‹</button><strong id="rangeMonthA"></strong><span></span></div><div class="range-weekdays"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div><div id="rangeDaysA" class="range-days"></div></div><div class="range-calendar"><div class="range-month-head"><span></span><strong id="rangeMonthB"></strong><button id="rangeNext" type="button" aria-label="下个月">›</button></div><div class="range-weekdays"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div><div id="rangeDaysB" class="range-days"></div></div></div><div id="rangePresets" class="range-presets"><button type="button" data-range="today">今天</button><button type="button" data-range="3days">3天内</button><button type="button" data-range="7days">7天内</button><button type="button" data-range="3months">三个月内</button><button type="button" data-range="all">整个时段</button></div></div><input id="syncFrom" type="hidden"><input id="syncTo" type="hidden"></div><div id="syncButtons" class="sync-grid"></div></div><div class="panel"><h2>拉取记录</h2><div class="table-wrap"><table><thead><tr><th>店铺</th><th>模块</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead><tbody id="syncRows"></tbody></table></div></div></section>
+      <section id="sync" class="page"><div class="panel"><h2>独立同步中心</h2><p class="muted">每个按钮只调用本模块；没有“同步全部”，页面打开也不会自动同步。</p><div id="syncDateRange"></div><div id="syncButtons" class="sync-grid"></div></div><div class="panel"><h2>拉取记录</h2><div class="table-wrap"><table><thead><tr><th>店铺</th><th>模块</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead><tbody id="syncRows"></tbody></table></div></div></section>
 
       <section id="settings" class="page"><div class="settings-grid"><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#theme"/></svg></span><div><h2>显示偏好</h2><p>控制当前浏览器的界面主题</p></div></div><label class="settings-toggle-row"><span><strong>跟随系统外观</strong><small id="themePreferenceText">关闭后可使用左下角按钮手动切换</small></span><span class="settings-switch"><input id="themeFollowSystem" type="checkbox"><span aria-hidden="true"></span></span></label></article><form id="shopForm" class="settings-card"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#settings"/></svg></span><div><h2>店铺名称</h2><p>仅修改展示名称，不改变店铺ID与数据归属</p></div></div><div class="settings-fields"><label>店铺1<input id="shop1" required></label><label>店铺2<input id="shop2" required></label></div><button class="primary">保存店铺名称</button></form></div><section class="settings-card settings-api"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#sync"/></svg></span><div><h2>API连接与权限</h2><p>只检测凭据、店铺身份与模块权限，不同步业务数据</p></div></div><div id="probeShops" class="settings-shop-grid"></div></section></section>
 
@@ -70,5 +77,5 @@
       <section id="rules" class="page"><div class="grid2"><form id="shortNameForm" class="panel"><h2>中文短名称</h2><label>匹配键<select id="shortKeyType"><option value="offer_id">货号</option><option value="sku">SKU</option></select></label><label>键值<input id="shortKeyValue" required></label><label>中文短名称<input id="shortName" required></label><button class="primary">保存</button></form><form id="brandForm" class="panel"><h2>品牌规则</h2><label>品牌<input id="brandName" required></label><label>关键词<input id="brandKeyword" required></label><label>优先级<input id="brandPriority" type="number" value="0" required></label><label class="check-row"><input id="brandEnabled" type="checkbox" checked>启用</label><button class="primary">保存</button></form></div><form id="groupForm" class="panel"><h2>SKU / 货号合并组</h2><p class="muted">每行填写“sku:值”或“offer_id:值”；原始SKU不会被修改。</p><label>组名<input id="groupName" required></label><label>成员<textarea id="groupMembers" rows="4" required></textarea></label><button class="primary">保存</button></form><div class="panel"><div class="panel-title"><h2>已保存规则</h2><span id="ruleKeyNote" class="muted"></span></div><div id="ruleLists"></div></div></section>
     </main>
   </div>
-  <script src="/static/app.js?v=20260822-10"></script>
+  <script src="/static/app.js?v=20260822-12"></script>
 </body></html>

@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], complaints:[], csrf:"", pages: {timeliness:1,returns:1,rfbsReturns:1,complaints:1,stock:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], complaints:[], csrf:"", overviewGranularity:"week", pages: {timeliness:1,returns:1,rfbsReturns:1,complaints:1,stock:1}};
 const titles = {overview:"总览",orders:"订单",risk:"SKU风险分析",timeliness:"发货与配送时效",returns:"退货与投诉",stock:"库存",transfer:"数据导入/导出",sync:"独立同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -13,6 +13,29 @@ const completenessMetric = (label,v) => `<div class="completeness-metric"><span>
 const timingSection = (title,samples,insufficient,p50,average,p90,complete) => `<section><div class="timing-section-head"><h3>${title}</h3>${insufficient?'<span class="sample-warning">样本不足</span>':''}</div>${samples?`<div class="timing-metrics">${timingMetric("中位数 P50",p50,true)}${timingMetric("平均",average)}${timingMetric("P90 长尾",p90)}</div>`:'<div class="timing-empty">数据不足</div>'}<div class="timing-meta"><span>有效样本 ${num(samples,0)} 单</span><span>字段完整率 ${pct(complete)}</span></div></section>`;
 const cell = (v) => v == null || v === "" ? "暂无" : esc(v);
 const channelTag = (v) => `<span class="tag channel-${({FBP:"fbp",realFBS:"fbs",WHD:"whd"}[v] || "")}">${esc(v)}</span>`;
+const gmvText = (gmv) => gmv.missing_rate_orders
+  ? `可折算GMV：¥${num(gmv.amount)}｜缺少汇率：${num(gmv.missing_rate_orders,0)}单`
+  : `GMV：${gmv.currency==="CNY"?"¥":gmv.currency==="USD"?"$":""}${num(gmv.amount)} ${gmv.currency}`;
+function trendTip(bucket){return `<strong>${esc(bucket.from===bucket.to?bucket.from:`${bucket.from} 至 ${bucket.to}`)}</strong><span>总订单：${num(bucket.orders,0)}</span><span>${esc(gmvText(bucket.gmv))}</span>${["FBP","realFBS","WHD"].map(channel=>{const row=bucket.channels[channel];return `<span>${channel}：${num(row.orders,0)}单｜${esc(gmvText(row.gmv))}</span>`}).join("")}`}
+function renderOrderTrend(data){
+  const host=$("#orderTrend"),buckets=[...data.buckets].reverse(),width=Math.max(620,buckets.length*68+64),height=300,plotTop=18,plotBottom=242,plotHeight=plotBottom-plotTop,max=Math.max(1,...buckets.map(row=>row.orders)),barWidth=36;
+  const ticks=[0,.25,.5,.75,1].map(part=>{const y=plotBottom-plotHeight*part,value=Math.ceil(max*part);return `<line x1="48" y1="${y}" x2="${width-12}" y2="${y}"/><text x="42" y="${y+4}" text-anchor="end">${value}</text>`}).join("");
+  const bars=buckets.map((bucket,index)=>{const x=58+index*68;let y=plotBottom;const segments=["FBP","realFBS","WHD"].map(channel=>{const value=bucket.channels[channel].orders,h=plotHeight*value/max;y-=h;return h?`<rect class="trend-segment channel-${channel==="FBP"?"fbp":channel==="realFBS"?"fbs":"whd"}" x="${x}" y="${y}" width="${barWidth}" height="${h}" rx="3" data-bucket="${index}" tabindex="0" role="img" aria-label="${esc(channel)} ${value}单"><title>${esc(channel)} ${value}单</title></rect>`:""}).join("");const label=data.granularity==="day"?bucket.from.slice(5):data.granularity==="month"?bucket.from.slice(0,7):bucket.from.slice(5);return `<g>${segments}<rect class="trend-hit" x="${x}" y="${plotTop}" width="${barWidth}" height="${plotHeight}" data-bucket="${index}" tabindex="0" role="img" aria-label="${esc(bucket.from)}至${esc(bucket.to)}，总订单${bucket.orders}单"/><text class="trend-x" x="${x+barWidth/2}" y="266" text-anchor="middle">${esc(label)}</text></g>`}).join("");
+  host.style.width=`${width}px`;host.innerHTML=`<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="有效订单量趋势，纵轴从0开始"><g class="trend-grid">${ticks}</g>${bars}</svg><div class="trend-tooltip hidden" role="status"></div>`;
+  const tooltip=host.querySelector(".trend-tooltip"),show=(target)=>{const index=Number(target.dataset.bucket),box=target.getBoundingClientRect(),stage=host.getBoundingClientRect();tooltip.innerHTML=trendTip(buckets[index]);tooltip.style.left=`${Math.min(Math.max(8,box.left-stage.left+box.width/2-130),width-272)}px`;tooltip.classList.remove("hidden")};
+  host.onpointerover=e=>{const target=e.target.closest("[data-bucket]");if(target)show(target)};host.onpointerout=e=>{if(!e.relatedTarget?.closest?.("[data-bucket]"))tooltip.classList.add("hidden")};host.querySelectorAll("[data-bucket]").forEach(target=>{target.onfocus=()=>show(target);target.onblur=()=>tooltip.classList.add("hidden")});host.onclick=e=>{const target=e.target.closest("[data-bucket]");if(target){show(target);e.stopPropagation()}};
+}
+function renderOverviewPanels(data){
+  const e=data.exceptions,alerts=[
+    ["未完结投诉",e.unresolved_complaints,"当前状态","returns"],
+    ["待处理退货申请",e.pending_returns,"当前状态","returns"],
+    ["缺货 SKU",e.stockout_skus,"当前最新库存","stock"],
+    ["7天内低库存 SKU",e.low_stock_skus,"当前最新库存","stock"],
+    ["数据异常订单",e.anomaly_orders,"所选时间范围","orders"]];
+  $("#overviewExceptions").innerHTML=alerts.map(row=>`<button type="button" data-overview-page="${row[3]}"><span>${esc(row[0])}</span><strong>${row[1]==null?"数据不足":num(row[1],0)}</strong><small>${esc(row[2])}</small></button>`).join("");
+  $("#overviewTimeliness").innerHTML=data.timeliness.map(row=>{const ship=row.ship_sample_insufficient?"数据不足":hours(row.p50_ship_hours),delivery=row.delivery_sample_insufficient?"数据不足":hours(row.p50_delivery_hours),p90=row.delivery_sample_insufficient?"数据不足":hours(row.p90_delivery_hours);return `<div class="overview-timing-row"><div>${channelTag(row.channel)}</div><div><span>发货 P50</span><strong>${ship}</strong></div><div><span>配送 P50</span><strong>${delivery}</strong></div><div><span>配送 P90</span><strong>${p90}</strong></div></div>`}).join("");
+  $("#overviewTopProducts").innerHTML=data.top_products.map((row,index)=>`<div class="overview-product-row"><span class="overview-rank">${index+1}</span><strong title="${esc(row.name)}">${esc(row.name)}</strong><span><b>${num(row.pieces,0)}</b> 件</span><span>${num(row.orders,0)} 单</span><span>取消率 ${pct(row.cancel_rate)}</span></div>`).join("")||'<div class="overview-empty">所选范围暂无商品数据</div>';
+}
 
 function summary(id, cards) {
   $(`#${id}Summary`).innerHTML=cards.map(c=>`<div class="summary-card"><span class="muted">${esc(c[0])}</span><strong>${esc(c[1])}</strong>${c[2]?`<small class="muted">${esc(c[2])}</small>`:""}</div>`).join("");
@@ -51,11 +74,14 @@ async function loadShops() {
   $("#shop1").value = state.shops[0].name; $("#shop2").value = state.shops[1].name;
 }
 async function loadOverview() {
-  const data = await api(`/api/summary?shop_id=${state.shop}`), t=data.totals;
+  const query=new URLSearchParams({shop_id:state.shop,from:overviewRange.start,to:overviewRange.end,granularity:state.overviewGranularity});
+  const data = await api(`/api/summary?${query}`), t=data.totals;
   $("#totalOrders").textContent=t.orders; $("#totalPieces").textContent=t.pieces;
   $("#cancelOrders").textContent=t.cancelled_orders; $("#cancelRate").textContent=pct(t.cancel_rate);
   $("#dataThrough").textContent=`数据截止：${bj(data.data_through)}`;
   $("#channelRows").innerHTML=data.channels.map(r=>`<tr><td>${channelTag(r.channel)}</td><td class="num">${r.orders}</td><td class="num">${r.pieces}</td><td class="risk-col">${r.cancelled_pieces||0}</td></tr>`).join("") || '<tr><td colspan="4" class="muted">暂无数据，请先导入。</td></tr>';
+  renderOrderTrend(data);
+  renderOverviewPanels(data);
 }
 async function loadOrders() {
   const q=encodeURIComponent($("#orderSearch").value), channel=encodeURIComponent($("#channelFilter").value);
@@ -118,7 +144,7 @@ async function loadDingtalk() {
   $("#dingtalkLast").textContent=data.last_run?`${data.last_run.stats_date} · ${data.last_run.status==='success'?'发送成功':data.last_run.status==='failed'?'发送失败':'发送中'}${data.last_run.sent_at?` · ${bj(data.last_run.sent_at)}`:""}${data.last_run.error?` · ${data.last_run.error}`:""}`:"暂无发送记录";
 }
 async function loadRules(){const data=await api("/api/product-rules");$("#ruleKeyNote").textContent=data.key_note;$("#ruleLists").innerHTML=`<h3>短名称</h3>${data.short_names.map(r=>`<p>${esc(r.key_type)}:${esc(r.key_value)} → ${esc(r.short_name)}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>合并组</h3>${data.groups.map(r=>`<p>${esc(r.name)}：${esc(r.key_type||"暂无成员")} ${esc(r.key_value||"")} ${r.key_type?`<button data-ungroup-type="${esc(r.key_type)}" data-ungroup-value="${esc(r.key_value)}">解除</button>`:""}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>品牌规则</h3>${data.brands.map(r=>`<p>${esc(r.brand_name)} · ${esc(r.keyword)} · 优先级 ${r.priority}${r.conflict?' · 冲突':''}</p>`).join("")||'<p class="muted">暂无</p>'}<h3>匹配预览</h3>${data.products.filter(r=>r.matched_brand).slice(0,20).map(r=>`<p>${esc(r.product_name)} → ${esc(r.matched_brand)}</p>`).join("")||'<p class="muted">暂无品牌命中</p>'}`}
-async function loadSettings(){$("#probeShops").innerHTML=state.shops.map(s=>`<article class="settings-shop-card"><div class="settings-shop-head"><div><span>店铺 ${s.id}</span><strong>${esc(s.name)}</strong></div><button class="primary" data-probe="${s.id}">检测连接与权限</button></div><div id="probeResult${s.id}" class="settings-probe-result"><span class="probe-state">尚未检测</span><p>检测后将在这里显示店铺身份、角色及各模块权限。</p></div></article>`).join("")}
+async function loadSettings(){$("#probeShops").innerHTML=state.shops.map(s=>`<article class="settings-shop-card"><div class="settings-shop-head"><div><span>店铺 ${s.id}</span><strong>${esc(s.name)}</strong></div><button class="primary" data-probe="${s.id}">检测连接与权限</button></div><div id="probeResult${s.id}" class="settings-probe-result hidden"></div></article>`).join("")}
 function probeResult(result){if(!result.valid)return `<span class="probe-state is-error">连接失败</span><p>${esc(result.error||"凭据或网络异常")}</p>`;const identity=result.identity||{},company=identity.company||{},name=company.name||identity.name||"店铺身份已确认",seller=identity.seller_id||identity.client_id||"未返回",inn=company.inn||identity.inn||"未返回",roles=(result.roles||[]).join("、")||"未返回";return `<span class="probe-state is-ok">凭据有效</span><dl class="probe-facts"><div><dt>店铺身份</dt><dd>${esc(name)}</dd></div><div><dt>Seller ID</dt><dd>${esc(seller)}</dd></div><div><dt>税号 INN</dt><dd>${esc(inn)}</dd></div><div><dt>角色</dt><dd>${esc(roles)}</dd></div></dl><div class="probe-permissions">${Object.entries(result.permissions||{}).map(([module,value])=>`<span class="${value==="可用"?'is-ok':'is-missing'}"><strong>${esc(syncNames[module]||module)}</strong>${esc(value)}</span>`).join("")||'<span class="is-missing">未返回模块权限</span>'}</div>`}
 async function loadPage(page) {
   if(page==="overview") return loadOverview(); if(page==="orders") return loadOrders();
@@ -147,7 +173,7 @@ $("#complaintRows").onclick=e=>{const key=e.target.dataset.editComplaint;if(!key
 $("#reasonRows").onclick=async e=>{const reason=e.target.dataset.reason;if(!reason)return;const data=await api(`/api/risk/reasons?shop_id=${state.shop}&reason=${encodeURIComponent(reason)}`);$("#reasonDetails").textContent=data.details.map(r=>`${r.shop_name} / ${r.channel} / ${r.posting_number}（${r.pieces}件）`).join("；")};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 $("#shopForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:$("#shop1").value,2:$("#shop2").value})});await loadShops();toast("店铺名称已更新")}catch(err){toast(err.message,true)}});
-$("#probeShops").onclick=async e=>{const button=e.target.closest("[data-probe]");if(!button)return;const id=button.dataset.probe,target=$("#probeResult"+id);button.disabled=true;target.innerHTML='<span class="probe-state">正在检测</span><p>正在验证凭据与权限，请稍候。</p>';try{target.innerHTML=probeResult(await api(`/api/ozon/probe/${id}`,{method:"POST"}))}catch(error){target.innerHTML=probeResult({valid:false,error:error.message})}finally{button.disabled=false}};
+$("#probeShops").onclick=async e=>{const button=e.target.closest("[data-probe]");if(!button)return;const id=button.dataset.probe,target=$("#probeResult"+id);button.disabled=true;target.classList.remove("hidden");target.innerHTML='<span class="probe-state">正在检测</span><p>正在验证凭据与权限，请稍候。</p>';try{target.innerHTML=probeResult(await api(`/api/ozon/probe/${id}`,{method:"POST"}))}catch(error){target.innerHTML=probeResult({valid:false,error:error.message})}finally{button.disabled=false}};
 $("#dingtalkForm").addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("钉钉设置已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
 $("#dingTestButton").onclick=async e=>{e.target.disabled=true;try{await api("/api/dingtalk/test",{method:"POST"});toast("测试消息已发送")}catch(err){toast(err.message,true)}finally{e.target.disabled=false}};
 $("#importForm").addEventListener("submit",async e=>{e.preventDefault();const file=$("#importFile").files[0],shop=$("#importShop").value,kind=$("#importKind").value;if(!file||!shop)return;try{const result=await api(`/api/import/${kind}?shop_id=${shop}`,{method:"POST",headers:{"X-Filename":encodeURIComponent(file.name)},body:file});toast(`已导入 ${result.rows} 行`);await loadImports()}catch(err){toast(err.message,true)}});
@@ -168,45 +194,27 @@ const localDate=value=>{const [year,month,day]=value.split("-").map(Number);retu
 const shiftDays=(date,amount)=>new Date(date.getFullYear(),date.getMonth(),date.getDate()+amount);
 const shiftMonths=(date,amount)=>new Date(date.getFullYear(),date.getMonth()+amount,1);
 const threeMonthsAgo=(()=>{const target=new Date(today.getFullYear(),today.getMonth()-3,1);target.setDate(Math.min(today.getDate(),new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return target})();
-const rangeState={start:isoDate(threeMonthsAgo),end:isoDate(today),selecting:false,view:new Date(today.getFullYear(),today.getMonth(),1),preset:"3months"};
 const monthNames=["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
-function setRange(start,end,label,preset="") {
-  rangeState.start=isoDate(start); rangeState.end=isoDate(end); rangeState.selecting=false; rangeState.preset=preset;
-  $("#syncFrom").value=rangeState.start; $("#syncTo").value=rangeState.end; $("#dateRangeLabel").textContent=label;
-  renderRange();
+function createDateRange(rootId,onChange){
+  const root=$(rootId),range={start:isoDate(threeMonthsAgo),end:isoDate(today),selecting:false,view:new Date(today.getFullYear(),today.getMonth(),1),preset:"3months"};
+  root.innerHTML=`<div class="date-range-wrap"><button class="date-range-button" data-range-role="button" type="button" aria-haspopup="dialog" aria-expanded="false"><span>日期范围：</span><strong data-range-role="label">近三个月</strong><span aria-hidden="true">⌄</span></button><div class="date-range-panel hidden" data-range-role="panel" role="dialog" aria-label="选择日期范围"><div class="range-calendars"><div class="range-calendar"><div class="range-month-head"><button data-range-role="prev" type="button" aria-label="上个月">‹</button><strong data-range-role="month-a"></strong><span></span></div><div class="range-weekdays"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div><div class="range-days" data-range-role="days-a"></div></div><div class="range-calendar"><div class="range-month-head"><span></span><strong data-range-role="month-b"></strong><button data-range-role="next" type="button" aria-label="下个月">›</button></div><div class="range-weekdays"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div><div class="range-days" data-range-role="days-b"></div></div></div><div class="range-presets"><button type="button" data-range="today">今天</button><button type="button" data-range="3days">3天内</button><button type="button" data-range="7days">7天内</button><button type="button" data-range="3months">近三个月</button><button type="button" data-range="all">全部时间</button></div></div></div>`;
+  const find=role=>root.querySelector(`[data-range-role="${role}"]`),label=find("label"),panel=find("panel"),button=find("button");
+  const month=(value,title,days)=>{title.textContent=`${monthNames[value.getMonth()]} ${value.getFullYear()}年`;const first=new Date(value.getFullYear(),value.getMonth(),1),last=new Date(value.getFullYear(),value.getMonth()+1,0),items=[];for(let index=0;index<(first.getDay()+6)%7;index++)items.push('<span class="range-blank"></span>');for(let day=1;day<=last.getDate();day++){const current=new Date(value.getFullYear(),value.getMonth(),day),key=isoDate(current),weekend=current.getDay()===0||current.getDay()===6,inRange=key>=range.start&&key<=range.end,edge=key===range.start||key===range.end;items.push(`<button type="button" data-date="${key}" class="${weekend?'weekend ':''}${inRange?'in-range ':''}${edge?'range-edge ':''}${key===isoDate(today)?'today':''}" aria-label="${value.getFullYear()}年${value.getMonth()+1}月${day}日">${day}</button>`)}days.innerHTML=items.join("")};
+  const render=()=>{month(range.view,find("month-a"),find("days-a"));month(shiftMonths(range.view,1),find("month-b"),find("days-b"));root.querySelectorAll("[data-range]").forEach(item=>item.classList.toggle("active",item.dataset.range===range.preset))};
+  const set=(start,end,text,preset="",notify=true)=>{range.start=isoDate(start);range.end=isoDate(end);range.selecting=false;range.preset=preset;label.textContent=text;render();if(notify)onChange(range)};
+  const preset=(name,notify=true)=>{const choices={today:[today,today,"今天"],"3days":[shiftDays(today,-2),today,"3天内"],"7days":[shiftDays(today,-6),today,"7天内"],"3months":[threeMonthsAgo,today,"近三个月"],all:[new Date(2020,0,1),today,"全部时间"]};set(...choices[name],name,notify)};
+  root.onclick=e=>{const role=e.target.closest("[data-range-role]")?.dataset.rangeRole;if(role==="button"){const hidden=panel.classList.toggle("hidden");button.setAttribute("aria-expanded",String(!hidden));render();return}if(role==="prev"||role==="next"){range.view=shiftMonths(range.view,role==="prev"?-1:1);render();return}if(e.target.dataset.range){preset(e.target.dataset.range);panel.classList.add("hidden");button.setAttribute("aria-expanded","false");return}const value=e.target.dataset.date;if(!value)return;if(!range.selecting){range.start=value;range.end=value;range.selecting=true;range.preset="";label.textContent=`${value.replaceAll("-","/")} – 请选择结束日期`;render()}else{const first=localDate(range.start),second=localDate(value);set(first<=second?first:second,first<=second?second:first,`${isoDate(first<=second?first:second).replaceAll("-","/")} – ${isoDate(first<=second?second:first).replaceAll("-","/")}`);panel.classList.add("hidden");button.setAttribute("aria-expanded","false")}};
+  preset("3months",false);return range;
 }
-function rangeMonth(date,targetTitle,targetDays) {
-  $(targetTitle).textContent=`${monthNames[date.getMonth()]} ${date.getFullYear()}年`;
-  const first=new Date(date.getFullYear(),date.getMonth(),1),last=new Date(date.getFullYear(),date.getMonth()+1,0);
-  const blanks=(first.getDay()+6)%7,days=[];
-  for(let index=0;index<blanks;index++)days.push('<span class="range-blank"></span>');
-  for(let day=1;day<=last.getDate();day++){
-    const current=new Date(date.getFullYear(),date.getMonth(),day),key=isoDate(current),weekend=current.getDay()===0||current.getDay()===6;
-    const inRange=key>=rangeState.start&&key<=rangeState.end,edge=key===rangeState.start||key===rangeState.end;
-    days.push(`<button type="button" data-date="${key}" class="${weekend?'weekend ':''}${inRange?'in-range ':''}${edge?'range-edge ':''}${key===isoDate(today)?'today':''}" aria-label="${date.getFullYear()}年${date.getMonth()+1}月${day}日">${day}</button>`);
-  }
-  $(targetDays).innerHTML=days.join("");
-}
-function renderRange() {
-  rangeMonth(rangeState.view,"#rangeMonthA","#rangeDaysA");
-  rangeMonth(shiftMonths(rangeState.view,1),"#rangeMonthB","#rangeDaysB");
-  document.querySelectorAll("#rangePresets button").forEach(button=>button.classList.toggle("active",button.dataset.range===rangeState.preset));
-}
-function choosePreset(name) {
-  const choices={today:[today,today,"今天"],"3days":[shiftDays(today,-2),today,"3天内"],"7days":[shiftDays(today,-6),today,"7天内"],"3months":[threeMonthsAgo,today,"三个月内"],all:[new Date(2020,0,1),today,"整个时段"]};
-  setRange(...choices[name],name);
-}
-$("#dateRangeButton").onclick=()=>{const open=$("#dateRangePanel").classList.toggle("hidden");$("#dateRangeButton").setAttribute("aria-expanded",String(!open));renderRange()};
-$("#rangePrev").onclick=()=>{rangeState.view=shiftMonths(rangeState.view,-1);renderRange()};
-$("#rangeNext").onclick=()=>{rangeState.view=shiftMonths(rangeState.view,1);renderRange()};
-$("#rangePresets").onclick=e=>{if(e.target.dataset.range)choosePreset(e.target.dataset.range)};
-$("#dateRangePanel").onclick=e=>{e.stopPropagation();const value=e.target.dataset.date;if(!value)return;if(!rangeState.selecting){rangeState.start=value;rangeState.end=value;rangeState.selecting=true;rangeState.preset="";$("#dateRangeLabel").textContent=`${value.replaceAll("-","/")} – 请选择结束日期`}else{const first=localDate(rangeState.start),second=localDate(value);setRange(first<=second?first:second,first<=second?second:first,`${isoDate(first<=second?first:second).replaceAll("-","/")} – ${isoDate(first<=second?second:first).replaceAll("-","/")}`)}$("#syncFrom").value=rangeState.start;$("#syncTo").value=rangeState.end;renderRange()};
-document.addEventListener("click",e=>{if(!e.target.closest(".date-range-wrap")){$("#dateRangePanel").classList.add("hidden");$("#dateRangeButton").setAttribute("aria-expanded","false")}if(!e.target.closest(".shop-label")){$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){$("#dateRangePanel").classList.add("hidden");$("#dateRangeButton").setAttribute("aria-expanded","false");$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}});
-choosePreset("3months");
+const overviewRange=createDateRange("#overviewDateRange",()=>loadOverview().catch(error=>toast(error.message,true)));
+const syncRange=createDateRange("#syncDateRange",()=>{});
+document.addEventListener("click",e=>{if(!e.target.closest(".date-range-wrap"))document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));if(!e.target.closest(".shop-label")){$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}if(!e.target.closest("#orderTrend"))$("#orderTrend .trend-tooltip")?.classList.add("hidden")});
+$("#overviewExceptions").onclick=e=>{const page=e.target.closest("[data-overview-page]")?.dataset.overviewPage;if(page)openPage(page)};
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-button").forEach(button=>button.setAttribute("aria-expanded","false"));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false")}});
+$("#trendGranularity").onclick=e=>{const value=e.target.dataset.granularity;if(!value)return;state.overviewGranularity=value;$("#trendGranularity").querySelectorAll("button").forEach(button=>button.classList.toggle("active",button===e.target));loadOverview().catch(error=>toast(error.message,true))};
 $("#sync > .panel:first-child > .muted").textContent="每个按钮只调用本模块；长时段按自然月串行拉取，某月失败即停止。库存仅拉取一次当前快照。";
 async function waitForSync(runId,module){for(;;){const task=await api(`/api/sync/${runId}`);await loadSync();if(task.status!=="running"){if(task.status==="success")toast(`${syncNames[module]}拉取完成：${num(task.records,0)} 条`);else toast(task.error||"拉取失败",true);return}await new Promise(resolve=>setTimeout(resolve,1000))}}
-$("#syncButtons").onclick=async e=>{const module=e.target.dataset.module;if(!module)return;if(!state.shop)return toast("请先在左上角选择一个店铺",true);if(rangeState.preset==="all"&&!confirm("整个时段将按自然月逐段拉取，耗时可能较长。确认开始？"))return;e.target.disabled=true;try{const task=await api(`/api/sync/${module}?shop_id=${state.shop}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:$("#syncFrom").value,to:$("#syncTo").value})});await loadSync();await waitForSync(task.run_id,module)}catch(err){toast(err.message,true);await loadSync()}finally{e.target.disabled=false}};
+$("#syncButtons").onclick=async e=>{const module=e.target.dataset.module;if(!module)return;if(!state.shop)return toast("请先在左上角选择一个店铺",true);if(syncRange.preset==="all"&&!confirm("整个时段将按自然月逐段拉取，耗时可能较长。确认开始？"))return;e.target.disabled=true;try{const task=await api(`/api/sync/${module}?shop_id=${state.shop}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({from:syncRange.start,to:syncRange.end})});await loadSync();await waitForSync(task.run_id,module)}catch(err){toast(err.message,true);await loadSync()}finally{e.target.disabled=false}};
 const systemTheme=window.matchMedia("(prefers-color-scheme: dark)");
 function applyTheme(){const follow=localStorage.getItem("themeFollowSystem")==="true",dark=follow?systemTheme.matches:localStorage.getItem("theme")==="dark";document.documentElement.dataset.theme=dark?"dark":"";$("#themeFollowSystem").checked=follow;$("#themePreferenceText").textContent=follow?`已跟随系统 · 当前${dark?"深色":"浅色"}模式`:"关闭后可使用左下角按钮手动切换"}
 $("#themeFollowSystem").onchange=e=>{if(!e.target.checked)localStorage.setItem("theme",document.documentElement.dataset.theme==="dark"?"dark":"light");localStorage.setItem("themeFollowSystem",String(e.target.checked));applyTheme()};
