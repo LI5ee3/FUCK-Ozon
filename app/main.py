@@ -44,6 +44,15 @@ SYNC_MODULES = {"orders", "returns", "stock"}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
 
+
+def _trim_sync_runs(db, keep=10, today=None):
+    today = today or datetime.now(BEIJING).date().isoformat()
+    db.execute("""DELETE FROM sync_runs
+      WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)
+      AND status!='running'
+      AND NOT (run_source='auto' AND COALESCE(scheduled_date,'')=?)""", (keep, today))
+
+
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -55,6 +64,7 @@ def startup():
     with transaction() as db:
         db.execute("""UPDATE sync_runs SET status='failed',error='服务重启，任务已中断，请重新拉取',
           finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE status='running'""")
+        _trim_sync_runs(db)
     start_scheduler()
     _start_auto_sync_scheduler()
 
@@ -987,9 +997,14 @@ def _latest_snapshots(db, table, shop_id):
 
 @app.get("/api/stock")
 def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
-          offer_id: str = "", product_name: str = ""):
+          offer_id: str = "", product_name: str = "", sort_by: str = "",
+          sort_order: str = "desc"):
     if shop_id not in (0, 1, 2):
         raise HTTPException(400, "未知店铺")
+    if sort_by not in ("", "fbp", "realfbs", "whd", "forecast", "replenishment"):
+        raise HTTPException(400, "未知排序字段")
+    if sort_order not in ("asc", "desc"):
+        raise HTTPException(400, "未知排序方向")
     page, size = _paging(page, size)
     now = datetime.now(timezone.utc)
     cutoffs = [(now - timedelta(days=days)).isoformat() for days in (7, 15, 30)]
@@ -1085,7 +1100,21 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
         cards.append(group)
     risk_order = {"FBP无库存，建议备货": 0, "预计到货前缺货": 1, "建议FBP备货": 2,
                   "暂不需要FBP备货": 3, "暂无FBP及realFBS有效销量，无法估算": 4}
-    cards.sort(key=lambda value: (value["shop_id"], risk_order[value["risk_status"]], value["sku"]))
+    if sort_by:
+        sort_values = {
+            "fbp": lambda value: value["channels"][0]["present"],
+            "realfbs": lambda value: value["channels"][1]["present"],
+            "whd": lambda value: value["channels"][2]["present"],
+            "forecast": lambda value: value["daily_sales"],
+            "replenishment": lambda value: value["replenishment"],
+        }
+        cards.sort(key=lambda value: (
+            sort_values[sort_by](value) is None,
+            (sort_values[sort_by](value) or 0) * (1 if sort_order == "asc" else -1),
+            value["shop_id"], value["sku"],
+        ))
+    else:
+        cards.sort(key=lambda value: (value["shop_id"], risk_order[value["risk_status"]], value["sku"]))
     total = len(cards); start = (page - 1) * size
     through = max((item["observed_at"] for item in cards if item["observed_at"]), default=None)
     summary = {"active_skus": total,
@@ -1140,7 +1169,7 @@ def imports():
 def sync_runs():
     with connect() as db:
         return [dict(row) for row in db.execute("""
-          SELECT r.*,s.name shop_name FROM sync_runs r JOIN shops s ON s.id=r.shop_id ORDER BY r.id DESC LIMIT 100
+          SELECT r.*,s.name shop_name FROM sync_runs r JOIN shops s ON s.id=r.shop_id ORDER BY r.id DESC LIMIT 10
         """)]
 
 
@@ -1228,6 +1257,7 @@ def _run_sync_job(run_id, module, shop_id, ranges):
         with transaction() as db:
             db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
               status='failed',error=? WHERE id=?""", (message, run_id))
+            _trim_sync_runs(db)
         try:
             send_sync_failure(shop_id, module, ranges[0][0], ranges[-1][1], message)
         except Exception:
@@ -1237,6 +1267,7 @@ def _run_sync_job(run_id, module, shop_id, ranges):
         db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
           data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
                    (ranges[-1][1].isoformat(), run_id))
+        _trim_sync_runs(db)
 
 
 def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_date=None):
@@ -1255,6 +1286,7 @@ def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled
         if cursor.rowcount == 0:
             return None
         run_id = cursor.lastrowid
+        _trim_sync_runs(db, today=scheduled_date)
     threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
     return run_id
 

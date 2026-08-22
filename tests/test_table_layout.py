@@ -22,6 +22,8 @@ class TableLayoutTest(unittest.TestCase):
         styles = (ROOT / "static/style.css").read_text()
         self.assertIn('class="stock-table"', html)
         self.assertIn('id="stockFilterForm"', html)
+        self.assertEqual(html.count('data-stock-sort="'), 5)
+        self.assertIn('sort_by:state.stockSort.key', script)
         self.assertIn('data-label="FBP备货决策"', script)
         self.assertIn('.stock-table thead{display:none}', styles)
         self.assertNotIn("API快照", html + script)

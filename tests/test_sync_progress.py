@@ -6,7 +6,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app import db
-from app.main import _run_sync_job, _sync_ranges
+from app.main import _run_sync_job, _sync_ranges, _trim_sync_runs
 
 
 class SyncProgressTest(unittest.TestCase):
@@ -53,6 +53,18 @@ class SyncProgressTest(unittest.TestCase):
             row = connection.execute("SELECT status,progress_done,progress_total,records,error FROM sync_runs").fetchone()
         self.assertEqual(sync_call.call_count, 2)
         self.assertEqual(tuple(row), ("failed", 1, 3, 2, "第二段失败"))
+
+    def test_old_sync_logs_are_deleted_without_touching_pulled_data(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO stock_snapshots
+              (shop_id,record_key,observed_at,payload) VALUES(1,'stock','2026-08-22T00:00:00Z','{}')""")
+            for _ in range(12):
+                connection.execute("""INSERT INTO sync_runs(
+                  shop_id,module,status,finished_at) VALUES(1,'stock','success','2026-08-22T00:00:00Z')""")
+            _trim_sync_runs(connection, today="2026-08-23")
+        with db.connect() as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM sync_runs").fetchone()[0], 10)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM stock_snapshots").fetchone()[0], 1)
 
 
 if __name__ == "__main__":

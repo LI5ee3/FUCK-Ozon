@@ -98,6 +98,14 @@ class InventoryPageTest(unittest.TestCase):
         self.assertEqual(items["SAFE"]["risk_status"], "暂不需要FBP备货")
         self.assertIsInstance(items["LOW"]["replenishment"], int)
 
+    def test_numeric_sorting_happens_before_paging(self):
+        self.assertEqual(stock(1, size=1, sort_by="fbp")["items"][0]["sku"], "S-M")
+        self.assertEqual(stock(1, size=1, sort_by="realfbs")["items"][0]["sku"], "S-M")
+        self.assertEqual(stock(1, size=1, sort_by="whd")["items"][0]["sku"], "S-M")
+        self.assertEqual(stock(1, size=1, sort_by="forecast")["items"][0]["sku"], "S-R")
+        self.assertEqual(stock(1, size=1, sort_by="replenishment")["items"][0]["sku"], "S-R")
+        self.assertEqual(stock(1, size=1, sort_by="fbp", sort_order="asc")["items"][0]["fbp_present"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
