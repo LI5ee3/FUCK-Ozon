@@ -9,10 +9,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app import db, ozon
-from app.importer import _shipping, import_costs, import_csv
+from app.importer import _shipping, import_csv
 from app.main import export_module, export_orders, login, upload
-from app.ozon import (_cursor_pages, _post, _product_price, sync_finance, sync_module,
-                      sync_orders, sync_returns, table_fingerprints)
+from app.ozon import (_cursor_pages, _post, _product_price, sync_module, sync_orders,
+                      sync_returns, table_fingerprints)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,30 +26,6 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertEqual(_shipping({"状态": "已签收"})[:3], (1, None, 1))
         self.assertEqual(_shipping({"状态": "已取消", "已转移配送": "2026-08-01T00:00:00Z"})[:3],
                          (1, 1, 1))
-
-    def test_finance_windows_do_not_overlap(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 2, 1, tzinfo=timezone.utc)
-        with patch("app.ozon._post", return_value={"result": {"operations": [], "page_count": 0}}) as post:
-            sync_finance(1, start, end)
-        list_calls = [call for call in post.call_args_list if call.args[1] == "/v3/finance/transaction/list"]
-        first_to = list_calls[0].args[2]["filter"]["date"]["to"]
-        second_from = list_calls[1].args[2]["filter"]["date"]["from"]
-        self.assertEqual(first_to, "2026-01-30T23:59:59Z")
-        self.assertEqual(second_from, "2026-01-31T00:00:00Z")
-        with db.connect() as connection:
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM finance_reports").fetchone()[0], 4)
-
-    def test_missing_current_realization_does_not_discard_finance_totals(self):
-        moment = datetime(2026, 8, 1, tzinfo=timezone.utc)
-        def response(_shop, path, _payload):
-            if path == "/v2/finance/realization":
-                raise RuntimeError("/v2/finance/realization: HTTP 404: Отчет не найден")
-            return {"result": {"operations": [], "page_count": 0}}
-        with patch("app.ozon._post", side_effect=response):
-            sync_finance(1, moment, moment)
-        with db.connect() as connection:
-            self.assertEqual(connection.execute("SELECT report_type FROM finance_reports").fetchone()[0], "totals")
 
     def test_stock_sync_changes_only_stock_table(self):
         before = table_fingerprints()
@@ -139,9 +115,6 @@ class ImportRegressionTest(unittest.TestCase):
         for channel in ("FBP", "realFBS", "WHD"):
             path = ROOT / f"{channel}.csv"
             import_csv(1, channel, path.name, path.read_bytes())
-        costs = ROOT / "马帮.xlsx"
-        import_costs(1, costs.name, costs.read_bytes())
-
         with db.connect() as connection:
             active = "NOT (o.status_raw='已取消' AND o.shipped=0)"
             totals = connection.execute(f"""
@@ -153,15 +126,9 @@ class ImportRegressionTest(unittest.TestCase):
               FROM orders o JOIN order_items i USING(shop_id,posting_number)
               WHERE {active} GROUP BY o.channel
             """)}
-            cost_count, cost_total = connection.execute(
-                "SELECT COUNT(*),SUM(cost_cny) FROM order_costs").fetchone()
-            matched = connection.execute(
-                "SELECT COUNT(*) FROM order_costs c JOIN orders o USING(shop_id,posting_number)").fetchone()[0]
 
         self.assertEqual(tuple(totals), (3623, 3671))
         self.assertEqual(by_channel, {"FBP": (2690, 2724), "realFBS": (810, 824), "WHD": (123, 123)})
-        self.assertEqual((cost_count, matched), (500, 500))
-        self.assertAlmostEqual(cost_total, 351164.6576, places=4)
 
     def test_channel_change_keeps_one_item_row(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建\n"
@@ -196,11 +163,17 @@ class ImportRegressionTest(unittest.TestCase):
              "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": "2026-08-01T02:00:00Z", "products": []},
             {"posting_number": "P-2", "integration_type_flow": "FBP", "status": "delivering",
              "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": None, "products": []},
+            {"posting_number": "P-3", "integration_type_flow": "FBP", "status": "delivered",
+             "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": "2026-08-01T04:00:00Z", "products": []},
         ]
         fbo = [{"posting_number": "W-1", "status": "delivered",
                 "created_at": "2026-08-01T00:00:00Z", "fact_delivery_date": "2026-08-02T00:00:00Z",
                 "products": []}]
         moment = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,shipped_at,
+              delivered_at,status_raw,shipped,source) VALUES(1,'P-3','FBP','2026-08-01T00:00:00Z',
+              '2026-08-01T04:00:00Z','2026-08-01T04:00:00Z','已签收',1,'api')""")
         with patch("app.ozon._cursor_pages", side_effect=[postings, fbo]), \
              patch("app.ozon._post") as detail:
             sync_orders(1, moment, moment)
@@ -209,10 +182,13 @@ class ImportRegressionTest(unittest.TestCase):
             times = dict(connection.execute("SELECT posting_number,shipped_at FROM orders WHERE posting_number IN ('P-1','P-2')"))
             delivered = connection.execute(
                 "SELECT delivered_at FROM orders WHERE posting_number='W-1'").fetchone()[0]
+            fbs_delivered = connection.execute(
+                "SELECT delivered_at FROM orders WHERE posting_number='P-3'").fetchone()[0]
             connection.execute("UPDATE orders SET shipped_at=NULL WHERE posting_number='P-1'")
             connection.commit()
         self.assertEqual(times, {"P-1": "2026-08-01T02:00:00Z", "P-2": "2026-08-01T03:00:00Z"})
         self.assertEqual(delivered, "2026-08-02T00:00:00Z")
+        self.assertIsNone(fbs_delivered)
         db.init_db()
         with db.connect() as connection:
             backfilled = connection.execute("SELECT shipped_at FROM orders WHERE posting_number='P-1'").fetchone()[0]
@@ -307,6 +283,18 @@ class ImportRegressionTest(unittest.TestCase):
     def test_timeliness_displays_hours_and_days(self):
         script = (ROOT / "static/app.js").read_text()
         self.assertIn('${num(v,1)} 小时 / ${num(v/24,1)} 天', script)
+
+    def test_timeliness_group_uses_responsive_metric_cards(self):
+        html = (ROOT / "static/index.html").read_text()
+        script = (ROOT / "static/app.js").read_text()
+        styles = (ROOT / "static/style.css").read_text()
+        self.assertIn('id="timelinessGroupRows" class="timeliness-grid"', html)
+        self.assertNotIn('<tbody id="timelinessGroupRows">', html)
+        self.assertIn('class="timing-card"', script)
+        self.assertIn('timingMetric("中位数 P50",p50,true)', script)
+        self.assertIn('样本不足', script)
+        self.assertIn('.timing-metric.featured', styles)
+        self.assertIn('.timeliness-grid{display:grid', styles)
 
 
 if __name__ == "__main__":

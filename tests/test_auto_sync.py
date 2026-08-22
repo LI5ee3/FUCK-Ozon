@@ -22,7 +22,7 @@ class AutoSyncTest(unittest.TestCase):
     def test_each_module_settings_and_daily_deduplication(self):
         values = {
             module: {"enabled": module == "orders", "run_time": "08:30", "range_days": 7}
-            for module in ("orders", "finance", "returns", "stock")
+            for module in ("orders", "returns", "stock")
         }
         save_auto_sync_settings(values)
         with db.connect() as connection:
@@ -46,14 +46,14 @@ class AutoSyncTest(unittest.TestCase):
 
     def test_invalid_range_is_rejected(self):
         values = {module: {"enabled": False, "run_time": "02:00", "range_days": 1}
-                  for module in ("orders", "finance", "returns", "stock")}
-        values["finance"]["range_days"] = 366
+                  for module in ("orders", "returns", "stock")}
+        values["returns"]["range_days"] = 366
         with self.assertRaisesRegex(ValueError, "1 至 365"):
             save_auto_sync_settings(values)
 
     def test_failed_auto_sync_retries_after_cooldown(self):
         values = {module: {"enabled": module == "orders", "run_time": "08:30", "range_days": 1}
-                  for module in ("orders", "finance", "returns", "stock")}
+                  for module in ("orders", "returns", "stock")}
         save_auto_sync_settings(values)
         with db.transaction() as connection:
             connection.execute("""INSERT INTO sync_runs(

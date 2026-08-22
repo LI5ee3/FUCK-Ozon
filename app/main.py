@@ -5,32 +5,28 @@ import secrets
 import statistics
 import threading
 import time
-from zipfile import BadZipFile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from openpyxl.utils.exceptions import InvalidFileException
 from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import configured as dingtalk_configured, send_sync_failure, send_test, start_scheduler, stop_scheduler
-from .importer import CHANNELS, import_costs, import_csv
-from .ozon import (BEIJING, CANCEL_REASON_ZH, FINANCE_OPERATION_ZH, RFBS_RETURN_STATUS_ZH,
+from .importer import CHANNELS, import_csv
+from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
                    RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, probe_shop, sync_module)
-from .push import (PushAuthError, PushProcessingError, PushRequestError, push_settings,
-                   receive_push, retry_pending, save_seller_ids)
 from .security import (clear_login_failures, login_limited, migrate_env_password,
                        password_matches, record_login_failure)
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
-SYNC_MODULES = {"orders", "finance", "returns", "stock"}
+SYNC_MODULES = {"orders", "returns", "stock"}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
 
@@ -83,11 +79,10 @@ def _authenticated(request):
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
     public = {"/api/login", "/api/session"}
-    push_callback = request.url.path.startswith("/api/ozon/push/")
-    if request.url.path.startswith("/api/") and request.url.path not in public and not push_callback and not _authenticated(request):
+    if request.url.path.startswith("/api/") and request.url.path not in public and not _authenticated(request):
         return Response(json.dumps({"detail": "未登录"}, ensure_ascii=False), 401, media_type="application/json")
     if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path != "/api/login"
-            and not push_callback and request.url.path.startswith("/api/")):
+            and request.url.path.startswith("/api/")):
         try:
             _, csrf, _ = request.cookies.get("session", "").split(".", 2)
         except ValueError:
@@ -131,16 +126,10 @@ async def login(request: Request, response: Response):
     return {"ok": True}
 
 
-@app.post("/api/logout")
-def logout(response: Response):
-    response.delete_cookie("session")
-    return {"ok": True}
-
-
 @app.get("/api/shops")
 def shops():
     with connect() as db:
-        return [dict(row) for row in db.execute("SELECT id,name,settlement_currency FROM shops ORDER BY id")]
+        return [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")]
 
 
 @app.put("/api/shops")
@@ -155,66 +144,6 @@ async def update_shops(request: Request):
         db.execute("UPDATE shops SET name=? WHERE id=1", (names[0],))
         db.execute("UPDATE shops SET name=? WHERE id=2", (names[1],))
     return {"ok": True}
-
-
-def _push_error(status, code, message):
-    return JSONResponse({"error": {"code": code, "message": message, "details": ""}}, status_code=status)
-
-
-@app.post("/api/ozon/push/{shop_token}")
-async def ozon_push(shop_token: str, request: Request):
-    request.scope["path"] = "/api/ozon/push/[redacted]"
-    request.scope["raw_path"] = b"/api/ozon/push/[redacted]"
-    if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
-        return _push_error(415, "INVALID_CONTENT_TYPE", "Content-Type 必须是 application/json")
-    try:
-        length = int(request.headers.get("content-length", "0"))
-    except ValueError:
-        return _push_error(400, "INVALID_REQUEST", "Content-Length 无效")
-    if length > 1024 * 1024:
-        return _push_error(413, "REQUEST_TOO_LARGE", "请求体超过1MB")
-    body = await request.body()
-    if len(body) > 1024 * 1024:
-        return _push_error(413, "REQUEST_TOO_LARGE", "请求体超过1MB")
-    try:
-        payload = json.loads(body)
-        return await run_in_threadpool(receive_push, shop_token, payload)
-    except PushAuthError as error:
-        return _push_error(403, "AUTH_FAILED", str(error))
-    except (PushRequestError, json.JSONDecodeError) as error:
-        return _push_error(400, "INVALID_REQUEST", str(error))
-    except PushProcessingError:
-        return _push_error(500, "PROCESSING_FAILED", "事件持久化后处理失败")
-
-
-@app.get("/api/ozon/push-settings")
-def ozon_push_settings(request: Request):
-    return push_settings(str(request.base_url))
-
-
-@app.get("/api/ozon/pending-events")
-def pending_events():
-    with connect() as db:
-        return [dict(row) for row in db.execute("""SELECT e.id,e.shop_id,s.name shop_name,e.message_type,
-          e.occurred_at,e.received_at,e.error_message FROM webhook_events e JOIN shops s ON s.id=e.shop_id
-          WHERE e.processing_status='pending_match' ORDER BY e.received_at DESC""")]
-
-
-@app.post("/api/ozon/pending-events/{event_id}/retry")
-async def retry_push_event(event_id: int):
-    try:
-        return await run_in_threadpool(retry_pending, event_id)
-    except PushRequestError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.put("/api/ozon/push-settings")
-async def update_ozon_push_settings(request: Request):
-    try:
-        save_seller_ids(await request.json())
-    except PushRequestError as error:
-        raise HTTPException(400, str(error)) from error
-    return push_settings(str(request.base_url))
 
 
 @app.post("/api/ozon/probe/{shop_id}")
@@ -287,31 +216,6 @@ def _paging(page, size):
     return max(page, 1), min(max(size, 1), 100)
 
 
-def _rate(db, currency, value_date):
-    currency = (currency or "").upper()
-    if currency == "CNY":
-        return {"rate": 1.0, "date": value_date[:10], "source": "人民币原币"}
-    row = db.execute("""SELECT rate_to_cny rate,rate_date date,source FROM exchange_rates
-      WHERE currency=? AND rate_date<=? ORDER BY rate_date DESC LIMIT 1""",
-                     (currency, value_date[:10])).fetchone()
-    return dict(row) if row else None
-
-
-def _conversion(db, entity_type, entity_key, amount, currency, value_date):
-    rate = _rate(db, currency, value_date)
-    if amount is None or not rate:
-        return None
-    value = float(amount) * rate["rate"]
-    db.execute("""INSERT INTO currency_conversions VALUES(?,?,?,?,?,?,?,?,?)
-      ON CONFLICT(entity_type,entity_key,original_currency) DO UPDATE SET
-      original_amount=excluded.original_amount,rate_to_cny=excluded.rate_to_cny,
-      amount_cny=excluded.amount_cny,rate_source=excluded.rate_source,
-      rate_date=excluded.rate_date,converted_at=excluded.converted_at""",
-      (entity_type, str(entity_key), float(amount), currency, rate["rate"], value,
-       rate["source"], rate["date"], datetime.now(timezone.utc).isoformat()))
-    return {"amount_cny": value, **rate}
-
-
 @app.get("/api/summary")
 def summary(shop_id: int = 0):
     clause, args = _shop_clause(shop_id)
@@ -359,9 +263,8 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
         total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {sql_where}", args).fetchone()[0]
         result = [_translated_order(row) for row in db.execute(f"""
           SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
-            o.status_raw,o.cancel_reason_raw,o.shipped,o.data_anomaly,o.amount_original,o.amount_currency,c.cost_cny
+            o.status_raw,o.cancel_reason_raw,o.shipped,o.data_anomaly,o.amount_original,o.amount_currency
           FROM orders o JOIN shops s ON s.id=o.shop_id
-          LEFT JOIN order_costs c USING(shop_id,posting_number)
           WHERE {sql_where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?
         """, args + [size, (page - 1) * size])]
         for order in result:
@@ -429,10 +332,30 @@ def risk_reasons(shop_id: int = 0, reason: str = ""):
 def _percentile(values, fraction):
     if not values:
         return None
-    values = sorted(values)
-    position = (len(values) - 1) * fraction
-    low, high = int(position), min(int(position) + 1, len(values) - 1)
-    return values[low] + (values[high] - values[low]) * (position - low)
+    if fraction == .5:
+        return statistics.median(values)
+    if len(values) == 1:
+        return values[0]
+    return statistics.quantiles(values, n=10, method="inclusive")[8]
+
+
+def _utc_moment(value):
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
+def _duration_hours(start, end):
+    start, end = _utc_moment(start), _utc_moment(end)
+    if not start or not end or end < start:
+        return None
+    return (end - start).total_seconds() / 3600
 
 
 @app.get("/api/timeliness")
@@ -440,53 +363,43 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30):
     clause, args = _shop_clause(shop_id)
     page, size = _paging(page, size)
     with connect() as db:
-        summary = dict(db.execute(f"""
-          SELECT COUNT(*) orders,
-            SUM(o.shipped_at IS NOT NULL) shipped_orders,
-            SUM(o.delivered_at IS NOT NULL) delivered_orders,
-            AVG(CASE WHEN o.shipped_at IS NOT NULL AND julianday(o.shipped_at)>=julianday(o.created_at)
-              THEN (julianday(o.shipped_at)-julianday(o.created_at))*24 END) avg_ship_hours,
-            AVG(CASE WHEN o.delivered_at IS NOT NULL AND o.shipped_at IS NOT NULL
-              AND julianday(o.delivered_at)>=julianday(o.shipped_at)
-              THEN (julianday(o.delivered_at)-julianday(o.shipped_at))*24 END) avg_delivery_hours
-          FROM orders o WHERE {ACTIVE}{clause}
-        """, args).fetchone())
-        total = summary["orders"]
-        rows = [dict(row) for row in db.execute(f"""
-          SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
-            CASE WHEN o.shipped_at IS NOT NULL AND julianday(o.shipped_at)>=julianday(o.created_at)
-              THEN (julianday(o.shipped_at)-julianday(o.created_at))*24 END ship_hours,
-            CASE WHEN o.delivered_at IS NOT NULL AND o.shipped_at IS NOT NULL
-              AND julianday(o.delivered_at)>=julianday(o.shipped_at)
-              THEN (julianday(o.delivered_at)-julianday(o.shipped_at))*24 END delivery_hours
+        all_rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,
+          o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at
           FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {ACTIVE}{clause}
-          ORDER BY o.created_at DESC LIMIT ? OFFSET ?
-        """, args + [size, (page - 1) * size])]
-        all_rows = db.execute(f"""SELECT o.shop_id,s.name shop_name,o.channel,o.created_at,o.shipped_at,o.delivered_at,
-          CASE WHEN o.shipped_at IS NOT NULL AND julianday(o.shipped_at)>=julianday(o.created_at)
-            THEN (julianday(o.shipped_at)-julianday(o.created_at))*24 END ship_hours,
-          CASE WHEN o.delivered_at IS NOT NULL AND o.shipped_at IS NOT NULL
-            AND julianday(o.delivered_at)>=julianday(o.shipped_at)
-            THEN (julianday(o.delivered_at)-julianday(o.shipped_at))*24 END delivery_hours
-          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {ACTIVE}{clause}""", args).fetchall()
+          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC""", args)]
         through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}", args).fetchone()[0]
+    ship_values, delivery_values = [], []
     grouped = {}
-    for raw in all_rows:
-        row = dict(raw)
+    for row in all_rows:
+        if row["channel"] in ("FBP", "realFBS") and row["delivered_at"] == row["shipped_at"]:
+            row["delivered_at"] = None
+        ship_hours = _duration_hours(row["created_at"], row["shipped_at"])
+        delivery_hours = _duration_hours(row["shipped_at"], row["delivered_at"])
+        if ship_hours is not None: ship_values.append(ship_hours)
+        if delivery_hours is not None: delivery_values.append(delivery_hours)
         group = grouped.setdefault((row["shop_id"], row["channel"]), {
             "shop_id": row["shop_id"], "shop_name": row["shop_name"], "channel": row["channel"],
             "orders": 0, "created": 0, "shipped": 0, "delivered": 0, "ship": [], "delivery": []})
         group["orders"] += 1
-        group["created"] += int(bool(row["created_at"]))
-        group["shipped"] += int(bool(row["shipped_at"]))
-        group["delivered"] += int(bool(row["delivered_at"]))
-        if row["ship_hours"] is not None: group["ship"].append(row["ship_hours"])
-        if row["delivery_hours"] is not None: group["delivery"].append(row["delivery_hours"])
+        group["created"] += int(_utc_moment(row["created_at"]) is not None)
+        group["shipped"] += int(_utc_moment(row["shipped_at"]) is not None)
+        group["delivered"] += int(_utc_moment(row["delivered_at"]) is not None)
+        if ship_hours is not None: group["ship"].append(ship_hours)
+        if delivery_hours is not None: group["delivery"].append(delivery_hours)
+    summary = {"orders": len(all_rows), "shipped_orders": sum(_utc_moment(row["shipped_at"]) is not None for row in all_rows),
+      "delivered_orders": sum(_utc_moment(row["delivered_at"]) is not None for row in all_rows),
+      "ship_samples": len(ship_values), "delivery_samples": len(delivery_values),
+      "avg_ship_hours": statistics.fmean(ship_values) if ship_values else None,
+      "p50_ship_hours": _percentile(ship_values, .5), "p90_ship_hours": _percentile(ship_values, .9),
+      "avg_delivery_hours": statistics.fmean(delivery_values) if delivery_values else None,
+      "p50_delivery_hours": _percentile(delivery_values, .5), "p90_delivery_hours": _percentile(delivery_values, .9)}
     groups = []
     for group in grouped.values():
         orders_count = group["orders"]
         groups.append({**{k: v for k, v in group.items() if k not in {"ship", "delivery"}},
           "ship_samples": len(group["ship"]), "delivery_samples": len(group["delivery"]),
+          "ship_sample_insufficient": 0 < len(group["ship"]) < 30,
+          "delivery_sample_insufficient": 0 < len(group["delivery"]) < 30,
           "avg_ship_hours": statistics.fmean(group["ship"]) if group["ship"] else None,
           "p50_ship_hours": _percentile(group["ship"], .5), "p90_ship_hours": _percentile(group["ship"], .9),
           "avg_delivery_hours": statistics.fmean(group["delivery"]) if group["delivery"] else None,
@@ -494,128 +407,14 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30):
           "created_completeness": group["created"] / orders_count if orders_count else 0,
           "shipped_completeness": group["shipped"] / orders_count if orders_count else 0,
           "delivered_completeness": group["delivered"] / orders_count if orders_count else 0})
-    return {"summary": summary, "items": rows, "total": total, "page": page, "size": size,
+    groups.sort(key=lambda value: (value["shop_id"], {"FBP": 0, "realFBS": 1, "WHD": 2}[value["channel"]]))
+    start = (page - 1) * size
+    rows = all_rows[start:start + size]
+    for row in rows:
+        row["ship_hours"] = _duration_hours(row["created_at"], row["shipped_at"])
+        row["delivery_hours"] = _duration_hours(row["shipped_at"], row["delivered_at"])
+    return {"summary": summary, "items": rows, "total": len(all_rows), "page": page, "size": size,
             "groups": groups, "data_through": through}
-
-
-@app.get("/api/finance")
-def finance(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id)
-    page, size = _paging(page, size)
-    with connect() as db:
-        totals = [dict(row) for row in db.execute(f"""
-          SELECT r.shop_id,s.name shop_name,'RUB' currency,COUNT(*) records,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.amount') AS REAL)),0) amount,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.accruals_for_sale') AS REAL)),0) accruals,
-            COALESCE(SUM(CAST(json_extract(r.payload,'$.sale_commission') AS REAL)),0) commission
-          FROM finance_records r JOIN shops s ON s.id=r.shop_id{where}
-          GROUP BY r.shop_id ORDER BY r.shop_id
-        """, args)]
-        total = db.execute(f"SELECT COUNT(*) FROM finance_records r{where}", args).fetchone()[0]
-        records = db.execute(f"""SELECT r.shop_id,s.name shop_name,'RUB' currency,
-          r.occurred_at,r.payload FROM finance_records r JOIN shops s ON s.id=r.shop_id{where}
-          ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
-        through = db.execute(f"SELECT MAX(r.occurred_at) FROM finance_records r{where}", args).fetchone()[0]
-        report_sql = "SELECT shop_id,period_key,payload,fetched_at FROM finance_reports WHERE report_type='totals'"
-        report_args = []
-        if shop_id in (1, 2):
-            report_sql += " AND shop_id=?"; report_args.append(shop_id)
-        reports = [dict(row) for row in db.execute(report_sql + " ORDER BY period_key DESC LIMIT 12", report_args)]
-    items = []
-    for row in records:
-        payload = json.loads(row["payload"])
-        posting = payload.get("posting") or {}
-        operation = payload.get("operation_type_name") or payload.get("operation_type")
-        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"], "currency": row["currency"],
-                      "occurred_at": row["occurred_at"], "posting_number": posting.get("posting_number"),
-                      "operation_type": FINANCE_OPERATION_ZH.get(operation, operation),
-                      "amount": payload.get("amount"), "accruals": payload.get("accruals_for_sale"),
-                      "commission": payload.get("sale_commission")})
-    report_totals = []
-    for row in reports:
-        result = json.loads(row.pop("payload")).get("result") or {}
-        report_totals.append(row | {key: result.get(key) for key in (
-            "money_transfer", "compensation_amount", "refunds_and_cancellations",
-            "processing_and_delivery", "services_amount", "others_amount")})
-    return {"summary": {"records": total, "shops": totals, "reports": report_totals}, "items": items, "total": total,
-            "page": page, "size": size, "data_through": through}
-
-
-@app.get("/api/exchange-rates")
-def exchange_rates():
-    with connect() as db:
-        return [dict(row) for row in db.execute(
-            "SELECT currency,rate_date,rate_to_cny,source,updated_at FROM exchange_rates ORDER BY rate_date DESC,currency")]
-
-
-@app.put("/api/exchange-rates")
-async def save_exchange_rate(request: Request):
-    body = await request.json()
-    currency = str(body.get("currency") or "").upper()
-    source, rate_date = str(body.get("source") or "").strip(), str(body.get("rate_date") or "")
-    try:
-        rate = float(body.get("rate_to_cny"))
-        datetime.strptime(rate_date, "%Y-%m-%d")
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "汇率或日期无效") from error
-    if currency not in {"RUB", "USD", "CNY"} or rate <= 0 or not source:
-        raise HTTPException(400, "请填写币种、正数汇率、日期和来源")
-    now = datetime.now(timezone.utc).isoformat()
-    with transaction() as db:
-        old = db.execute("SELECT rate_to_cny FROM exchange_rates WHERE currency=? AND rate_date=?",
-                         (currency, rate_date)).fetchone()
-        db.execute("""INSERT INTO exchange_rates VALUES(?,?,?,?,?,?)
-          ON CONFLICT(currency,rate_date) DO UPDATE SET rate_to_cny=excluded.rate_to_cny,
-          source=excluded.source,updated_at=excluded.updated_at""",
-          (currency, rate_date, rate, source, now, now))
-        db.execute("INSERT INTO exchange_rate_history(currency,rate_date,old_rate,new_rate,source,changed_at) VALUES(?,?,?,?,?,?)",
-                   (currency, rate_date, old[0] if old else None, rate, source, now))
-    return {"ok": True}
-
-
-@app.get("/api/profits")
-def profits(shop_id: int = 0, page: int = 1, size: int = 30):
-    page, size = _paging(page, size)
-    where, args = (["f.posting_number<>''"], [])
-    if shop_id in (1, 2):
-        where.append("f.shop_id=?"); args.append(shop_id)
-    sql_where = " AND ".join(where)
-    with transaction() as db:
-        total = db.execute(f"""SELECT COUNT(*) FROM (SELECT f.shop_id,
-          json_extract(f.payload,'$.posting.posting_number') posting_number FROM finance_records f
-          WHERE {sql_where.replace('f.posting_number', "json_extract(f.payload,'$.posting.posting_number')")}
-          GROUP BY f.shop_id,posting_number)""", args).fetchone()[0]
-        rows = db.execute(f"""SELECT f.shop_id,s.name shop_name,s.settlement_currency payout_currency,
-          json_extract(f.payload,'$.posting.posting_number') posting_number,
-          MAX(f.occurred_at) occurred_at,
-          SUM(CAST(json_extract(f.payload,'$.amount') AS REAL)) net_rub,
-          SUM(CAST(json_extract(f.payload,'$.accruals_for_sale') AS REAL)) sales_rub,
-          SUM(CAST(json_extract(f.payload,'$.sale_commission') AS REAL)) commission_rub,
-          o.amount_original,o.amount_currency,c.cost_cny
-          FROM finance_records f JOIN shops s ON s.id=f.shop_id
-          LEFT JOIN orders o ON o.shop_id=f.shop_id AND o.posting_number=json_extract(f.payload,'$.posting.posting_number')
-          LEFT JOIN order_costs c ON c.shop_id=f.shop_id AND c.posting_number=json_extract(f.payload,'$.posting.posting_number')
-          WHERE {sql_where.replace('f.posting_number', "json_extract(f.payload,'$.posting.posting_number')")}
-          GROUP BY f.shop_id,json_extract(f.payload,'$.posting.posting_number')
-          ORDER BY occurred_at DESC LIMIT ? OFFSET ?""",
-          args + [size, (page - 1) * size]).fetchall()
-        items, missing = [], 0
-        for raw in rows:
-            row = dict(raw)
-            rub = _conversion(db, "finance_order", f"{row['shop_id']}:{row['posting_number']}",
-                              row["net_rub"], "RUB", row["occurred_at"] or "9999-12-31")
-            original = _conversion(db, "order_amount", f"{row['shop_id']}:{row['posting_number']}",
-                                   row["amount_original"], row["amount_currency"],
-                                   row["occurred_at"] or "9999-12-31")
-            row["rub_rate"] = rub
-            row["order_rate"] = original
-            row["profit_cny"] = rub["amount_cny"] - row["cost_cny"] if rub and row["cost_cny"] is not None else None
-            row["payout_amount"] = None
-            if row["profit_cny"] is None:
-                missing += 1
-            items.append(row)
-    return {"items": items, "total": total, "page": page, "size": size,
-            "missing_profit": missing, "definition": "人民币利润=Ozon账单净额按可靠RUB/CNY汇率折算-马帮人民币成本"}
 
 
 @app.get("/api/complaints")
@@ -836,14 +635,6 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50):
     page, size = _paging(page, size)
     with connect() as db:
         records = _latest_snapshots(db, "stock_snapshots", shop_id)
-        clause, args = _record_clause(shop_id, "w")
-        warehouse = db.execute(f"""SELECT w.shop_id,s.name shop_name,w.updated_at observed_at,
-          w.sku,w.product_id,w.warehouse_id,w.present,w.reserved,'Webhook FBS/rFBS' source
-          FROM warehouse_stocks w JOIN shops s ON s.id=w.shop_id{clause}""", args).fetchall()
-        clause_fbo, args_fbo = _record_clause(shop_id, "w")
-        fbo = db.execute(f"""SELECT w.shop_id,s.name shop_name,w.updated_at observed_at,
-          w.sku,NULL product_id,'' warehouse_id,w.new_present present,w.new_reserved reserved,'Webhook FBO' source
-          FROM fbo_stocks w JOIN shops s ON s.id=w.shop_id{clause_fbo}""", args_fbo).fetchall()
         sales = {(row["shop_id"], row["sku"]): dict(row) for row in db.execute(f"""SELECT i.shop_id,i.sku,
           SUM(CASE WHEN o.created_at>=datetime('now','-7 days') THEN i.quantity ELSE 0 END) sales_7,
           SUM(CASE WHEN o.created_at>=datetime('now','-30 days') THEN i.quantity ELSE 0 END) sales_30
@@ -860,19 +651,49 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50):
               "warehouse_id": ",".join(map(str, value.get("warehouse_ids") or [])),
               "present": int(value.get("present") or 0), "reserved": int(value.get("reserved") or 0),
               "types": value.get("type") or value.get("shipment_type") or "", "source": "API快照"})
-    items += [dict(row) | {"offer_id": None, "types": "", "sku": str(row["sku"])} for row in (*warehouse, *fbo)]
+    channel_names = {"fbp": "FBP", "rfbs": "realFBS", "fbo": "WHD"}
+    grouped = {}
     for item in items:
-        sold = sales.get((item["shop_id"], item["sku"]), {})
-        item["sales_7"] = int(sold.get("sales_7") or 0)
-        item["sales_30"] = int(sold.get("sales_30") or 0)
-        item["days_available"] = round(item["present"] / (item["sales_30"] / 30), 1) if item["sales_30"] else None
-        summary = shops.setdefault(item["shop_id"], {"shop_id": item["shop_id"], "shop_name": item["shop_name"],
-          "products": 0, "present": 0, "reserved": 0, "out_of_stock": 0})
-        summary["products"] += 1; summary["present"] += item["present"]; summary["reserved"] += item["reserved"]
-        summary["out_of_stock"] += int(item["present"] <= 0)
-    total = len(items); start = (page - 1) * size
-    through = max((item["observed_at"] for item in items), default=None)
-    return {"summary": {"records": total, "shops": list(shops.values())}, "items": items[start:start + size],
+        if item["present"] <= 0 and item["reserved"] <= 0:
+            continue
+        key = item["shop_id"], item["sku"]
+        group = grouped.setdefault(key, {"shop_id": item["shop_id"], "shop_name": item["shop_name"],
+          "sku": item["sku"], "offer_id": item.get("offer_id"), "product_id": item.get("product_id"),
+          "_channels": {}})
+        group["offer_id"] = group["offer_id"] or item.get("offer_id")
+        group["product_id"] = group["product_id"] or item.get("product_id")
+        channel = channel_names.get(str(item.get("types") or "").lower(), "库存事件")
+        source = group["_channels"].setdefault(channel, {}).setdefault(item["source"], {
+          "channel": channel, "source": item["source"], "present": 0, "reserved": 0,
+          "observed_at": item["observed_at"], "warehouses": set()})
+        source["present"] += item["present"]
+        source["reserved"] += item["reserved"]
+        source["observed_at"] = max(source["observed_at"] or "", item["observed_at"] or "")
+        source["warehouses"].update(filter(None, str(item.get("warehouse_id") or "").split(",")))
+    cards = []
+    channel_order = {"FBP": 0, "realFBS": 1, "WHD": 2, "库存事件": 3}
+    for group in grouped.values():
+        channels = [max(sources.values(), key=lambda value: value["observed_at"] or "")
+                    for sources in group.pop("_channels").values()]
+        for channel in channels:
+            channel["warehouse_id"] = ", ".join(sorted(channel.pop("warehouses")))
+        channels.sort(key=lambda value: channel_order[value["channel"]])
+        sold = sales.get((group["shop_id"], group["sku"]), {})
+        group["channels"] = channels
+        group["present"] = sum(value["present"] for value in channels)
+        group["reserved"] = sum(value["reserved"] for value in channels)
+        group["sales_7"] = int(sold.get("sales_7") or 0)
+        group["sales_30"] = int(sold.get("sales_30") or 0)
+        group["days_available"] = round(group["present"] / (group["sales_30"] / 30), 1) if group["sales_30"] else None
+        group["observed_at"] = max(value["observed_at"] for value in channels)
+        summary = shops.setdefault(group["shop_id"], {"shop_id": group["shop_id"],
+          "shop_name": group["shop_name"], "products": 0, "present": 0, "reserved": 0})
+        summary["products"] += 1; summary["present"] += group["present"]; summary["reserved"] += group["reserved"]
+        cards.append(group)
+    cards.sort(key=lambda value: (value["shop_id"], value["sku"]))
+    total = len(cards); start = (page - 1) * size
+    through = max((item["observed_at"] for item in cards), default=None)
+    return {"summary": {"records": total, "shops": list(shops.values())}, "items": cards[start:start + size],
             "total": total, "page": page, "size": size, "data_through": through,
             "formula": "预计可售天数=当前可售库存÷(近30天有效货件数÷30)；无销量时无法估算"}
 
@@ -880,6 +701,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50):
 @app.get("/api/stock/history")
 def stock_history(shop_id: int = 0, page: int = 1, size: int = 50):
     where, args = _record_clause(shop_id, "h")
+    where += " AND h.source IN ('api','API快照')" if where else " WHERE h.source IN ('api','API快照')"
     page, size = _paging(page, size)
     with connect() as db:
         total = db.execute(f"SELECT COUNT(*) FROM stock_history h{where}", args).fetchone()[0]
@@ -897,10 +719,8 @@ async def upload(kind: str, request: Request, shop_id: int):
     content = await request.body()
     if len(content) > 50 * 1024 * 1024: raise HTTPException(413, "文件超过50MB")
     try:
-        if kind == "mabang":
-            return await run_in_threadpool(import_costs, shop_id, filename, content)
         return await run_in_threadpool(import_csv, shop_id, kind, filename, content)
-    except (ValueError, UnicodeError, BadZipFile, InvalidFileException) as error:
+    except (ValueError, UnicodeError) as error:
         raise HTTPException(400, str(error)) from error
 
 
@@ -908,7 +728,8 @@ async def upload(kind: str, request: Request, shop_id: int):
 def imports():
     with connect() as db:
         return [dict(row) for row in db.execute("""
-          SELECT b.*,s.name shop_name FROM import_batches b JOIN shops s ON s.id=b.shop_id ORDER BY b.id DESC LIMIT 50
+          SELECT b.*,s.name shop_name FROM import_batches b JOIN shops s ON s.id=b.shop_id
+          WHERE b.kind IN ('FBP','realFBS','WHD') ORDER BY b.id DESC LIMIT 50
         """)]
 
 
@@ -933,17 +754,18 @@ def sync_run(run_id: int):
 def auto_sync_settings():
     with connect() as db:
         return [dict(row) for row in db.execute(
-            "SELECT * FROM shop_auto_sync_settings ORDER BY shop_id,CASE module WHEN 'orders' THEN 1 WHEN 'finance' THEN 2 WHEN 'returns' THEN 3 ELSE 4 END")]
+            "SELECT * FROM shop_auto_sync_settings WHERE module IN ('orders','returns','stock') "
+            "ORDER BY shop_id,CASE module WHEN 'orders' THEN 1 WHEN 'returns' THEN 2 ELSE 3 END")]
 
 
 def save_auto_sync_settings(values):
     if set(values) == SYNC_MODULES:
         values = {str(shop_id): values for shop_id in (1, 2)}
     if set(values) != {"1", "2"} or any(set(values[str(shop_id)]) != SYNC_MODULES for shop_id in (1, 2)):
-        raise ValueError("必须分别提交两个店铺的四个模块设置")
+        raise ValueError("必须分别提交两个店铺的三个模块设置")
     settings = []
     for shop_id in (1, 2):
-        for module in ("orders", "finance", "returns", "stock"):
+        for module in ("orders", "returns", "stock"):
             value = values[str(shop_id)][module]
             run_time = str(value.get("run_time") or "")
             if len(run_time) != 5:
@@ -994,16 +816,6 @@ def _run_sync_job(run_id, module, shop_id, ranges):
                 db.execute("UPDATE sync_runs SET current_from=?,current_to=? WHERE id=?",
                            (start.isoformat(), end.isoformat(), run_id))
             result = sync_module(module, shop_id, start, end)
-            if module == "orders":
-                with connect() as db:
-                    pending_ids = [row[0] for row in db.execute(
-                        "SELECT id FROM webhook_events WHERE shop_id=? AND processing_status='pending_match'",
-                        (shop_id,))]
-                for event_id in pending_ids:
-                    try:
-                        retry_pending(event_id)
-                    except PushRequestError:
-                        pass
             records += int(result.get("records") or 0)
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",
@@ -1048,7 +860,8 @@ def run_auto_sync_once(now=None):
     now = now or datetime.now(BEIJING)
     today = now.date().isoformat()
     with connect() as db:
-        settings = db.execute("SELECT * FROM shop_auto_sync_settings WHERE enabled=1 ORDER BY shop_id,rowid").fetchall()
+        settings = db.execute("""SELECT * FROM shop_auto_sync_settings
+          WHERE enabled=1 AND module IN ('orders','returns','stock') ORDER BY shop_id,rowid""").fetchall()
     started = []
     for setting in settings:
         if now.strftime("%H:%M") < setting["run_time"]:
@@ -1116,8 +929,8 @@ def export_orders(shop_id: int = 0):
                               "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
             for row in db.execute(f"""
               SELECT o.shop_id,s.name shop,o.posting_number,o.channel,o.created_at,o.status_raw,
-                o.cancel_reason_raw,o.amount_original,o.amount_currency,c.cost_cny
-              FROM orders o JOIN shops s ON s.id=o.shop_id LEFT JOIN order_costs c USING(shop_id,posting_number)
+                o.cancel_reason_raw,o.amount_original,o.amount_currency
+              FROM orders o JOIN shops s ON s.id=o.shop_id
               WHERE {ACTIVE}{clause} ORDER BY o.created_at
             """, args):
                 yield json.dumps(_translated_order(row), ensure_ascii=False) + "\n"
@@ -1127,14 +940,13 @@ def export_orders(shop_id: int = 0):
 
 @app.get("/api/export/{module}")
 def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: str = ""):
-    if module not in {"risk", "timeliness", "finance", "returns", "complaints", "stock", "rules"}:
+    if module not in {"risk", "timeliness", "returns", "complaints", "stock", "rules"}:
         raise HTTPException(404, "未知导出模块")
     tables = {
         "risk": ("orders o JOIN order_items i USING(shop_id,posting_number)", "o.created_at",
                  "o.shop_id,o.channel,o.posting_number,i.sku,i.offer_id,i.quantity,o.status_raw,o.cancel_reason_raw,COALESCE((SELECT g.name FROM product_group_members m JOIN product_groups g ON g.id=m.group_id WHERE (m.key_type='sku' AND m.key_value=i.sku) OR (m.key_type='offer_id' AND m.key_value=i.offer_id) ORDER BY m.key_type='sku' DESC LIMIT 1),i.sku,i.offer_id) analysis_group"),
         "timeliness": ("orders o", "o.created_at",
                  "o.shop_id,o.channel,o.posting_number,o.created_at,o.shipped_at,o.delivered_at"),
-        "finance": ("finance_records o", "o.occurred_at", "o.shop_id,o.record_key,o.occurred_at,o.payload"),
         "returns": ("rfbs_return_records o", "o.created_at",
                  "o.shop_id,o.return_id,o.return_number,o.created_at,o.posting_number,o.sku,o.offer_id,o.product_name,o.status_raw,o.status_name,o.quantity,o.reason_raw,o.reason_name,o.compensation_status,o.product_amount,o.product_currency,o.logistic_return_at,o.buyer_comment_raw"),
         "complaints": ("complaints o", "o.complaint_at",
@@ -1155,6 +967,8 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
         args.append(date_to if "T" in date_to else date_to + "T23:59:59.999999Z")
     if module in {"risk", "timeliness"}:
         where.append(ACTIVE)
+    if module == "stock":
+        where.append("o.source IN ('api','API快照')")
     sql_where = " AND ".join(where)
 
     def lines():
@@ -1164,7 +978,7 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
             through = db.execute(f"SELECT MAX({date_column}) FROM {table} WHERE {sql_where}", args).fetchone()[0]
             metadata = {"type": "metadata", "module": module, "shops": selected,
               "range": {"from": date_from or None, "to": date_to or None},
-              "timezone": "数据库UTC；页面北京时间", "currencies": "订单原币、Ozon账单RUB、成本CNY分开",
+              "timezone": "数据库UTC；页面北京时间", "currencies": "保留记录原始币种，不做跨币种汇总",
               "order_definition": "不同posting_number", "piece_definition": "SUM(quantity)",
               "filter": "统计类导出剔除发货前取消；模块互相隔离", "data_through": through}
             yield json.dumps(metadata, ensure_ascii=False) + "\n"
@@ -1199,14 +1013,6 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                     value["record_type"] = "退货明细"
                 elif module == "rules":
                     value["rule_type"] = "品牌规则"
-                if module == "finance":
-                    payload = json.loads(value.pop("payload"))
-                    value.update({"posting_number": (payload.get("posting") or {}).get("posting_number"),
-                                  "operation_type": payload.get("operation_type"),
-                                  "operation_type_name": payload.get("operation_type_name"),
-                                  "amount_rub": payload.get("amount"),
-                                  "accruals_rub": payload.get("accruals_for_sale"),
-                                  "commission_rub": payload.get("sale_commission")})
                 yield json.dumps(value, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
       headers={"Content-Disposition": f"attachment; filename={module}.jsonl"})

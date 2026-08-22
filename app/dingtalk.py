@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from .db import connect, transaction
 from .ozon import BEIJING, CANCEL_REASON_ZH, _env
 
-MODULE_NAMES = {"orders": "订单", "finance": "财务", "returns": "退货", "stock": "库存"}
+MODULE_NAMES = {"orders": "订单", "returns": "退货", "stock": "库存"}
 _stop = threading.Event()
 _thread = None
 

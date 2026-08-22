@@ -17,7 +17,6 @@ BEIJING = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).resolve().parent.parent
 MODULE_TABLES = {
     "orders": ("orders", "order_items", "order_api_records"),
-    "finance": ("finance_records", "finance_reports"),
     "returns": ("return_records", "rfbs_return_records"),
     "stock": ("stock_snapshots", "stock_history"),
 }
@@ -55,26 +54,6 @@ RFBS_RETURN_STATUS_ZH = {
     "CrmRejected": "Ozon 已拒绝",
     "OnSellerClarificationAfterPartialCompensation": "部分退款后待卖家说明",
     "Solved": "已说明",
-}
-FINANCE_OPERATION_ZH = {
-    "Оплата эквайринга": "收单服务费",
-    "Перевыставление услуг доставки": "配送服务费重新结算",
-    "Доставка покупателю": "配送给买家",
-    "Агентское вознаграждение за заключение и сопровождение договора транспортно-экспедиционных услуг по организации международной перевозки": "国际运输货运代理服务佣金",
-    "Оплата за клик": "按点击付费",
-    "Продвижение бренда": "品牌推广",
-    "Доставка и обработка возврата, отмены, невыкупа": "退货、取消及未取货的配送与处理",
-    "Получение возврата, отмены, невыкупа от покупателя": "接收买家退货、取消及未取货商品",
-    "Частичная компенсация покупателю": "向买家部分赔偿",
-    "Подписка Premium Plus": "Premium Plus 订阅",
-    "Потеря по вине Ozon в логистике": "Ozon 物流责任导致商品丢失",
-    "Удержание за недовложение товара": "商品少装扣款",
-    "Утилизация товара": "商品销毁",
-    "Брак по вине Ozon на складе": "Ozon 仓库责任导致商品损坏",
-    "Начисление по спору": "争议补偿入账",
-    "Утилизация товара: Автоутилизация со стока": "商品销毁：库存自动销毁",
-    "Брак по вине Ozon в логистике": "Ozon 物流责任导致商品损坏",
-    "Потеря по вине Ozon на складе": "Ozon 仓库责任导致商品丢失",
 }
 CANCEL_REASON_ZH = {
     "Покупатель отказался при вручении: товар не подошел": "买家收货时拒收：商品不合适",
@@ -227,10 +206,6 @@ def sync_orders(shop_id, start, end):
     with connect() as db:
         delivered = {row[0] for row in db.execute(
             "SELECT posting_number FROM orders WHERE shop_id=? AND NULLIF(delivered_at,'') IS NOT NULL", (shop_id,))}
-    for posting in fbs:
-        if (posting.get("status") == "delivered" and posting["posting_number"] not in delivered
-                and not posting.get("fact_delivery_date")):
-            posting["fact_delivery_date"] = posting.get("fact_delivery_date") or posting.get("delivering_date")
     for posting in fbo:
         if (posting.get("status") == "delivered" and posting["posting_number"] not in delivered
                 and not posting.get("fact_delivery_date")):
@@ -266,7 +241,9 @@ def sync_orders(shop_id, start, end):
                 parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
                 channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
                 shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
-                delivered_at=COALESCE(NULLIF(excluded.delivered_at,''),orders.delivered_at),
+                delivered_at=CASE WHEN NULLIF(excluded.delivered_at,'') IS NOT NULL THEN excluded.delivered_at
+                  WHEN excluded.channel IN ('FBP','realFBS') AND orders.delivered_at=orders.shipped_at THEN NULL
+                  ELSE orders.delivered_at END,
                 status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
                 cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
                 shipped=CASE WHEN excluded.channel='WHD' AND excluded.status_raw='已取消' AND excluded.cancelled_after_ship IS NULL
@@ -300,53 +277,6 @@ def sync_orders(shop_id, start, end):
             """, (shop_id, number, channel, _json(posting), fetched))
     return {"records": len(fbs) + len(fbo), "FBP": sum(p.get("integration_type_flow") == "FBP" for p in fbs),
             "realFBS": sum(p.get("integration_type_flow") == "aggregator" for p in fbs), "WHD": len(fbo)}
-
-
-def sync_finance(shop_id, start, end):
-    records, reports, cursor = [], [], start
-    while cursor <= end:
-        window_end = min(cursor + timedelta(days=30) - timedelta(seconds=1), end)
-        page = 1
-        while True:
-            payload = {"filter": {"date": {"from": _utc(cursor), "to": _utc(window_end)},
-                       "operation_type": [], "posting_number": "", "transaction_type": "all"},
-                       "page": page, "page_size": 1000}
-            result = _post(shop_id, "/v3/finance/transaction/list", payload).get("result") or {}
-            records.extend(result.get("operations") or [])
-            if page >= int(result.get("page_count") or 0):
-                break
-            page += 1
-        totals = _post(shop_id, "/v3/finance/transaction/totals", {
-            "date": {"from": _utc(cursor), "to": _utc(window_end)},
-            "posting_number": "", "transaction_type": "all"})
-        reports.append(("totals", f"{_utc(cursor)}|{_utc(window_end)}", totals))
-        if window_end >= end:
-            break
-        cursor = window_end + timedelta(seconds=1)
-    month = datetime(start.year, start.month, 1, tzinfo=start.tzinfo)
-    last_month = datetime(end.year, end.month, 1, tzinfo=end.tzinfo)
-    while month <= last_month:
-        try:
-            realization = _post(shop_id, "/v2/finance/realization", {"month": month.month, "year": month.year})
-        except RuntimeError as error:
-            if "HTTP 404:" not in str(error):
-                raise
-        else:
-            reports.append(("realization", f"{month.year:04d}-{month.month:02d}", realization))
-        month = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    fetched = _stamp()
-    with transaction() as db:
-        for record in records:
-            db.execute("""INSERT INTO finance_records VALUES(?,?,?,?,?)
-              ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,payload=excluded.payload,fetched_at=excluded.fetched_at
-            """, (shop_id, _key(record, "operation_id"), record.get("operation_date"), _json(record), fetched))
-        for report_type, period_key, payload in reports:
-            db.execute("""INSERT INTO finance_reports VALUES(?,?,?,?,?)
-              ON CONFLICT(shop_id,report_type,period_key) DO UPDATE SET
-              payload=excluded.payload,fetched_at=excluded.fetched_at""",
-                       (shop_id, report_type, period_key, _json(payload), fetched))
-    return {"records": len({_key(record, "operation_id") for record in records}), "fetched": len(records),
-            "reports": len(reports)}
 
 
 def _rfbs_return_pages(shop_id, start, end):
@@ -446,7 +376,7 @@ def _sync_snapshot(shop_id, path, table):
 
 def sync_module(module, shop_id, start=None, end=None):
     start, end = (start, end) if start and end else default_range()
-    functions = {"orders": sync_orders, "finance": sync_finance, "returns": sync_returns,
+    functions = {"orders": sync_orders, "returns": sync_returns,
                  "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots")}
     if module not in functions:
         raise ValueError("未知同步模块")
@@ -462,7 +392,6 @@ def probe_shop(shop_id):
     methods = {method for role in roles if isinstance(role, dict) for method in role.get("methods", [])}
     required = {
         "orders": {"/v4/posting/fbs/list", "/v3/posting/fbo/list"},
-        "finance": {"/v3/finance/transaction/list", "/v3/finance/transaction/totals", "/v2/finance/realization"},
         "returns": {"/v1/returns/list", "/v2/returns/rfbs/list"},
         "stock": {"/v4/product/info/stocks"},
     }

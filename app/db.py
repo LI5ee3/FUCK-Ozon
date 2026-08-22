@@ -1,5 +1,4 @@
 import os
-import secrets
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -39,8 +38,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS shops (
           id INTEGER PRIMARY KEY CHECK(id IN (1,2)),
           name TEXT NOT NULL UNIQUE CHECK(trim(name) <> ''),
-          settlement_currency TEXT NOT NULL CHECK(settlement_currency IN ('USD','CNY')),
-          seller_id TEXT, push_token TEXT
+          settlement_currency TEXT NOT NULL CHECK(settlement_currency IN ('USD','CNY'))
         );
         INSERT OR IGNORE INTO shops(id,name,settlement_currency) VALUES (1, '店铺1', 'USD'), (2, '店铺2', 'CNY');
 
@@ -62,10 +60,8 @@ def init_db():
           cancelled_after_ship INTEGER CHECK(cancelled_after_ship IN (0,1)),
           data_anomaly INTEGER NOT NULL DEFAULT 0 CHECK(data_anomaly IN (0,1)),
           amount_original REAL, amount_currency TEXT,
-          amount_cny REAL, exchange_rate REAL, exchange_source TEXT, exchange_date TEXT,
           buyer_paid REAL, buyer_currency TEXT,
-          warehouse_id TEXT, seller_id TEXT, external_uuid TEXT, shipment_date TEXT,
-          delivery_date_begin TEXT, delivery_date_end TEXT, status_changed_at TEXT,
+          warehouse_id TEXT, status_changed_at TEXT,
           source TEXT NOT NULL, import_batch_id INTEGER REFERENCES import_batches(id),
           updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
           PRIMARY KEY(shop_id, posting_number)
@@ -80,12 +76,6 @@ def init_db():
           PRIMARY KEY(shop_id, channel, posting_number, sku),
           FOREIGN KEY(shop_id, posting_number) REFERENCES orders(shop_id, posting_number)
         );
-        CREATE TABLE IF NOT EXISTS order_costs (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), posting_number TEXT NOT NULL,
-          cost_cny REAL NOT NULL, source_rate REAL, source TEXT NOT NULL,
-          import_batch_id INTEGER REFERENCES import_batches(id),
-          PRIMARY KEY(shop_id, posting_number)
-        );
         CREATE TABLE IF NOT EXISTS sync_runs (
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           module TEXT NOT NULL, range_from TEXT, range_to TEXT,
@@ -96,13 +86,12 @@ def init_db():
           run_source TEXT NOT NULL DEFAULT 'manual', scheduled_date TEXT
         );
         CREATE TABLE IF NOT EXISTS auto_sync_settings (
-          module TEXT PRIMARY KEY CHECK(module IN ('orders','finance','returns','stock')),
+          module TEXT PRIMARY KEY CHECK(module IN ('orders','returns','stock')),
           enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
           run_time TEXT NOT NULL, range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365)
         );
         INSERT OR IGNORE INTO auto_sync_settings VALUES
-          ('orders',0,'02:00',3),('finance',0,'03:00',3),
-          ('returns',0,'04:00',3),('stock',0,'05:00',1);
+          ('orders',0,'02:00',3),('returns',0,'04:00',3),('stock',0,'05:00',1);
         CREATE TABLE IF NOT EXISTS order_api_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), posting_number TEXT NOT NULL,
           channel TEXT NOT NULL, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
@@ -115,16 +104,6 @@ def init_db():
           SELECT 1 FROM order_api_records r WHERE r.shop_id=orders.shop_id
           AND r.posting_number=orders.posting_number
           AND NULLIF(json_extract(r.payload,'$.delivering_date'),'') IS NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS finance_records (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
-          occurred_at TEXT, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
-          PRIMARY KEY(shop_id,record_key)
-        );
-        CREATE TABLE IF NOT EXISTS finance_reports (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), report_type TEXT NOT NULL,
-          period_key TEXT NOT NULL, payload TEXT NOT NULL, fetched_at TEXT NOT NULL,
-          PRIMARY KEY(shop_id,report_type,period_key)
         );
         CREATE TABLE IF NOT EXISTS return_records (
           shop_id INTEGER NOT NULL REFERENCES shops(id), record_key TEXT NOT NULL,
@@ -159,21 +138,6 @@ def init_db():
           attempted_at TEXT NOT NULL, sent_at TEXT, error TEXT,
           PRIMARY KEY(kind,stats_date)
         );
-        CREATE TABLE IF NOT EXISTS webhook_events (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          shop_id INTEGER NOT NULL REFERENCES shops(id), message_type TEXT NOT NULL,
-          event_key TEXT NOT NULL, occurred_at TEXT, received_at TEXT NOT NULL,
-          payload_json TEXT NOT NULL, processing_status TEXT NOT NULL, error_message TEXT,
-          UNIQUE(shop_id,event_key)
-        );
-        CREATE TABLE IF NOT EXISTS order_status_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          shop_id INTEGER NOT NULL, posting_number TEXT NOT NULL, message_type TEXT NOT NULL,
-          event_key TEXT NOT NULL, status_raw TEXT NOT NULL, status_name TEXT NOT NULL,
-          reason_id TEXT, reason_message TEXT, occurred_at TEXT NOT NULL, payload_json TEXT NOT NULL,
-          UNIQUE(shop_id,event_key),
-          FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
-        );
         CREATE TABLE IF NOT EXISTS order_manual_data (
           shop_id INTEGER NOT NULL, posting_number TEXT NOT NULL,
           complaint_number TEXT, complaint_at TEXT, complaint_channel TEXT,
@@ -181,33 +145,6 @@ def init_db():
           notes TEXT, manual_short_name TEXT, updated_at TEXT,
           PRIMARY KEY(shop_id,posting_number),
           FOREIGN KEY(shop_id,posting_number) REFERENCES orders(shop_id,posting_number)
-        );
-        CREATE TABLE IF NOT EXISTS warehouse_stocks (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), warehouse_id TEXT NOT NULL,
-          sku TEXT NOT NULL, product_id TEXT, present INTEGER NOT NULL, reserved INTEGER NOT NULL,
-          updated_at TEXT NOT NULL, payload_json TEXT NOT NULL,
-          PRIMARY KEY(shop_id,warehouse_id,sku)
-        );
-        CREATE TABLE IF NOT EXISTS fbo_stocks (
-          shop_id INTEGER NOT NULL REFERENCES shops(id), sku TEXT NOT NULL,
-          updated_at TEXT NOT NULL, new_present INTEGER NOT NULL, new_reserved INTEGER NOT NULL,
-          old_present INTEGER, old_reserved INTEGER, payload_json TEXT NOT NULL,
-          PRIMARY KEY(shop_id,sku)
-        );
-        CREATE TABLE IF NOT EXISTS exchange_rates (
-          currency TEXT NOT NULL, rate_date TEXT NOT NULL, rate_to_cny REAL NOT NULL CHECK(rate_to_cny>0),
-          source TEXT NOT NULL CHECK(trim(source)<>''), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-          PRIMARY KEY(currency,rate_date)
-        );
-        CREATE TABLE IF NOT EXISTS exchange_rate_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, currency TEXT NOT NULL, rate_date TEXT NOT NULL,
-          old_rate REAL, new_rate REAL NOT NULL, source TEXT NOT NULL, changed_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS currency_conversions (
-          entity_type TEXT NOT NULL, entity_key TEXT NOT NULL, original_amount REAL NOT NULL,
-          original_currency TEXT NOT NULL, rate_to_cny REAL NOT NULL, amount_cny REAL NOT NULL,
-          rate_source TEXT NOT NULL, rate_date TEXT NOT NULL, converted_at TEXT NOT NULL,
-          PRIMARY KEY(entity_type,entity_key,original_currency)
         );
         CREATE TABLE IF NOT EXISTS complaints (
           shop_id INTEGER NOT NULL REFERENCES shops(id), complaint_number TEXT NOT NULL,
@@ -245,13 +182,14 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS shop_auto_sync_settings (
           shop_id INTEGER NOT NULL REFERENCES shops(id),
-          module TEXT NOT NULL CHECK(module IN ('orders','finance','returns','stock')),
+          module TEXT NOT NULL CHECK(module IN ('orders','returns','stock')),
           enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)), run_time TEXT NOT NULL,
           range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365),
           PRIMARY KEY(shop_id,module)
         );
         INSERT OR IGNORE INTO shop_auto_sync_settings(shop_id,module,enabled,run_time,range_days)
-          SELECT s.id,a.module,a.enabled,a.run_time,a.range_days FROM shops s CROSS JOIN auto_sync_settings a;
+          SELECT s.id,a.module,a.enabled,a.run_time,a.range_days FROM shops s CROSS JOIN auto_sync_settings a
+          WHERE a.module IN ('orders','returns','stock');
         CREATE TABLE IF NOT EXISTS stock_history (
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
@@ -264,19 +202,10 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_complaints_order ON complaints(shop_id,posting_number);
         CREATE INDEX IF NOT EXISTS idx_stock_history_time ON stock_history(shop_id,occurred_at);
         """)
-        shop_columns = {row[1] for row in db.execute("PRAGMA table_info(shops)")}
-        for name in ("seller_id", "push_token"):
-            if name not in shop_columns:
-                db.execute(f"ALTER TABLE shops ADD COLUMN {name} TEXT")
         order_columns = {row[1] for row in db.execute("PRAGMA table_info(orders)")}
-        for name in ("cancel_reason_id", "warehouse_id", "seller_id", "external_uuid", "shipment_date",
-                     "delivery_date_begin", "delivery_date_end", "status_changed_at"):
+        for name in ("cancel_reason_id", "warehouse_id", "status_changed_at"):
             if name not in order_columns:
                 db.execute(f"ALTER TABLE orders ADD COLUMN {name} TEXT")
-        history_columns = {row[1] for row in db.execute("PRAGMA table_info(order_status_history)")}
-        for name in ("reason_id", "reason_message"):
-            if name not in history_columns:
-                db.execute(f"ALTER TABLE order_status_history ADD COLUMN {name} TEXT")
         return_columns = {row[1] for row in db.execute("PRAGMA table_info(rfbs_return_records)")}
         for name, definition in (
             ("order_number", "TEXT"), ("quantity", "INTEGER"), ("reason_raw", "TEXT"),
@@ -285,17 +214,6 @@ def init_db():
         ):
             if name not in return_columns:
                 db.execute(f"ALTER TABLE rfbs_return_records ADD COLUMN {name} {definition}")
-        db.execute("""UPDATE orders SET
-          shipped=1,
-          shipped_at=COALESCE(NULLIF(shipped_at,''),(SELECT MIN(h.occurred_at) FROM order_status_history h
-            WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number
-            AND h.status_name IN ('运输中','已签收')))
-          WHERE EXISTS (SELECT 1 FROM order_status_history h WHERE h.shop_id=orders.shop_id
-            AND h.posting_number=orders.posting_number AND h.status_name IN ('运输中','已签收'))""")
-        db.execute("""UPDATE orders SET delivered_at=(SELECT MIN(h.occurred_at) FROM order_status_history h
-          WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number AND h.status_name='已签收')
-          WHERE NULLIF(delivered_at,'') IS NULL AND EXISTS (SELECT 1 FROM order_status_history h
-            WHERE h.shop_id=orders.shop_id AND h.posting_number=orders.posting_number AND h.status_name='已签收')""")
         db.execute("""UPDATE orders SET cancelled_after_ship=1
           WHERE status_raw='已取消' AND shipped=1 AND COALESCE(cancelled_after_ship,0)=0""")
         sync_columns = {row[1] for row in db.execute("PRAGMA table_info(sync_runs)")}
@@ -316,9 +234,6 @@ def init_db():
         db.execute("""CREATE UNIQUE INDEX idx_auto_sync_once
           ON sync_runs(shop_id,module,scheduled_date)
           WHERE run_source='auto' AND status IN ('running','success')""")
-        for shop_id in (1, 2):
-            db.execute("UPDATE shops SET push_token=? WHERE id=? AND COALESCE(push_token,'')=''",
-                       (secrets.token_urlsafe(32), shop_id))
         db.execute("""INSERT OR IGNORE INTO complaints(
           shop_id,complaint_number,posting_number,complaint_at,channel,resolved,package_returned,
           compensation_amount,compensation_currency,notes,created_at,updated_at)
