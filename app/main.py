@@ -123,6 +123,11 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/macaron")
+def macaron_preview():
+    return FileResponse(STATIC / "macaron.html")
+
+
 @app.get("/api/session")
 def session(request: Request):
     authenticated = _authenticated(request)

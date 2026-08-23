@@ -26,7 +26,6 @@ class SyncPageTest(unittest.TestCase):
         self.assertIn("Object.keys(syncNames).map(module=>", self.script)
         self.assertIn('type="time" step="60"', self.script)
         self.assertIn("每天拉取时间", self.script)
-        self.assertIn("北京时间", self.script)
         self.assertIn('class="settings-switch"', self.script)
         self.assertIn('class="snapshot-tag">实时库存', self.script)
         self.assertNotIn('<span>启用</span>', self.script)

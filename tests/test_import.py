@@ -114,6 +114,8 @@ class ImportRegressionTest(unittest.TestCase):
     def test_real_samples_match_verified_baseline(self):
         for channel in ("FBP", "realFBS", "WHD"):
             path = ROOT / f"{channel}.csv"
+            if not path.exists():
+                self.skipTest(f"跳过基准样本测试：本地未提供可选样例数据 {path.name}")
             import_csv(1, channel, path.name, path.read_bytes())
         with db.connect() as connection:
             active = "NOT (o.status_raw='已取消' AND o.shipped=0)"
