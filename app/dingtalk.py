@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from .db import DEFAULT_DAILY_TEMPLATE, connect, transaction
+from .db import connect, transaction
 from .ozon import BEIJING, CANCEL_REASON_ZH, _env
 
 MODULE_NAMES = {"orders": "订单", "returns": "退货", "stock": "库存"}
@@ -180,13 +180,8 @@ def daily_message(stats_date, template=None):
     return render_template(template, daily_values(stats_date))
 
 
-def send_test(template=None):
-    stats_date = (datetime.now(BEIJING).date() - timedelta(days=1)).isoformat()
-    send_text("【测试】" + daily_message(stats_date, template))
-
-
 def send_daily(stats_date):
-    attempted = datetime.now(timezone.utc).isoformat()
+    attempted = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     with transaction() as db:
         previous = db.execute("SELECT status,attempted_at FROM notification_runs WHERE kind='daily' AND stats_date=?",
                               (stats_date,)).fetchone()
@@ -206,7 +201,8 @@ def send_daily(stats_date):
         raise
     with transaction() as db:
         db.execute("""UPDATE notification_runs SET status='success',sent_at=?,error=NULL
-          WHERE kind='daily' AND stats_date=?""", (datetime.now(timezone.utc).isoformat(), stats_date))
+          WHERE kind='daily' AND stats_date=?""",
+          (datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), stats_date))
     return True
 
 

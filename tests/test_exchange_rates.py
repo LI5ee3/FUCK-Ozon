@@ -1,13 +1,12 @@
 import json
-import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from app import db
-from app.exchange import split_period, sync_exchange_rates, utc_period
+from app.exchange import convert_compensation, split_period, sync_exchange_rates, utc_period
 from app.main import _gmv_summary, order_trend, summary
+from tests.support import DatabaseTestCase
 
 
 class _Response:
@@ -24,16 +23,10 @@ class _Response:
         return self.payload
 
 
-class ExchangeRateTest(unittest.TestCase):
+class ExchangeRateTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         self.requests = []
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def opener(self, request, timeout=0):
         query = parse_qs(urlsplit(request.full_url).query)
@@ -118,6 +111,25 @@ class ExchangeRateTest(unittest.TestCase):
             (datetime(2026, 8, 21, 21, tzinfo=timezone.utc),
              datetime(2026, 8, 22, 21, tzinfo=timezone.utc), {"USD": 90, "CNY": 12})
         ])["missing_rate_orders"], 1)
+
+    def test_compensation_uses_base_rate_and_exact_utc_interval(self):
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO exchange_rates VALUES(
+              ?, 'RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z',?,?,'ozon_xapi','2026-08-22T22:00:00Z')""", [
+                ("USD", "90", "9000"), ("CNY", "12", "1200")])
+        with db.connect() as connection:
+            platform_usd = convert_compensation(connection, "900", "2026-08-22T00:00:00Z", "RUB", "USD")
+            platform_cny = convert_compensation(connection, "120", "2026-08-22T00:00:00Z", "RUB", "CNY")
+            logistics_usd = convert_compensation(connection, "120", "2026-08-22T00:00:00Z", "CNY", "USD")
+            logistics_cny = convert_compensation(connection, "120", "2026-08-22T21:00:00Z", "CNY", "CNY")
+            boundary = convert_compensation(connection, "900", "2026-08-22T21:00:00Z", "RUB", "USD")
+        self.assertEqual(platform_usd["converted_amount"], "10.00")
+        self.assertEqual(platform_cny["converted_amount"], "10.00")
+        self.assertEqual(logistics_usd["converted_amount"], "16.00")
+        self.assertEqual(logistics_cny["converted_amount"], "120.00")
+        self.assertFalse(logistics_cny["missing_rate"])
+        self.assertTrue(boundary["missing_rate"])
+        self.assertEqual(platform_usd["base_rates"], {"USD_RUB": "90"})
 
 
 if __name__ == "__main__":

@@ -1,24 +1,14 @@
 from datetime import datetime
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from app import db
 from app.main import _run_sync_job, _sync_ranges, _trim_sync_runs
+from tests.support import DatabaseTestCase
 
 
-class SyncProgressTest(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
-
-    def tearDown(self):
-        self.temp.cleanup()
-
+class SyncProgressTest(DatabaseTestCase):
     def create_run(self, total):
         with db.transaction() as connection:
             return connection.execute("""INSERT INTO sync_runs(

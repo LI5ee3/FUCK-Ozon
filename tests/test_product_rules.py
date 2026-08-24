@@ -1,35 +1,20 @@
 import asyncio
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import product_rules, save_product_rule
 from app.products import clean_product_name, load_product_rules, resolve_product
+from tests.support import DatabaseTestCase, MockRequest as Request
 
 
-class Request:
-    def __init__(self, value):
-        self.value = value
-
-    async def json(self):
-        return self.value
-
-
-class ProductRulesTest(unittest.TestCase):
+class ProductRulesTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         with db.transaction() as connection:
             self._product(connection, 1, "P-1", "SKU-1", "OFFER-1", "Новый\u00a0平台商品")
             self._product(connection, 2, "P-2", "SKU-1", "OFFER-1", "另一店商品")
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     @staticmethod
     def _product(connection, shop, posting, sku, offer, name):
@@ -73,29 +58,9 @@ class ProductRulesTest(unittest.TestCase):
         self.assertEqual(result["summary"], {"short_names": 1, "merges": 1})
         self.assertNotIn("brands", result)
         self.assertNotIn("name", result["groups"][0])
-
-    def test_legacy_offer_short_names_and_groups_migrate_without_silent_loss(self):
-        with db.transaction() as connection:
-            self._product(connection, 1, "P-U", "SKU-U", "OFFER-U", "唯一")
-            self._product(connection, 1, "P-A1", "SKU-A1", "OFFER-A", "歧义一")
-            self._product(connection, 1, "P-A2", "SKU-A2", "OFFER-A", "歧义二")
-            connection.executemany("INSERT INTO product_short_names VALUES('offer_id',?,?,'now')",
-                                   [("OFFER-U", "唯一短名"), ("OFFER-A", "歧义短名")])
-            active = connection.execute("INSERT INTO product_groups(name,created_at,updated_at) VALUES('旧组一','now','now')").lastrowid
-            connection.executemany("INSERT INTO product_group_members VALUES(?,?,?)", [
-                (active, "offer_id", "OFFER-U"), (active, "sku", "SKU-U")])
-            pending = connection.execute("INSERT INTO product_groups(name,created_at,updated_at) VALUES('旧组二','now','now')").lastrowid
-            connection.executemany("INSERT INTO product_group_members VALUES(?,?,?)", [
-                (pending, "offer_id", "OFFER-U2"), (pending, "offer_id", "OFFER-A")])
-        db.init_db()
-        with db.connect() as connection:
-            self.assertEqual(connection.execute("SELECT short_name FROM product_short_names WHERE key_type='sku' AND key_value='SKU-U'").fetchone()[0], "唯一短名")
-            self.assertIsNone(connection.execute("SELECT 1 FROM product_short_names WHERE key_type='sku' AND key_value IN ('SKU-A1','SKU-A2')").fetchone())
-            statuses = {row["group_id"]: row["status"] for row in connection.execute("SELECT group_id,status FROM product_group_config")}
-            note = connection.execute("SELECT note FROM product_short_name_migrations WHERE key_value='OFFER-A'").fetchone()[0]
-        self.assertEqual((statuses[active], statuses[pending]), ("active", "pending"))
-        self.assertIn("无法唯一关联", note)
-
+        group_id = result["groups"][0]["id"]
+        asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
+        self.assertEqual(product_rules()["groups"], [])
 
 if __name__ == "__main__":
     unittest.main()

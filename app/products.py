@@ -6,11 +6,8 @@ def clean_product_name(value):
 
 
 def load_product_rules(db):
-    short_names = {row["key_value"]: row["short_name"] for row in db.execute("""
-      SELECT n.key_value,n.short_name FROM product_short_names n
-      LEFT JOIN product_short_name_migrations m
-        ON m.key_type=n.key_type AND m.key_value=n.key_value
-      WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1""")}
+    short_names = {row["key_value"]: row["short_name"] for row in db.execute(
+        "SELECT key_value,short_name FROM product_short_names WHERE key_type='sku'")}
     groups = {row["group_id"]: dict(row) for row in db.execute("""
       SELECT group_id,primary_offer_id,primary_sku FROM product_group_config
       WHERE status='active'""")}

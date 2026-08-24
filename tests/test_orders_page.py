@@ -1,19 +1,15 @@
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import orders
+from tests.support import DatabaseTestCase
 
 
-class OrdersPageTest(unittest.TestCase):
+class OrdersPageTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         with db.transaction() as connection:
             connection.executemany("""INSERT INTO orders(shop_id,posting_number,channel,created_at,
               status_raw,cancel_reason_raw,shipped,amount_original,amount_currency,source)
@@ -33,9 +29,6 @@ class OrdersPageTest(unittest.TestCase):
                 (1, "FBP", "AFTER", "NEW", "NEW-OFFER", "新商品", 1, 40, "USD"),
                 (2, "FBP", "OTHER", "SHOP2", "SHOP2-OFFER", "二店商品", 1, 50, "CNY")])
 
-    def tearDown(self):
-        self.temp.cleanup()
-
     def test_beijing_range_combines_shop_channel_offer_and_keeps_pre_cancel(self):
         data = orders(1, "FBP", "OFFER-X", 1, 30, "2026-08-10", "2026-08-10")
         self.assertEqual(data["total"], 1)
@@ -43,7 +36,7 @@ class OrdersPageTest(unittest.TestCase):
         self.assertEqual(order["posting_number"], "MULTI")
         self.assertEqual((order["sku_types"], order["pieces"]), (2, 3))
         self.assertEqual(order["status_raw"], "已取消")
-        self.assertEqual(order["cancel_reason_raw"], "买家取消订单")
+        self.assertEqual(order["cancel_reason_raw"], "买家取消了订单")
         self.assertFalse(order["shipped"])
 
     def test_end_boundary_translation_fallback_and_validation(self):

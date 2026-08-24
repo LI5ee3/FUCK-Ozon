@@ -1,6 +1,6 @@
 import json
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -114,8 +114,8 @@ def _parse_utc(value):
 def load_base_rate_periods(db, start_utc, end_utc):
     grouped = {}
     rows = db.execute("""SELECT from_currency,valid_from_utc,valid_to_utc,base_rate
-      FROM exchange_rates WHERE source=? AND julianday(valid_to_utc)>julianday(?)
-      AND julianday(valid_from_utc)<julianday(?)
+      FROM exchange_rates WHERE source=? AND valid_to_utc>?
+      AND valid_from_utc<?
       ORDER BY valid_from_utc""", (SOURCE, start_utc, end_utc))
     for row in rows:
         key = (_parse_utc(row["valid_from_utc"]), _parse_utc(row["valid_to_utc"]))
@@ -129,6 +129,31 @@ def rates_for_order(periods, created_at):
     except (TypeError, ValueError):
         return None
     return next((rates for start, end, rates in periods if start <= moment < end), None)
+
+
+def convert_compensation(db, amount, compensated_at, source_currency, target_currency):
+    result = {"converted_amount": None, "converted_currency": target_currency,
+              "base_rates": {}, "missing_rate": False}
+    if amount in (None, "") or not compensated_at:
+        return result
+    value = Decimal(str(amount))
+    if source_currency == target_currency:
+        result["converted_amount"] = str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        return result
+    moment = _parse_utc(compensated_at)
+    periods = load_base_rate_periods(db, _iso(moment), _iso(moment + timedelta(seconds=1)))
+    rates = rates_for_order(periods, moment)
+    required = {target_currency} if source_currency == "RUB" else {"CNY", "USD"}
+    if not rates or any(currency not in rates for currency in required):
+        result["missing_rate"] = True
+        return result
+    if source_currency == "RUB":
+        converted = value / rates[target_currency]
+    else:
+        converted = value * rates["CNY"] / rates["USD"]
+    result["converted_amount"] = str(converted.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    result["base_rates"] = {f"{currency}_RUB": str(rates[currency]) for currency in sorted(required)}
+    return result
 
 
 def exchange_rate_status():

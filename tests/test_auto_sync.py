@@ -1,69 +1,95 @@
 from datetime import datetime
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from app import db
-from app.main import run_auto_sync_once, save_auto_sync_settings
+from app.main import auto_sync_slot, run_auto_sync_once, save_auto_sync_settings
 from app.ozon import BEIJING
+from tests.support import DatabaseTestCase
 
 
-class AutoSyncTest(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+MODULES = ("orders", "returns", "stock")
 
-    def tearDown(self):
-        self.temp.cleanup()
 
-    def test_each_module_settings_and_daily_deduplication(self):
-        values = {
-            module: {"enabled": module == "orders", "run_time": "08:30", "range_days": 7}
-            for module in ("orders", "returns", "stock")
-        }
-        save_auto_sync_settings(values)
-        with db.connect() as connection:
-            stock_days = connection.execute(
-                "SELECT range_days FROM auto_sync_settings WHERE module='stock'").fetchone()[0]
-        self.assertEqual(stock_days, 1)
-        self.assertEqual(run_auto_sync_once(datetime(2026, 8, 21, 8, 29, tzinfo=BEIJING)), [])
+def settings(enabled=(), interval=6, days=7):
+    return {str(shop): {module: {
+        "enabled": (shop, module) in enabled,
+        "interval_hours": interval,
+        "range_days": days,
+    } for module in MODULES} for shop in (1, 2)}
+
+
+class AutoSyncTest(DatabaseTestCase):
+    def test_beijing_hour_slots(self):
+        at_1025 = datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING)
+        self.assertEqual(auto_sync_slot(at_1025, 1).isoformat(), "2026-08-24T10:00:00+08:00")
+        self.assertEqual(auto_sync_slot(at_1025, 6).isoformat(), "2026-08-24T06:00:00+08:00")
+        self.assertEqual(auto_sync_slot(
+            datetime(2026, 8, 24, 12, 1, tzinfo=BEIJING), 6).hour, 12)
+
+    def test_same_slot_deduplicates_and_new_slot_runs(self):
+        save_auto_sync_settings(settings({(1, "orders")}, interval=6))
         with patch("app.main.threading.Thread") as thread:
-            first = run_auto_sync_once(datetime(2026, 8, 21, 8, 30, tzinfo=BEIJING))
-            second = run_auto_sync_once(datetime(2026, 8, 21, 9, 0, tzinfo=BEIJING))
-        self.assertEqual(len(first), 2)
-        self.assertEqual(second, [])
+            first = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
+            duplicate = run_auto_sync_once(datetime(2026, 8, 24, 10, 55, tzinfo=BEIJING))
+            with db.transaction() as connection:
+                connection.execute("UPDATE sync_runs SET status='success' WHERE id=?", (first[0],))
+            next_slot = run_auto_sync_once(datetime(2026, 8, 24, 12, 1, tzinfo=BEIJING))
+        self.assertEqual((len(first), duplicate, len(next_slot)), (1, [], 1))
         self.assertEqual(thread.call_count, 2)
         with db.connect() as connection:
-            rows = connection.execute("""SELECT shop_id,module,run_source,scheduled_date,range_from,range_to
-              FROM sync_runs ORDER BY shop_id""").fetchall()
-        self.assertEqual(len(rows), 2)
-        self.assertTrue(all(row["module"] == "orders" and row["run_source"] == "auto" for row in rows))
-        self.assertTrue(all(row["scheduled_date"] == "2026-08-21" for row in rows))
-        self.assertTrue(all(row["range_from"].startswith("2026-08-15T00:00:00") for row in rows))
+            slots = [row[0] for row in connection.execute(
+                "SELECT scheduled_slot FROM sync_runs ORDER BY id")]
+        self.assertEqual(slots, ["2026-08-24T06:00:00+08:00", "2026-08-24T12:00:00+08:00"])
 
-    def test_invalid_range_is_rejected(self):
-        values = {module: {"enabled": False, "run_time": "02:00", "range_days": 1}
-                  for module in ("orders", "returns", "stock")}
-        values["returns"]["range_days"] = 366
-        with self.assertRaisesRegex(ValueError, "1 至 365"):
-            save_auto_sync_settings(values)
-
-    def test_failed_auto_sync_retries_after_cooldown(self):
-        values = {module: {"enabled": module == "orders", "run_time": "08:30", "range_days": 1}
-                  for module in ("orders", "returns", "stock")}
-        save_auto_sync_settings(values)
+    def test_running_job_blocks_only_same_shop_and_module(self):
+        save_auto_sync_settings(settings({(1, "orders"), (1, "returns"), (2, "orders")}))
         with db.transaction() as connection:
             connection.execute("""INSERT INTO sync_runs(
-              shop_id,module,status,run_source,scheduled_date,started_at)
-              VALUES(1,'orders','failed','auto','2026-08-21','2000-01-01T00:00:00Z')""")
+              shop_id,module,status,run_source,scheduled_slot,started_at)
+              VALUES(1,'orders','running','auto','2026-08-24T00:00:00+08:00','2026-08-24T00:00:00Z')""")
         with patch("app.main.threading.Thread") as thread:
-            started = run_auto_sync_once(datetime(2026, 8, 21, 9, 0, tzinfo=BEIJING))
+            started = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
         self.assertEqual(len(started), 2)
         self.assertEqual(thread.call_count, 2)
+        with db.connect() as connection:
+            pairs = {tuple(row) for row in connection.execute(
+                "SELECT shop_id,module FROM sync_runs WHERE id IN (?,?)", started)}
+        self.assertEqual(pairs, {(1, "returns"), (2, "orders")})
 
+    def test_failed_slot_retries_only_after_five_minutes(self):
+        save_auto_sync_settings(settings({(1, "orders")}))
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO sync_runs(
+              shop_id,module,status,run_source,scheduled_slot,started_at,finished_at)
+              VALUES(1,'orders','failed','auto','2026-08-24T06:00:00+08:00',
+                     '2026-08-24T02:00:00Z','2026-08-24T02:01:00Z')""")
+        with patch("app.main.threading.Thread") as thread:
+            cooling = run_auto_sync_once(datetime(2026, 8, 24, 10, 4, tzinfo=BEIJING))
+            retried = run_auto_sync_once(datetime(2026, 8, 24, 10, 7, tzinfo=BEIJING))
+        self.assertEqual(cooling, [])
+        self.assertEqual(len(retried), 1)
+        self.assertEqual(thread.call_count, 1)
+
+    def test_settings_validation_and_stock_range(self):
+        save_auto_sync_settings(settings(interval=6, days=7))
+        with db.connect() as connection:
+            rows = connection.execute("""SELECT module,interval_hours,range_days
+              FROM shop_auto_sync_settings WHERE shop_id=1 ORDER BY module""").fetchall()
+        self.assertEqual({row["module"]: (row["interval_hours"], row["range_days"])
+                          for row in rows},
+                         {"orders": (6, 7), "returns": (6, 7), "stock": (6, 1)})
+        for invalid in (0, 5, 7, 25):
+            with self.assertRaisesRegex(ValueError, "只允许"):
+                save_auto_sync_settings(settings(interval=invalid))
+        obsolete = settings()
+        obsolete["1"]["orders"]["run_time"] = "08:30"
+        with self.assertRaisesRegex(ValueError, "已停用"):
+            save_auto_sync_settings(obsolete)
+        values = settings()
+        values["1"]["returns"]["range_days"] = 366
+        with self.assertRaisesRegex(ValueError, "1 至 365"):
+            save_auto_sync_settings(values)
 
 if __name__ == "__main__":
     unittest.main()

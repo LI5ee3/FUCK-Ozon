@@ -1,21 +1,17 @@
-import tempfile
 import unittest
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import BUYER_UNCLAIMED_REASONS, _months_before, risk, risk_reasons
+from tests.support import DatabaseTestCase
 
 
-class RiskPageTest(unittest.TestCase):
+class RiskPageTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         orders = [
             (1, "NORMAL", "FBP", "2026-08-09T16:00:00Z", "已签收", None, 1, "SKU-A", 2),
             (1, "CUSTOMS", "realFBS", "2026-08-10T08:00:00Z", "已取消",
@@ -38,9 +34,6 @@ class RiskPageTest(unittest.TestCase):
               offer_id,product_name_raw,quantity,source) VALUES(?,?,?,?,?,?,?,'api')""",
               [(shop, channel, posting, sku, f"O-{sku}", f"商品 {sku}", quantity)
                for shop, posting, channel, _, _, _, _, sku, quantity in orders])
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def test_matrix_uses_piece_totals_channels_boundaries_and_shop_isolation(self):
         data = risk(1, False, "2026-08-10", "2026-08-10")
@@ -75,7 +68,7 @@ class RiskPageTest(unittest.TestCase):
         for reason in BUYER_UNCLAIMED_REASONS:
             self.assertIn(reason, raw)
         delivery = raw[BUYER_UNCLAIMED_REASONS[2]]
-        self.assertEqual(delivery["reason_name"], "买家取消：对配送时间不满意")
+        self.assertEqual(delivery["reason_name"], "买方取消订单：对交货时间不满意")
         details = risk_reasons(1, "Неизвестная причина", "2026-08-10", "2026-08-10")["details"]
         self.assertEqual([item["posting_number"] for item in details], ["OTHER"])
 

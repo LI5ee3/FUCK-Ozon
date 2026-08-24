@@ -1,20 +1,16 @@
-import tempfile
 import unittest
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import BEIJING, _overview_range, _trend_range, order_trend, summary
+from tests.support import DatabaseTestCase
 
 
-class OverviewRegressionTest(unittest.TestCase):
+class OverviewRegressionTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         orders = [
             (1, "BEFORE", "FBP", "2026-08-09T15:30:00Z", "已签收", 1, 50, "USD"),
             (1, "MULTI", "FBP", "2026-08-09T16:30:00Z", "已签收", 1, 100, "USD"),
@@ -42,9 +38,6 @@ class OverviewRegressionTest(unittest.TestCase):
             connection.executemany("""INSERT INTO order_items(
               shop_id,channel,posting_number,sku,product_name_raw,quantity,unit_price,
               price_currency,source) VALUES(?,?,?,?,'',?,?,?,'api')""", items)
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def test_default_range_and_validation(self):
         start, end, utc_start, utc_end = _overview_range(

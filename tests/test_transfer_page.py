@@ -1,36 +1,23 @@
 import asyncio
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from app import db
 from app.importer import import_csv
 from app.main import _export_range, export_module, export_orders
-
-
-ROOT = Path(__file__).resolve().parent.parent
+from tests.support import DatabaseTestCase
 
 
 async def rows(response):
     return [json.loads(line) async for line in response.body_iterator]
 
 
-class TransferPageTest(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
-
-    def tearDown(self):
-        self.temp.cleanup()
-
+class TransferPageTest(DatabaseTestCase):
     def test_export_range_uses_beijing_day_and_rejects_reverse_dates(self):
         value = _export_range("2026-08-01", "2026-08-01")
-        self.assertEqual(value[2:5], ("2026-07-31T16:00:00+00:00", "2026-08-01T16:00:00+00:00", True))
+        self.assertEqual(value[2:5], ("2026-07-31T16:00:00Z", "2026-08-01T16:00:00Z", True))
         with self.assertRaises(HTTPException):
             _export_range("2026-08-02", "2026-08-01")
 
@@ -52,6 +39,25 @@ class TransferPageTest(unittest.TestCase):
         self.assertEqual(response.media_type, "application/x-ndjson")
         self.assertIn("orders.jsonl", response.headers["content-disposition"])
 
+    def test_order_and_risk_exports_include_current_product_fields(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO orders(
+              shop_id,posting_number,channel,created_at,shipped_at,delivered_at,status_raw,
+              shipped,data_anomaly,amount_original,amount_currency,source)
+              VALUES(1,'CURRENT','FBP','2026-08-01T00:00:00Z','2026-08-01T01:00:00Z',
+                '2026-08-02T00:00:00Z','已签收',1,0,12,'USD','api')""")
+            connection.execute("""INSERT INTO order_items(
+              shop_id,posting_number,channel,sku,offer_id,product_name_raw,quantity,unit_price,price_currency,source)
+              VALUES(1,'CURRENT','FBP','SKU-1','OFFER-1','Product',2,6,'USD','api')""")
+        order = asyncio.run(rows(export_orders(1, "2026-08-01", "2026-08-01")))[1]
+        risk = asyncio.run(rows(export_module("risk", 1, "2026-08-01", "2026-08-01")))[1]
+        self.assertEqual((order["pieces"], order["sku_types"], order["items"][0]["offer_id"]),
+                         (2, 1, "OFFER-1"))
+        self.assertEqual((order["shipped_at"], order["delivered_at"]),
+                         ("2026-08-01T01:00:00Z", "2026-08-02T00:00:00Z"))
+        self.assertEqual((risk["analysis_identity"], risk["analysis_product_name"]),
+                         ("SKU-1", "Product"))
+
     def test_returns_export_filters_cancel_and_application_dates_separately(self):
         payload = json.dumps({"product": {"quantity": 1}})
         with db.transaction() as connection:
@@ -69,18 +75,11 @@ class TransferPageTest(unittest.TestCase):
         self.assertEqual([(row["record_type"], row["posting_number"]) for row in exported[1:]],
                          [("取消明细", "POST-IN"), ("退货明细", "POST-IN")])
 
-    def test_rules_ignore_dates_and_page_hides_format_names(self):
-        with db.transaction() as connection:
-            connection.execute("INSERT INTO brand_rules(brand_name,keyword,priority,enabled,updated_at) VALUES('A','a',1,1,'2020-01-01T00:00:00Z')")
-            connection.execute("INSERT INTO product_short_names VALUES('sku','SKU-A','短名','2026-08-01T00:00:00Z')")
-            group_id = connection.execute("INSERT INTO product_groups(name,created_at,updated_at) VALUES('旧名','now','now')").lastrowid
-            connection.executemany("INSERT INTO product_group_members VALUES(?,?,?)", [
-                (group_id, "sku", "SKU-A"), (group_id, "offer_id", "O-A")])
-            connection.execute("INSERT INTO product_group_config VALUES(?,'O-A','SKU-A','active','')", (group_id,))
-        exported = asyncio.run(rows(export_module("rules", date_from="2026-08-01", date_to="2026-08-01")))
-        self.assertEqual({row.get("rule_type") for row in exported[1:]}, {"中文短名称", "主货号合并"})
-        self.assertNotIn("旧名", json.dumps(exported, ensure_ascii=False))
-        self.assertNotIn("品牌规则", json.dumps(exported, ensure_ascii=False))
+    def test_removed_export_modules_are_unavailable(self):
+        for module in ("timeliness", "stock", "rules"):
+            with self.assertRaises(HTTPException) as error:
+                export_module(module)
+            self.assertEqual(error.exception.status_code, 404)
 
     def test_import_history_keeps_only_latest_ten_without_removing_orders(self):
         header = "订单号;发货号码;状态;SKU;数量;已创建\n"

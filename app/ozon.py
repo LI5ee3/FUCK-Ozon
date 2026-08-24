@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import threading
@@ -6,7 +5,7 @@ import time
 import urllib.error
 import urllib.request
 from calendar import monthrange
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -15,70 +14,69 @@ from .db import connect, transaction
 API = "https://api-seller.ozon.ru"
 BEIJING = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).resolve().parent.parent
-MODULE_TABLES = {
-    "orders": ("orders", "order_items", "order_api_records"),
-    "returns": ("return_records", "rfbs_return_records"),
-    "stock": ("stock_snapshots", "stock_history"),
-}
 STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
     "awaiting_deliver": "等待发运", "awaiting_packaging": "待备货",
     "awaiting_registration": "等待登记",
 }
 RETURN_STATUS_ZH = {
-    "На складе": "已到仓库",
-    "Едет на склад": "退回仓库途中",
-    "Списали товар": "商品已核销",
+    "На складе": "在仓库中",
+    "Едет на склад": "正在运往仓库",
+    "Списали товар": "我们已核销商品",
+    "Ожидает отправки": "等待发货",
 }
 RFBS_RETURN_STATUS_ZH = {
-    "Rejected": "已拒绝",
-    "PartialCompensationReturnedByOzon": "Ozon 已向买家部分赔偿",
-    "Cancelled": "买家已取消",
-    "ReleasedByProvider": "合作方已放行",
-    "RejectedByOzon": "Ozon 已拒绝退货",
-    "CancelledDisputeNotOpen": "已拒绝，未发起争议",
-    "UtilizedByOzon": "Ozon 已销毁",
-    "ArrivedAtWarehouse": "已到仓库",
-    "PartialCompensationReturned": "已部分退款",
+    "Rejected": "由您拒绝",
+    "PartialCompensationReturnedByOzon": "已向买家赔偿",
+    "Cancelled": "由买家取消",
+    "ReleasedByProvider": "已由合作伙伴发送",
+    "RejectedByOzon": "由Ozon拒绝了",
+    "CancelledDisputeNotOpen": "已拒绝。未提出争议",
+    "CancelledDisputeNotOpenOnPostModeration": "已拒绝。未提出争议",
+    "UtilizedByOzon": "已由Ozon销毁",
+    "ArrivedAtWarehouse": "在仓库中",
+    "PartialCompensationReturned": "您已退还部分金额",
     "MoneyReturned": "已退款",
-    "AwaitingProcessing": "等待处理",
+    "AwaitingProcessing": "等待决定",
     "OnSellerApproval": "待卖家审核",
     "OnSellerClarification": "确认中",
-    "OnWayToOzon": "退回 Ozon 途中",
-    "UtilizedByProvider": "合作方已销毁",
-    "ApprovedOnPreModerationByOzon": "Ozon 已批准",
-    "CheckingStatus": "状态确认中",
-    "PassedToPartner": "已交给合作方",
-    "Approved": "卖家已批准",
-    "OnWay": "运输中",
-    "UtilizingByOzon": "Ozon 销毁中",
-    "CrmRejected": "Ozon 已拒绝",
-    "OnSellerClarificationAfterPartialCompensation": "部分退款后待卖家说明",
+    "OnWayToOzon": "在途中",
+    "UtilizedByProvider": "已由合作伙伴销毁",
+    "ApprovedOnPreModerationByOzon": "已由Ozon批准",
+    "CheckingStatus": "正在确认状态",
+    "PassedToPartner": "已转交给合作伙伴",
+    "Approved": "由您认可",
+    "OnWay": "在途中",
+    "UtilizingByOzon": "正在由Ozon进行销毁",
+    "CrmRejected": "由Ozon拒绝了",
+    "OnSellerClarificationAfterPartialCompensation": "确认中",
     "Solved": "已说明",
+    "WriteOff": "我们已核销商品",
+    "ReceivedBySeller": "已收货",
 }
 CANCEL_REASON_ZH = {
-    "Покупатель отказался при вручении: товар не подошел": "买家收货时拒收：商品不合适",
-    "Отправление не прошло таможенное оформление": "包裹未通过海关清关",
-    "Не удалось доставить заказ": "订单配送失败",
-    "Покупатель не забрал заказ": "买家未取货",
-    "Покупатель отменил заказ: нашел дешевле": "买家取消：找到了更便宜的商品",
-    "Покупатель отменил заказ": "买家取消订单",
-    "Заказ утерян при доставке": "订单在配送途中丢失",
-    "Покупатель не предоставил паспортные данные": "买家未提供护照信息",
-    "Товар закончился на складе": "商品库存不足",
-    "Покупатель отменил заказ: не устроил срок доставки": "买家取消：配送时效不符合预期",
-    "Покупатель отказался при вручении: в заказе не тот товар": "买家收货时拒收：商品错误",
-    "Покупатель отказался при вручении: недоволен качеством товара": "买家收货时拒收：不满意商品质量",
-    "Вы отменили заказ": "卖家取消订单",
-    "Покупатель отменил заказ: перенос сроков доставки": "买家取消：配送日期变更",
-    "Покупатель отменил заказ по вашей просьбе": "买家应卖家请求取消订单",
-    "Покупатель отказался при вручении: неполная комплектация": "买家收货时拒收：配件不完整",
+    "Покупатель отказался при вручении: товар не подошел": "买家在交货时拒收：商品不合适",
+    "Отправление не прошло таможенное оформление": "货件未通过清关",
+    "Не удалось доставить заказ": "未能配送订单",
+    "Покупатель не забрал заказ": "买家没取货",
+    "Покупатель отменил заказ: нашел дешевле": "买家取消了订单：找到了更便宜的商品",
+    "Покупатель отменил заказ": "买家取消了订单",
+    "Заказ утерян при доставке": "订单在配送过程中丢失",
+    "Покупатель не предоставил паспортные данные": "买家没提供护照信息",
+    "Товар закончился на складе": "仓库缺货",
+    "Покупатель отменил заказ: не устроил срок доставки": "买方取消订单：对交货时间不满意",
+    "Покупатель отказался при вручении: в заказе не тот товар": "买家在交货时拒收：订单中的商品有误",
+    "Покупатель отказался при вручении: недоволен качеством товара": "买家拒绝取货：对商品质量不满意",
+    "Вы отменили заказ": "您已取消订单",
+    "Покупатель отменил заказ: перенос сроков доставки": "买家取消了订单： 推迟配送期间",
+    "Покупатель отменил заказ по вашей просьбе": "买家应您的要求取消了订单",
+    "Покупатель отказался при вручении: неполная комплектация": "买家在交货时拒收：商品不齐全",
     "Товар не работает / брак": "商品无法使用 / 存在缺陷",
-    "Покупатель получил не те товары": "买家收到错误商品",
+    "Покупатель получил не те товары": "买家收到错误的商品",
     "Покупатель передумал": "买家改变主意",
     "Упаковка и товар повреждены": "包装和商品均损坏",
-    "Товар в неполной комплектации": "商品配件不完整",
-    "Товар поврежден, но упаковка цела": "商品损坏但包装完好",
+    "Товар в неполной комплектации": "商品不齐全",
+    "Товар поврежден, но упаковка цела": "商品损坏，但包装完好无损",
     "Товар или заводскую упаковку повредили": "商品或原厂包装已损坏",
     "Товар использовали до меня": "我收到前商品已被使用",
     "Есть внешние дефекты или следы использования": "有外部缺陷或使用痕迹",
@@ -91,6 +89,19 @@ CANCEL_REASON_ZH = {
     "Не подошёл товар": "商品不合适",
     "Товар не подошёл": "商品不合适",
     "Не работает или работает плохо": "不可用或无法正常工作",
+    "Покупатель попросил вас отменить заказ": "买家已要求您取消订单",
+    "Вы не отгрузили заказ вовремя": "您没有按时发送商品",
+    "Не соответствует требованиям перевозчика": "不符合承运商的要求",
+    "Не удалось зарегистрировать отправление в службе доставки": "未能通过送货服务登记货件",
+    "Вы нарушили правила перевозки опасных товаров": "您违反了危险品运输规则",
+    "Трек-номер не отслеживается": "追踪号码无法追踪",
+    "Покупатель не оплатил пошлину": "买家未缴纳关税",
+    "Покупатель не оплатил заказ вовремя": "买方未按时支付订单",
+    "Не удалось обработать заказ": "未能处理订单",
+    "У товаров неправильная этикетка": "商品标签错误",
+    "Проверка товара на соответствие описанию в карточке": "检查商品是否与商品卡片中的描述相符",
+    "Отменили заказ по вашей просьбе": "已根据您的要求取消订单",
+    "В заказе есть запрещённые к перевозке товары": "订单中有禁止运输的商品",
 }
 _request_lock = threading.Lock()
 _last_request = 0.0
@@ -247,16 +258,17 @@ def sync_orders(shop_id, start, end):
             shipped_at = posting.get("delivering_date")
             delivered_at = posting.get("fact_delivery_date")
             db.execute("""
-              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,delivered_at,status_raw,
+              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,delivered_at,tracking_number,status_raw,
                 cancel_reason_raw,shipped,cancelled_after_ship,data_anomaly,amount_original,
                 amount_currency,source,updated_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
                 parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
                 channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
                 shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
                 delivered_at=CASE WHEN NULLIF(excluded.delivered_at,'') IS NOT NULL THEN excluded.delivered_at
                   WHEN excluded.channel IN ('FBP','realFBS') AND orders.delivered_at=orders.shipped_at THEN NULL
                   ELSE orders.delivered_at END,
+                tracking_number=COALESCE(NULLIF(excluded.tracking_number,''),orders.tracking_number),
                 status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
                 cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
                 shipped=CASE WHEN excluded.channel='WHD' AND excluded.status_raw='已取消' AND excluded.cancelled_after_ship IS NULL
@@ -266,6 +278,7 @@ def sync_orders(shop_id, start, end):
                 amount_currency=COALESCE(NULLIF(excluded.amount_currency,''),orders.amount_currency),
                 source='api',updated_at=excluded.updated_at
             """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at, delivered_at,
+                  posting.get("tracking_number"),
                   STATUS_ZH.get(status_original, status_original), cancellation.get("cancel_reason"),
                   shipped, cancelled_after, 0, amount, amount_currency, "api", fetched))
             db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
@@ -284,10 +297,6 @@ def sync_orders(shop_id, start, end):
                     price_currency=COALESCE(NULLIF(excluded.price_currency,''),order_items.price_currency),source='api'
                 """, (shop_id, channel, number, sku, product.get("offer_id"), product.get("name") or "",
                       int(product.get("quantity") or 1), price[0], price[1], "api"))
-            db.execute("""
-              INSERT INTO order_api_records VALUES(?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
-                channel=excluded.channel,payload=excluded.payload,fetched_at=excluded.fetched_at
-            """, (shop_id, number, channel, _json(posting), fetched))
     return {"records": len(fbs) + len(fbo), "FBP": sum(p.get("integration_type_flow") == "FBP" for p in fbs),
             "realFBS": sum(p.get("integration_type_flow") == "aggregator" for p in fbs), "WHD": len(fbo)}
 
@@ -313,13 +322,13 @@ def _rfbs_return_pages(shop_id, start, end):
 def _rfbs_return_reason_details(shop_id, start, end, new_ids=(), include_existing=True):
     new_ids = tuple(dict.fromkeys(new_ids))
     id_clause = f"return_id IN ({','.join('?' for _ in new_ids)})" if new_ids else "0"
-    scope = (f"((julianday(created_at)>=julianday(?) AND julianday(created_at)<=julianday(?)) OR {id_clause})"
+    scope = (f"((created_at>=? AND created_at<=?) OR {id_clause})"
              if include_existing else f"({id_clause})")
     args = ((shop_id, _utc(start), _utc(end), *new_ids) if include_existing else (shop_id, *new_ids))
     with connect() as db:
         return_ids = [row[0] for row in db.execute(f"""
           SELECT return_id FROM rfbs_return_records
-          WHERE shop_id=? AND NULLIF(trim(reason_raw),'') IS NULL
+          WHERE shop_id=? AND detail_fetched_at IS NULL
             AND {scope}
           ORDER BY created_at,return_id
         """, args)]
@@ -330,14 +339,17 @@ def _rfbs_return_reason_details(shop_id, start, end, new_ids=(), include_existin
             body = _post(shop_id, "/v2/returns/rfbs/get", {"return_id": return_id})
             detail = body.get("result") if isinstance(body.get("result"), dict) else body
             detail = detail.get("return") if isinstance(detail.get("return"), dict) else detail
+            detail = detail.get("returns") if isinstance(detail.get("returns"), dict) else detail
             reason = detail.get("return_reason") or {}
             reason_name = str(reason.get("name") or "").strip() if isinstance(reason, dict) else ""
-            if reason_name:
-                updates.append((reason_name, reason_name, _json(body), _stamp(), shop_id, return_id))
+            stamp = _stamp()
+            updates.append((reason_name or None, reason_name or None, _json(body), stamp, stamp,
+                            shop_id, return_id))
         with transaction() as db:
             db.executemany("""UPDATE rfbs_return_records
-              SET reason_raw=?,reason_name=?,payload=?,fetched_at=?
-              WHERE shop_id=? AND return_id=? AND NULLIF(trim(reason_raw),'') IS NULL
+              SET reason_raw=COALESCE(?,reason_raw),reason_name=COALESCE(?,reason_name),
+                payload=?,detail_fetched_at=?,fetched_at=?
+              WHERE shop_id=? AND return_id=? AND detail_fetched_at IS NULL
             """, updates)
         saved += len(updates)
     return saved
@@ -376,14 +388,15 @@ def sync_returns(shop_id, start, end, include_existing_missing=True):
             db.execute("""INSERT INTO rfbs_return_records(
               shop_id,return_id,return_number,created_at,posting_number,offer_id,sku,product_name,
               status_raw,status_name,payload,fetched_at,order_number,quantity,reason_raw,reason_name,
-              compensation_status,product_amount,product_currency,logistic_return_at,buyer_comment_raw)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              compensation_status,product_amount,product_currency,logistic_return_at,buyer_comment_raw,
+              detail_fetched_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(shop_id,return_id) DO UPDATE SET
                 return_number=excluded.return_number,created_at=excluded.created_at,
                 posting_number=excluded.posting_number,offer_id=excluded.offer_id,sku=excluded.sku,
                 product_name=excluded.product_name,status_raw=excluded.status_raw,
                 status_name=excluded.status_name,
-                payload=CASE WHEN NULLIF(trim(rfbs_return_records.reason_raw),'') IS NOT NULL
+                payload=CASE WHEN rfbs_return_records.detail_fetched_at IS NOT NULL
                   THEN rfbs_return_records.payload ELSE excluded.payload END,
                 fetched_at=excluded.fetched_at,order_number=excluded.order_number,quantity=excluded.quantity,
                 reason_raw=rfbs_return_records.reason_raw,reason_name=rfbs_return_records.reason_name,
@@ -398,7 +411,7 @@ def sync_returns(shop_id, start, end, include_existing_missing=True):
                   state.get("money_return_state_name") or state.get("money_return_state"),
                   amount.get("price") or amount.get("amount"),
                   amount.get("currency_code") or amount.get("currency"),
-                  logistic.get("return_date") or logistic.get("arrived_at"), comment))
+                  logistic.get("return_date") or logistic.get("arrived_at"), comment, None))
             if return_id not in existing_ids:
                 new_ids.append(return_id)
             saved += 1
@@ -406,13 +419,17 @@ def sync_returns(shop_id, start, end, include_existing_missing=True):
     return {"records": len(records) + saved, "cancellations": len(records), "return_requests": saved}
 
 
-def _sync_snapshot(shop_id, path, table):
-    records = _cursor_pages(shop_id, path, {"filter": {"visibility": "ALL"}, "limit": 1000}, "items")
+def _sync_stock_snapshot(shop_id):
+    records = _cursor_pages(shop_id, "/v4/product/info/stocks",
+                            {"filter": {"visibility": "ALL"}, "limit": 1000}, "items")
     observed = _stamp()
     with transaction() as db:
         for record in records:
-            db.execute(f"INSERT INTO {table} VALUES(?,?,?,?)",
-                       (shop_id, _key(record, "product_id", "offer_id"), observed, _json(record)))
+            record_key = str(record.get("product_id") or record.get("offer_id") or _key(record))
+            db.execute("""INSERT INTO stock_snapshots VALUES(?,?,?,?)
+              ON CONFLICT(shop_id,record_key) DO UPDATE SET
+                observed_at=excluded.observed_at,payload=excluded.payload""",
+                       (shop_id, record_key, observed, _json(record)))
             for value in record.get("stocks") or []:
                 db.execute("""INSERT OR IGNORE INTO stock_history(
                   shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
@@ -420,7 +437,7 @@ def _sync_snapshot(shop_id, path, table):
                   (shop_id, "api", ",".join(map(str, value.get("warehouse_ids") or [])),
                    str(value.get("sku") or record.get("product_id") or ""),
                    int(value.get("present") or 0), int(value.get("reserved") or 0), observed,
-                   _key(record, "product_id", "offer_id") + ":" + str(value.get("type") or ""), _json(record)))
+                   record_key + ":" + str(value.get("type") or ""), _json(record)))
     return {"records": len(records), "snapshot_at": observed}
 
 
@@ -428,7 +445,7 @@ def sync_module(module, shop_id, start=None, end=None, include_existing_missing=
     start, end = (start, end) if start and end else default_range()
     functions = {"orders": sync_orders,
                  "returns": lambda s, a, b: sync_returns(s, a, b, include_existing_missing),
-                 "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots")}
+                 "stock": lambda s, _a, _b: _sync_stock_snapshot(s)}
     if module not in functions:
         raise ValueError("未知同步模块")
     return functions[module](shop_id, start, end)
@@ -452,14 +469,3 @@ def probe_shop(shop_id):
     allowed = {"company", "name", "seller_id", "client_id", "inn", "ogrn"}
     return {"valid": True, "identity": {key: value for key, value in info.items() if key in allowed},
             "roles": role_names, "permissions": permissions}
-
-
-def table_fingerprints():
-    result = {}
-    with connect() as db:
-        for tables in MODULE_TABLES.values():
-            for table in tables:
-                rows = db.execute(f"SELECT * FROM {table} ORDER BY 1,2").fetchall()
-                digest = hashlib.sha256("\n".join("|".join(str(v) for v in row) for row in rows).encode()).hexdigest()
-                result[table] = {"rows": len(rows), "sha256": digest}
-    return result

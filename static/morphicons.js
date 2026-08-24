@@ -8,9 +8,7 @@
 
   // --- Spring Physics Config ---
   const SPRING_PRESETS = {
-    snappy: { stiffness: 150, damping: 18 },
-    bouncy: { stiffness: 130, damping: 11 },
-    smooth: { stiffness: 100, damping: 16 }
+    snappy: { stiffness: 150, damping: 18 }
   };
 
   // --- Canonical Official Icon Path Definitions (Lucide Icons System) ---
@@ -95,14 +93,6 @@
       "M9 16v.01",
       "M15 16v.01"
     ],
-    robot: [
-      "M12 8V4H8",
-      "M4 14a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z",
-      "M2 14h2",
-      "M20 14h2",
-      "M9 16v.01",
-      "M15 16v.01"
-    ],
     settings: [
       "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z",
       "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6"
@@ -151,9 +141,6 @@
       "M12 5v14",
       "M5 12h14"
     ],
-    minus: [
-      "M5 12h14"
-    ],
     copy: [
       "M8 4h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z",
       "M4 8v10a2 2 0 0 0 2 2h10"
@@ -166,17 +153,6 @@
     clock: [
       "M12 6v6l4 2",
       "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"
-    ],
-    theme: [
-      "M12 2v2",
-      "M12 20v2",
-      "M2 12h2",
-      "M20 12h2",
-      "M4.93 4.93l1.41 1.41",
-      "M17.66 17.66l1.41 1.41",
-      "M4.93 19.07l1.41-1.41",
-      "M17.66 6.34l1.41-1.41",
-      "M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8"
     ],
     tag: [
       "M12 2H2v10l9.29 9.29a2.41 2.41 0 0 0 3.42 0l6.58-6.58a2.41 2.41 0 0 0 0-3.42L12 2Z",
@@ -272,12 +248,6 @@
       "M12 8v4",
       "M12 16h.01"
     ],
-    fileWarning: [
-      "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z",
-      "M14 2v4a2 2 0 0 0 2 2h4",
-      "M12 11v4",
-      "M12 18h.01"
-    ],
     userX: [
       "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2",
       "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z",
@@ -291,9 +261,6 @@
     ],
     zap: [
       "M13 2 3 14h9l-1 8 10-12h-9l1-8Z"
-    ],
-    filter: [
-      "M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"
     ]
   };
 
@@ -320,9 +287,9 @@
     return strokes.map(stroke => stroke.map(pt => [pt[0], pt[1]]));
   }
 
-  // Parse official SVG subpaths array or string into geometrically resampled point strokes
+  // Parse official SVG subpaths into geometrically resampled point strokes
   function parseAndSample(input, samplePointsPerStroke = 28) {
-    const key = Array.isArray(input) ? input.join('|') : String(input);
+    const key = input.join('|');
     const cacheKey = `${key}_${samplePointsPerStroke}`;
     if (pointCache.has(cacheKey)) {
       return pointCache.get(cacheKey);
@@ -331,15 +298,8 @@
     const helper = getHelperPath();
     if (!helper) return [];
 
-    let subpaths = [];
-    if (Array.isArray(input)) {
-      subpaths = input;
-    } else if (typeof input === 'string') {
-      subpaths = input.match(/[Mm][^Mm]*/g) || [input];
-    }
-
     const strokes = [];
-    for (const sub of subpaths) {
+    for (const sub of input) {
       helper.setAttribute('d', sub.trim());
       const totalLen = helper.getTotalLength();
       const pts = [];
@@ -365,18 +325,8 @@
     return strokes;
   }
 
-  function resolveIcon(input) {
-    if (typeof input === 'string') {
-      if (OFFICIAL_ICONS[input]) {
-        return parseAndSample(OFFICIAL_ICONS[input]);
-      }
-      if (input.includes('M') || input.includes('m')) {
-        return parseAndSample(input);
-      }
-    } else if (Array.isArray(input)) {
-      return parseAndSample(input);
-    }
-    return parseAndSample(OFFICIAL_ICONS.sun || OFFICIAL_ICONS.dashboard);
+  function resolveIcon(name) {
+    return parseAndSample(OFFICIAL_ICONS[name] || OFFICIAL_ICONS.sun);
   }
 
   function serializePath(strokes) {
@@ -451,14 +401,6 @@
         this.lastTimestamp = performance.now();
         requestAnimationFrame(this.step.bind(this));
       }
-    }
-
-    set(icon) {
-      this.currentStrokes = cloneStrokes(resolveIcon(icon));
-      this.targetStrokes = cloneStrokes(this.currentStrokes);
-      this.velocities = this.currentStrokes.map(stroke => stroke.map(() => [0, 0]));
-      this.animating = false;
-      this.render();
     }
 
     step(timestamp) {
@@ -557,27 +499,9 @@
       }
     }
 
-    set(icon) {
-      if (this._controller) {
-        this._controller.set(icon);
-      } else {
-        this.setAttribute('icon', icon);
-      }
-    }
   }
 
-  function defineMorphIcon(tagName = 'morph-icon') {
-    if (typeof customElements !== 'undefined' && !customElements.get(tagName)) {
-      customElements.define(tagName, MorphIconElement);
-    }
+  if (typeof customElements !== 'undefined' && !customElements.get('morph-icon')) {
+    customElements.define('morph-icon', MorphIconElement);
   }
-
-  defineMorphIcon();
-
-  window.Morphicons = {
-    createMorph: (svgEl, initialIcon, options) => new MorphController(svgEl, initialIcon, options),
-    icons: OFFICIAL_ICONS,
-    defineMorphIcon,
-    MorphController
-  };
 })();

@@ -1,19 +1,15 @@
 import json
-import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from app import db
 from app.main import stock
+from tests.support import DatabaseTestCase
 
 
-class InventoryPageTest(unittest.TestCase):
+class InventoryPageTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         now = datetime.now(timezone.utc)
         with db.transaction() as connection:
             connection.execute("UPDATE shops SET name='一店' WHERE id=1")
@@ -29,15 +25,11 @@ class InventoryPageTest(unittest.TestCase):
             self._order(connection, 1, "M-W", "WHD", "S-M", "O-M", "混合商品", 100, now - timedelta(days=1))
             self._order(connection, 2, "OTHER", "FBP", "S-M", "O-2", "另一店商品", 3, now - timedelta(days=1))
             connection.execute("INSERT INTO product_short_names VALUES('sku','S-R','SKU短名','now')")
-            connection.execute("INSERT INTO product_short_names VALUES('offer_id','O-R','货号短名','now')")
             self._snapshot(connection, 1, "S-R", "O-R", [("rfbs", 5, 1)], now)
             self._snapshot(connection, 1, "S-W", "O-W", [("fbo", 20, 0)], now)
             self._snapshot(connection, 1, "S-C", "O-C", [("fbp", 0, 0)], now)
             self._snapshot(connection, 1, "S-M", "O-M", [("fbp", 10, 2), ("rfbs", 500, 0), ("fbo", 800, 0)], now)
             self._snapshot(connection, 2, "S-M", "O-2", [("fbp", 30, 0)], now)
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     @staticmethod
     def _order(connection, shop, posting, channel, sku, offer, name, quantity, created,
@@ -106,7 +98,6 @@ class InventoryPageTest(unittest.TestCase):
         self.assertEqual(stock(1, size=1, sort_by="forecast")["items"][0]["sku"], "S-R")
         self.assertEqual(stock(1, size=1, sort_by="replenishment")["items"][0]["sku"], "S-R")
         self.assertEqual(stock(1, size=1, sort_by="fbp", sort_order="asc")["items"][0]["fbp_present"], 0)
-
 
 if __name__ == "__main__":
     unittest.main()

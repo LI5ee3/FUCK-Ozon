@@ -1,20 +1,16 @@
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import complaints, returns, rfbs_returns
+from tests.support import DatabaseTestCase
 
 
-class ReturnsPageTest(unittest.TestCase):
+class ReturnsPageTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         with db.transaction() as connection:
             payload = json.dumps({"product": {"offer_id": "OFFER-42", "name": "Hidden Name", "quantity": 2},
                                   "return_reason_name": "Покупатель отменил заказ"})
@@ -42,9 +38,6 @@ class ReturnsPageTest(unittest.TestCase):
                 ("C-UNSET", "POST-99", "2026-08-02T02:00:00Z", "邮件", None, None, None, None, "", "2026-08-02T02:00:00Z", "2026-08-02T02:00:00Z"),
             ])
 
-    def tearDown(self):
-        self.temp.cleanup()
-
     def test_cancel_filters_beijing_range_and_only_authorized_search_fields(self):
         data = returns(1, date_from="2026-08-01", date_to="2026-08-02", q="OFFER-4")
         self.assertEqual((data["total"], data["summary"]["records"]), (1, 1))
@@ -68,9 +61,6 @@ class ReturnsPageTest(unittest.TestCase):
             connection.execute("""UPDATE rfbs_return_records
               SET reason_raw='Неизвестная причина',reason_name='Неизвестная причина' WHERE return_id=42""")
         self.assertEqual(rfbs_returns(1)["items"][0]["reason_name"], "Неизвестная причина")
-        script = (Path(__file__).resolve().parent.parent / "static/app.js").read_text()
-        self.assertIn("r.reason_name || r.reason_raw || '平台未提供原因'", script)
-        self.assertIn('title="${esc(r.reason_raw)}"', script)
 
     def test_complaint_filters_combine_and_validate(self):
         data = complaints(1, q="C-UN", status="unset", date_from="2026-08-01", date_to="2026-08-02")

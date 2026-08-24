@@ -1,21 +1,17 @@
-import tempfile
 import unittest
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
 from app import db
 from app.main import _months_before, timeliness
+from tests.support import DatabaseTestCase
 
 
-class TimelinessPageTest(unittest.TestCase):
+class TimelinessPageTest(DatabaseTestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        super().setUp()
         orders = [
             (1, "S1-ABC-001", "FBP", "2026-08-09T16:00:00Z", "2026-08-09T17:00:00Z", "2026-08-09T20:00:00Z", "已签收", 1),
             (1, "S1-XYZ-002", "realFBS", "2026-08-10T15:59:59Z", "2026-08-10T18:00:00Z", "2026-08-10T18:00:00Z", "已签收", 1),
@@ -29,9 +25,6 @@ class TimelinessPageTest(unittest.TestCase):
             connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,
               offer_id,product_name_raw,quantity,source) VALUES(1,'realFBS','S1-XYZ-002',
               'MATCH-SKU','MATCH-OFFER','MATCH PRODUCT',1,'api')""")
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def test_beijing_range_shop_and_fallback_delivery(self):
         data = timeliness(0, 1, 30, "", "2026-08-10", "2026-08-10")
@@ -59,6 +52,46 @@ class TimelinessPageTest(unittest.TestCase):
                          {"from": _months_before(today).isoformat(), "to": today.isoformat()})
         with self.assertRaises(HTTPException):
             timeliness(1, 1, 30, "", "2026-08-11", "2026-08-10")
+
+    def test_timeliness_handles_samples_completeness_missing_invalid_and_negative_times(self):
+        orders = [
+          ("V1", "2026-08-01T00:00:00Z", "2026-08-01T01:00:00Z", "2026-08-01T03:00:00Z", "已签收", 1),
+          ("V2", "2026-08-01T00:00:00Z", "2026-08-01T02:00:00Z", "2026-08-01T05:00:00Z", "已签收", 1),
+          ("V3", "2026-08-01T00:00:00Z", "坏时间", "坏时间", "已签收", 1),
+          ("V4", "2026-08-01T00:00:00Z", None, "2026-08-01T08:00:00Z", "已签收", 1),
+          ("V5", "2026-08-01T00:00:00Z", "2026-08-01T04:00:00Z", None, "配送中", 1),
+          ("V6", "2026-08-01T05:00:00Z", "2026-08-01T04:00:00Z", "2026-08-01T06:00:00Z", "已签收", 1),
+          ("V7", "2026-08-01T00:00:00Z", "2026-08-01T03:00:00Z", "2026-08-01T01:00:00Z", "已签收", 1),
+          ("C1", "2026-08-01T00:00:00Z", None, None, "已取消", 0),
+        ]
+        with db.transaction() as connection:
+            connection.execute("DELETE FROM order_items")
+            connection.execute("DELETE FROM orders")
+            connection.executemany("""INSERT INTO orders(shop_id,posting_number,channel,created_at,
+              shipped_at,delivered_at,status_raw,shipped,source) VALUES(1,?,'FBP',?,?,?,?,?,'api')""", orders)
+            connection.executemany("""INSERT INTO order_items(
+              shop_id,channel,posting_number,sku,quantity,source) VALUES(1,'FBP','V1',?,1,'api')""",
+              [("SKU-1",), ("SKU-2",)])
+        data = timeliness(1)
+        group = data["groups"][0]
+        self.assertEqual(data["total"], 7)
+        self.assertEqual((group["ship_samples"], group["delivery_samples"]), (4, 3))
+        self.assertAlmostEqual(group["p50_ship_hours"], 2.5)
+        self.assertAlmostEqual(group["avg_ship_hours"], 2.5)
+        self.assertAlmostEqual(group["p90_ship_hours"], 3.7)
+        self.assertAlmostEqual(group["p50_delivery_hours"], 2)
+        self.assertAlmostEqual(group["avg_delivery_hours"], 7 / 3)
+        self.assertAlmostEqual(group["p90_delivery_hours"], 2.8)
+        self.assertEqual((group["created_completeness"], group["shipped_completeness"],
+                          group["delivered_completeness"]), (1, 5 / 7, 5 / 7))
+        self.assertTrue(group["ship_sample_insufficient"])
+        self.assertTrue(group["delivery_sample_insufficient"])
+        rows = {row["posting_number"]: row for row in data["items"]}
+        self.assertTrue(rows["V3"]["ship_anomaly"])
+        self.assertTrue(rows["V3"]["delivery_anomaly"])
+        self.assertIsNone(rows["V4"]["ship_hours"])
+        self.assertIsNone(rows["V6"]["ship_hours"])
+        self.assertIsNone(rows["V7"]["delivery_hours"])
 
 
 if __name__ == "__main__":

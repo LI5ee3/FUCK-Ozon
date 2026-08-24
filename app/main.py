@@ -7,7 +7,7 @@ import statistics
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import unquote
@@ -19,10 +19,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from .db import DATA_DIR, connect, init_db, transaction
-from .dingtalk import (DEFAULT_DAILY_TEMPLATE, configured as dingtalk_configured, daily_message, next_push_time,
-                       send_sync_failure, send_test, start_scheduler, stop_scheduler,
-                       validate_template)
-from .exchange import (exchange_rate_status, load_base_rate_periods,
+from .dingtalk import (configured as dingtalk_configured, next_push_time,
+                       send_sync_failure, start_scheduler, stop_scheduler)
+from .exchange import (convert_compensation, exchange_rate_status, load_base_rate_periods,
                        rates_for_order, sync_exchange_rates)
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
@@ -41,20 +40,19 @@ BUYER_UNCLAIMED_REASONS = (
     "Покупатель отказался при вручении: товар не подошел",
     "Покупатель отменил заказ: нашел дешевле",
 )
-RISK_REASON_ZH = CANCEL_REASON_ZH | {
-    "Покупатель отменил заказ: не устроил срок доставки": "买家取消：对配送时间不满意",
-}
+RISK_REASON_ZH = CANCEL_REASON_ZH
 SYNC_MODULES = {"orders", "returns", "stock"}
+AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
 
 
-def _trim_sync_runs(db, keep=10, today=None):
-    today = today or datetime.now(BEIJING).date().isoformat()
+def _trim_sync_runs(db, keep=10, scheduled_slot=None, today=None):
+    today = (scheduled_slot or today or datetime.now(BEIJING).date().isoformat())[:10]
     db.execute("""DELETE FROM sync_runs
       WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)
       AND status!='running'
-      AND NOT (run_source='auto' AND COALESCE(scheduled_date,'')=?)""", (keep, today))
+      AND NOT (run_source='auto' AND substr(COALESCE(scheduled_slot,''),1,10)=?)""", (keep, today))
 
 
 app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
@@ -126,11 +124,6 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
-@app.get("/macaron")
-def macaron_preview():
-    return FileResponse(STATIC / "index.html")
-
-
 @app.get("/api/session")
 def session(request: Request):
     authenticated = _authenticated(request)
@@ -199,7 +192,7 @@ def _dingtalk_settings():
     row["configured"] = dingtalk_configured()
     row["last_run"] = dict(last) if last else None
     row["next_push_at"] = next_push_time(row)
-    row["default_template"] = DEFAULT_DAILY_TEMPLATE
+    row.pop("template", None)
     return row
 
 
@@ -212,12 +205,6 @@ def dingtalk_settings():
 async def update_dingtalk_settings(request: Request):
     body = await request.json()
     updates, args = [], []
-    if "template" in body:
-        try:
-            template = validate_template(body["template"])
-        except ValueError as error:
-            raise HTTPException(400, str(error)) from error
-        updates.append("template=?"); args.append(template)
     schedule_keys = {"daily_enabled", "push_time", "weekdays"}
     if schedule_keys & body.keys():
         if not schedule_keys <= body.keys():
@@ -240,28 +227,6 @@ async def update_dingtalk_settings(request: Request):
     with transaction() as db:
         db.execute(f"UPDATE notification_settings SET {','.join(updates)} WHERE id=1", args)
     return _dingtalk_settings()
-
-
-@app.post("/api/dingtalk/preview")
-async def preview_dingtalk(body: dict):
-    try:
-        stats_date = (datetime.now(BEIJING).date() - timedelta(days=1)).isoformat()
-        return {"message": await run_in_threadpool(daily_message, stats_date, body.get("template"))}
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.post("/api/dingtalk/test")
-async def test_dingtalk(body: dict | None = None):
-    if not dingtalk_configured():
-        raise HTTPException(400, "钉钉机器人未配置")
-    try:
-        await run_in_threadpool(send_test, (body or {}).get("template"))
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, "测试推送失败") from error
-    return {"ok": True}
 
 
 def _shop_clause(shop_id):
@@ -294,7 +259,46 @@ def _overview_range(date_from=None, date_to=None, now=None):
         raise HTTPException(400, "开始日期不能晚于结束日期")
     utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
     utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
-    return start, end, utc_start.isoformat(), utc_end.isoformat()
+    return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")
+
+
+def _compensation_pair(body, amount_key, time_key):
+    amount, compensated_at = body.get(amount_key), str(body.get(time_key) or "").strip()
+    if (amount in (None, "")) != (not compensated_at):
+        raise HTTPException(400, "赔偿金额和赔偿时间必须同时填写")
+    if amount in (None, ""):
+        return None, None
+    try:
+        value = Decimal(str(amount))
+        if value <= 0:
+            raise InvalidOperation
+        moment = datetime.fromisoformat(compensated_at.replace("Z", "+00:00"))
+    except (InvalidOperation, ValueError) as error:
+        raise HTTPException(400, "赔偿金额必须大于0，且赔偿时间必须有效") from error
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=BEIJING)
+    return str(value), _utc_text(moment)
+
+
+def _utc_text(value):
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _with_compensation_conversion(db, row):
+    target = row.get("settlement_currency")
+    for prefix, amount_key, time_key, source in (
+        ("platform_compensation", "platform_compensation_rub", "platform_compensated_at", "RUB"),
+        ("logistics_compensation", "logistics_compensation_cny", "logistics_compensated_at", "CNY"),
+    ):
+        result = convert_compensation(db, row.get(amount_key), row.get(time_key), source, target)
+        row[f"{prefix}_original_currency"] = source
+        row[f"{prefix}_converted_amount"] = result["converted_amount"]
+        row[f"{prefix}_converted_currency"] = result["converted_currency"]
+        row[f"{prefix}_base_rates"] = result["base_rates"]
+        row[f"{prefix}_missing_rate"] = result["missing_rate"]
+        moment = _utc_moment(row.get(time_key))
+        row[f"{time_key}_beijing"] = moment.astimezone(BEIJING).strftime("%Y-%m-%d %H:%M") if moment else None
+    return row
 
 
 def _bucket_start(value, granularity):
@@ -316,6 +320,14 @@ def _next_bucket(value, granularity):
 def _beijing_date(value):
     moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
     return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(BEIJING).date()
+
+
+def _group_by_bucket(rows, granularity):
+    grouped = {}
+    for row in rows:
+        key = _bucket_start(_beijing_date(row["created_at"]), granularity)
+        grouped.setdefault(key, []).append(row)
+    return grouped
 
 
 def _gmv_summary(rows, shop_id, rate_periods=()):
@@ -440,11 +452,11 @@ def summary(shop_id: int = 0,
     while cursor <= end:
         bucket_dates.append(cursor)
         cursor = _next_bucket(cursor, granularity)
+    grouped_rows = _group_by_bucket(rows, granularity)
     buckets = []
     for bucket_date in bucket_dates:
         next_date = _next_bucket(bucket_date, granularity)
-        bucket_rows = [row for row in rows
-                       if _bucket_start(_beijing_date(row["created_at"]), granularity) == bucket_date]
+        bucket_rows = grouped_rows.get(bucket_date, [])
         channel_values = {}
         for channel in ("FBP", "realFBS", "WHD"):
             values = [row for row in bucket_rows if row["channel"] == channel]
@@ -480,8 +492,8 @@ def _trend_range(granularity: str, now: datetime | None = None):
         start = date(year, month, 1)
         next_m = _next_bucket(cur_month, "month")
         end = next_m - timedelta(days=1)
-    utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat()
-    utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat()
+    utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
     return start, end, utc_start, utc_end
 
 
@@ -516,11 +528,11 @@ def order_trend(shop_id: int = 0, granularity: str = "day"):
     while cursor <= end:
         bucket_dates.append(cursor)
         cursor = _next_bucket(cursor, granularity)
+    grouped_rows = _group_by_bucket(rows, granularity)
     buckets = []
     for bucket_date in bucket_dates:
         next_date = _next_bucket(bucket_date, granularity)
-        bucket_rows = [row for row in rows
-                       if _bucket_start(_beijing_date(row["created_at"]), granularity) == bucket_date]
+        bucket_rows = grouped_rows.get(bucket_date, [])
         channel_values = {}
         for channel in ("FBP", "realFBS", "WHD"):
             values = [row for row in bucket_rows if row["channel"] == channel]
@@ -609,12 +621,16 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
           FROM orders o JOIN shops s ON s.id=o.shop_id
           WHERE {sql_where} ORDER BY o.created_at DESC LIMIT ? OFFSET ?
         """, args + [size, (page - 1) * size])]
+        items = {}
+        if result:
+            marks = ",".join("(?,?)" for _ in result)
+            keys = [value for order in result for value in (order["shop_id"], order["posting_number"])]
+            for row in db.execute(f"""SELECT shop_id,posting_number,sku,offer_id,product_name_raw,
+              product_name_raw product_name_original,quantity,unit_price,price_currency FROM order_items
+              WHERE (shop_id,posting_number) IN ({marks}) ORDER BY shop_id,posting_number,sku""", keys):
+                items.setdefault((row["shop_id"], row["posting_number"]), []).append(dict(row))
         for order in result:
-            order["items"] = [dict(row) for row in db.execute(
-                """SELECT sku,offer_id,product_name_raw,product_name_raw product_name_original,
-                  quantity,unit_price,price_currency FROM order_items
-                  WHERE shop_id=? AND posting_number=? ORDER BY sku""",
-                (order["shop_id"], order["posting_number"]))]
+            order["items"] = items.get((order["shop_id"], order["posting_number"]), [])
             for item in order["items"]:
                 item["product_name_raw"] = resolve_product(
                     rules, item["sku"], item["offer_id"], item["product_name_original"])["display_name"]
@@ -742,6 +758,22 @@ def _utc_moment(value):
     return moment.astimezone(timezone.utc)
 
 
+def _complaint_deadline(primary_time, fallback_time=None, now=None):
+    moment = _utc_moment(primary_time) or _utc_moment(fallback_time)
+    if not moment:
+        return {"complaint_deadline": None, "complaint_deadline_status": "missing"}
+    deadline = moment.astimezone(BEIJING).date() + timedelta(days=30)
+    if now is None:
+        today = datetime.now(BEIJING).date()
+    elif isinstance(now, datetime):
+        today = (now if now.tzinfo else now.replace(tzinfo=BEIJING)).astimezone(BEIJING).date()
+    else:
+        today = now
+    days = (deadline - today).days
+    status = "overdue" if days < 0 else "due_today" if days == 0 else "due_soon" if days <= 7 else "normal"
+    return {"complaint_deadline": deadline.isoformat(), "complaint_deadline_status": status}
+
+
 def _duration_hours(start, end):
     start, end = _utc_moment(start), _utc_moment(end)
     if not start or not end or end < start:
@@ -839,7 +871,7 @@ def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, s
     if status not in {"", "open", "closed", "unset"}:
         raise HTTPException(400, "完结状态无效")
     _, _, utc_start, utc_end = _overview_range(date_from, date_to)
-    where, args = ["julianday(c.complaint_at)>=julianday(?)", "julianday(c.complaint_at)<julianday(?)"], [utc_start, utc_end]
+    where, args = ["c.complaint_at>=?", "c.complaint_at<?"], [utc_start, utc_end]
     if shop_id in (1, 2): where.append("c.shop_id=?"); args.append(shop_id)
     if q.strip():
         where.append("(c.posting_number LIKE ? OR c.complaint_number LIKE ?)")
@@ -850,9 +882,10 @@ def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, s
     sql = " AND ".join(where)
     with connect() as db:
         total = db.execute(f"SELECT COUNT(*) FROM complaints c WHERE {sql}", args).fetchone()[0]
-        items = [dict(row) for row in db.execute(f"""SELECT c.*,s.name shop_name
+        items = [dict(row) for row in db.execute(f"""SELECT c.*,s.name shop_name,s.settlement_currency
           FROM complaints c JOIN shops s ON s.id=c.shop_id WHERE {sql}
           ORDER BY c.complaint_at DESC LIMIT ? OFFSET ?""", args + [size, (page-1)*size])]
+        items = [_with_compensation_conversion(db, row) for row in items]
         through = db.execute(f"SELECT MAX(c.complaint_at) FROM complaints c WHERE {sql}", args).fetchone()[0]
     return {"items": items, "total": total, "page": page, "size": size,
             "data_through": through}
@@ -860,6 +893,8 @@ def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, s
 
 @app.post("/api/complaints")
 @app.put("/api/complaints")
+@app.post("/api/exception-complaints/shipping")
+@app.put("/api/exception-complaints/shipping")
 async def save_complaint(request: Request):
     body = await request.json()
     shop_id = int(body.get("shop_id") or 0)
@@ -872,47 +907,132 @@ async def save_complaint(request: Request):
     for key in ("resolved", "package_returned"):
         if body.get(key) not in (None, True, False):
             raise HTTPException(400, "是否完结和包裹是否退回只允许未填写、是或否")
+    if body.get("not_received_return") not in (None, True, False):
+        raise HTTPException(400, "未收到退件只允许未填写、是或否")
     amount = body.get("compensation_amount")
     if amount not in (None, ""):
         try: amount = float(amount)
-        except ValueError as error: raise HTTPException(400, "赔付金额无效") from error
+        except (TypeError, ValueError) as error: raise HTTPException(400, "赔付金额无效") from error
     else:
         amount = None
-    now = datetime.now(timezone.utc).isoformat()
+    platform_amount, platform_at = _compensation_pair(
+        body, "platform_compensation_rub", "platform_compensated_at")
+    logistics_amount, logistics_at = _compensation_pair(
+        body, "logistics_compensation_cny", "logistics_compensated_at")
+    now = _utc_text(datetime.now(timezone.utc))
     with transaction() as db:
         shop = db.execute("SELECT settlement_currency FROM shops WHERE id=?", (shop_id,)).fetchone()
         if not db.execute("SELECT 1 FROM orders WHERE shop_id=? AND posting_number=?", (shop_id, posting)).fetchone():
             raise HTTPException(400, "未找到该店铺订单")
         currency = str(body.get("compensation_currency") or (shop[0] if amount is not None else "")).upper() or None
-        exists = db.execute("SELECT created_at FROM complaints WHERE shop_id=? AND complaint_number=?",
-                            (shop_id, number)).fetchone()
-        db.execute("""INSERT INTO complaints VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
-          ON CONFLICT(shop_id,complaint_number) DO UPDATE SET
-          posting_number=excluded.posting_number,complaint_at=excluded.complaint_at,channel=excluded.channel,
+        exists = db.execute("""SELECT created_at FROM complaints
+          WHERE shop_id=? AND complaint_number=? AND posting_number=?""",
+                            (shop_id, number, posting)).fetchone()
+        db.execute("""INSERT INTO complaints(
+          shop_id,complaint_number,posting_number,complaint_at,channel,resolved,package_returned,
+          compensation_amount,compensation_currency,notes,not_received_return,warehouse,
+          order_process_status,complaint_status,compensation_status,
+          platform_compensation_rub,platform_compensated_at,
+          logistics_compensation_cny,logistics_compensated_at,created_at,updated_at)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(shop_id,complaint_number,posting_number) DO UPDATE SET
+          complaint_at=excluded.complaint_at,channel=excluded.channel,
           resolved=excluded.resolved,package_returned=excluded.package_returned,
-          compensation_amount=excluded.compensation_amount,compensation_currency=excluded.compensation_currency,
-          notes=excluded.notes,updated_at=excluded.updated_at""",
+          compensation_amount=COALESCE(excluded.compensation_amount,complaints.compensation_amount),
+          compensation_currency=COALESCE(excluded.compensation_currency,complaints.compensation_currency),
+          notes=excluded.notes,not_received_return=excluded.not_received_return,
+          warehouse=excluded.warehouse,order_process_status=excluded.order_process_status,
+          complaint_status=excluded.complaint_status,compensation_status=excluded.compensation_status,
+          platform_compensation_rub=excluded.platform_compensation_rub,
+          platform_compensated_at=excluded.platform_compensated_at,
+          logistics_compensation_cny=excluded.logistics_compensation_cny,
+          logistics_compensated_at=excluded.logistics_compensated_at,updated_at=excluded.updated_at""",
           (shop_id, number, posting, complaint_at, channel,
            None if body.get("resolved") is None else int(body["resolved"]),
            None if body.get("package_returned") is None else int(body["package_returned"]),
-           amount, currency, str(body.get("notes") or ""), exists[0] if exists else now, now))
-        if body.get("resolved") is True:
-            db.execute("""INSERT INTO order_after_sales VALUES(?,?,?,?)
-              ON CONFLICT(shop_id,posting_number) DO UPDATE SET status='已完结',updated_at=excluded.updated_at""",
-                       (shop_id, posting, "已完结", now))
+           amount, currency, str(body.get("notes") or ""),
+           None if body.get("not_received_return") is None else int(body["not_received_return"]),
+           str(body.get("warehouse") or ""), str(body.get("order_process_status") or ""),
+           str(body.get("complaint_status") or ""), str(body.get("compensation_status") or ""),
+           platform_amount, platform_at,
+           logistics_amount, logistics_at, exists[0] if exists else now, now))
     return {"ok": True}
+
+
+@app.get("/api/exception-complaints/shipping")
+def shipping_complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, size: int = 50,
+                        date_from: Annotated[str | None, Query(alias="from")] = None,
+                        date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    if status not in {"", "unfiled", "open", "closed"}:
+        raise HTTPException(400, "投诉状态无效")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    cancelled = "o.status_raw IN ('已取消','cancelled','canceled')"
+    where, args = [f"NOT ({cancelled} AND o.shipped=0)", f"(({cancelled} AND o.shipped=1) OR o.data_anomaly=1)",
+                   "o.created_at>=?", "o.created_at<?"], [utc_start, utc_end]
+    if shop_id:
+        where.append("o.shop_id=?"); args.append(shop_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        where.append("""(o.posting_number LIKE ? OR EXISTS(SELECT 1 FROM order_items i
+          WHERE i.shop_id=o.shop_id AND i.posting_number=o.posting_number
+            AND (i.sku LIKE ? OR i.offer_id LIKE ?)) OR EXISTS(SELECT 1 FROM complaints c
+          WHERE c.shop_id=o.shop_id AND c.posting_number=o.posting_number AND c.complaint_number LIKE ?)
+          OR COALESCE(o.tracking_number,'') LIKE ?)""")
+        args.extend([pattern] * 5)
+    if status == "unfiled":
+        where.append("NOT EXISTS(SELECT 1 FROM complaints c WHERE c.shop_id=o.shop_id AND c.posting_number=o.posting_number)")
+    elif status == "open":
+        where.append("EXISTS(SELECT 1 FROM complaints c WHERE c.shop_id=o.shop_id AND c.posting_number=o.posting_number AND c.resolved IS NOT 1)")
+    elif status == "closed":
+        where.append("EXISTS(SELECT 1 FROM complaints c WHERE c.shop_id=o.shop_id AND c.posting_number=o.posting_number) AND NOT EXISTS(SELECT 1 FROM complaints c WHERE c.shop_id=o.shop_id AND c.posting_number=o.posting_number AND c.resolved IS NOT 1)")
+    sql = " AND ".join(where)
+    page, size = _paging(page, size)
+    with connect() as db:
+        total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {sql}", args).fetchone()[0]
+        rows = [dict(row) for row in db.execute(f"""SELECT o.*,s.name shop_name,s.settlement_currency,
+          COALESCE(o.tracking_number,'') tracking_number,
+          (SELECT MAX(r.occurred_at) FROM return_records r
+            WHERE r.shop_id=o.shop_id AND r.posting_number=o.posting_number) fallback_cancelled_at
+          FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {sql}
+          ORDER BY o.created_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size])]
+        rules = load_product_rules(db)
+        items, complaints_by_order = {}, {}
+        if rows:
+            marks = ",".join("(?,?)" for _ in rows)
+            keys = [value for row in rows for value in (row["shop_id"], row["posting_number"])]
+            for item in db.execute(f"""SELECT shop_id,posting_number,sku,offer_id,product_name_raw,
+              quantity,unit_price,price_currency FROM order_items
+              WHERE (shop_id,posting_number) IN ({marks}) ORDER BY shop_id,posting_number,sku""", keys):
+                items.setdefault((item["shop_id"], item["posting_number"]), []).append(dict(item))
+            for complaint in db.execute(f"""SELECT c.*,s.settlement_currency FROM complaints c
+              JOIN shops s ON s.id=c.shop_id WHERE (c.shop_id,c.posting_number) IN ({marks})
+              ORDER BY c.shop_id,c.posting_number,c.complaint_at DESC,c.complaint_number""", keys):
+                value = _with_compensation_conversion(db, dict(complaint))
+                complaints_by_order.setdefault((complaint["shop_id"], complaint["posting_number"]), []).append(value)
+        for row in rows:
+            row["cancelled_at"] = row["status_changed_at"] or row["fallback_cancelled_at"]
+            row.update(_complaint_deadline(row["status_changed_at"], row["fallback_cancelled_at"]))
+            row["cancel_reason"] = CANCEL_REASON_ZH.get(row["cancel_reason_raw"], row["cancel_reason_raw"])
+            key = row["shop_id"], row["posting_number"]
+            row["items"] = items.get(key, [])
+            for value in row["items"]:
+                value["product_name"] = resolve_product(rules, value["sku"], value["offer_id"],
+                                                          value["product_name_raw"])["display_name"]
+            row["complaints"] = complaints_by_order.get(key, [])
+        through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {sql}", args).fetchone()[0]
+    return {"items": rows, "total": total, "page": page, "size": size, "data_through": through}
 
 
 @app.get("/api/product-rules")
 def product_rules(q: str = ""):
     with connect() as db:
         pattern = f"%{q.strip()}%"
-        short_names = [dict(row) for row in db.execute("""SELECT n.key_value sku,n.short_name,n.updated_at
-          FROM product_short_names n LEFT JOIN product_short_name_migrations m
-            ON m.key_type=n.key_type AND m.key_value=n.key_value
-          WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1
-            AND (?='' OR n.key_value LIKE ? OR n.short_name LIKE ?)
-          ORDER BY n.key_value""", (q.strip(), pattern, pattern))]
+        short_names = [dict(row) for row in db.execute("""SELECT key_value sku,short_name,updated_at
+          FROM product_short_names WHERE key_type='sku'
+            AND (?='' OR key_value LIKE ? OR short_name LIKE ?) ORDER BY key_value""",
+          (q.strip(), pattern, pattern))]
         products = [dict(row) for row in db.execute("""SELECT sku,offer_id,MAX(product_name_raw) product_name
           FROM order_items WHERE NULLIF(offer_id,'') IS NOT NULL
           GROUP BY sku,offer_id ORDER BY offer_id,sku LIMIT 1000""")]
@@ -929,13 +1049,10 @@ def product_rules(q: str = ""):
             resolved = resolve_product(rules, group["primary_sku"], group["primary_offer_id"], "")
             group["product_name"] = resolved["display_name"] if group["status"] == "active" else "待管理员确认"
             groups.append(group)
-        conflicts = [dict(row) for row in db.execute("""SELECT key_type,key_value,note
-          FROM product_short_name_migrations WHERE enabled=0 AND note NOT LIKE '已迁移%' AND note NOT LIKE '%相同规则%'""")]
-        conflicts += [{"key_type": "merge", "key_value": row["primary_offer_id"] or "旧合并关系",
+        conflicts = [{"key_type": "merge", "key_value": row["primary_offer_id"] or "待确认商品组",
                        "note": row["note"]} for row in groups if row["status"] != "active"]
-        short_name_count = db.execute("""SELECT COUNT(*) FROM product_short_names n
-          LEFT JOIN product_short_name_migrations m ON m.key_type=n.key_type AND m.key_value=n.key_value
-          WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1""").fetchone()[0]
+        short_name_count = db.execute(
+            "SELECT COUNT(*) FROM product_short_names WHERE key_type='sku'").fetchone()[0]
     return {"summary": {"short_names": short_name_count,
                          "merges": sum(row["status"] == "active" for row in groups)},
             "short_names": short_names, "groups": groups, "products": products, "conflicts": conflicts,
@@ -946,7 +1063,7 @@ def product_rules(q: str = ""):
 async def save_product_rule(request: Request):
     body = await request.json()
     kind = body.get("kind")
-    now = datetime.now(timezone.utc).isoformat()
+    now = _utc_text(datetime.now(timezone.utc))
     with transaction() as db:
         if kind == "short_name":
             key_value = str(body.get("sku") or body.get("key_value") or "").strip()
@@ -956,7 +1073,6 @@ async def save_product_rule(request: Request):
             db.execute("""INSERT INTO product_short_names VALUES('sku',?,?,?)
               ON CONFLICT(key_type,key_value) DO UPDATE SET short_name=excluded.short_name,updated_at=excluded.updated_at""",
                        (key_value, name, now))
-            db.execute("DELETE FROM product_short_name_migrations WHERE key_type='sku' AND key_value=?", (key_value,))
         elif kind == "delete_short_name":
             sku = str(body.get("sku") or "").strip()
             if not sku: raise HTTPException(400, "SKU不能为空")
@@ -1026,7 +1142,7 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
     if shop_id not in (0, 1, 2):
         raise HTTPException(400, "未知店铺")
     _, _, utc_start, utc_end = _overview_range(date_from, date_to)
-    filters, args = ["julianday(r.occurred_at)>=julianday(?)", "julianday(r.occurred_at)<julianday(?)"], [utc_start, utc_end]
+    filters, args = ["r.occurred_at>=?", "r.occurred_at<?"], [utc_start, utc_end]
     if shop_id:
         filters.append("r.shop_id=?"); args.append(shop_id)
     if q.strip():
@@ -1044,8 +1160,10 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
         """, args)]
         total = db.execute(f"SELECT COUNT(*) FROM return_records r{where}", args).fetchone()[0]
         records = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.occurred_at,r.posting_number,r.sku,r.payload,
+          o.status_changed_at,
           CAST(json_extract(r.payload,'$.product.offer_id') AS TEXT) offer_id
-          FROM return_records r JOIN shops s ON s.id=r.shop_id{where}
+          FROM return_records r JOIN shops s ON s.id=r.shop_id
+          LEFT JOIN orders o ON o.shop_id=r.shop_id AND o.posting_number=r.posting_number{where}
           ORDER BY r.occurred_at DESC LIMIT ? OFFSET ?""", args + [size, (page - 1) * size]).fetchall()
         through = db.execute(f"SELECT MAX(r.occurred_at) FROM return_records r{where}", args).fetchone()[0]
         rules = load_product_rules(db)
@@ -1055,7 +1173,7 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
         product, visual = payload.get("product") or {}, payload.get("visual") or {}
         status = visual.get("status") or {}
         status = status.get("display_name") if isinstance(status, dict) else status
-        items.append({"shop_id": row["shop_id"], "shop_name": row["shop_name"],
+        item = {"shop_id": row["shop_id"], "shop_name": row["shop_name"],
                       "occurred_at": row["occurred_at"], "posting_number": row["posting_number"],
                       "sku": row["sku"], "offer_id": row["offer_id"],
                       "product_name": resolve_product(rules, row["sku"], row["offer_id"],
@@ -1069,7 +1187,10 @@ def returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
                       "product_currency": product.get("currency_code") or product.get("currency"),
                       "logistic_return_at": payload.get("logistic_return_at") or payload.get("returned_at"),
                       "buyer_comment_raw": payload.get("buyer_comment") or payload.get("comment"),
-                      "type": payload.get("type")})
+                      "type": payload.get("type")}
+        item["cancelled_at"] = row["status_changed_at"] or row["occurred_at"]
+        item.update(_complaint_deadline(row["status_changed_at"], row["occurred_at"]))
+        items.append(item)
     return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
             "page": page, "size": size, "data_through": through}
 
@@ -1081,7 +1202,7 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
     if shop_id not in (0, 1, 2):
         raise HTTPException(400, "未知店铺")
     _, _, utc_start, utc_end = _overview_range(date_from, date_to)
-    filters, args = ["julianday(r.created_at)>=julianday(?)", "julianday(r.created_at)<julianday(?)"], [utc_start, utc_end]
+    filters, args = ["r.created_at>=?", "r.created_at<?"], [utc_start, utc_end]
     if shop_id:
         filters.append("r.shop_id=?"); args.append(shop_id)
     if q.strip():
@@ -1095,13 +1216,18 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
           FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
           GROUP BY r.shop_id ORDER BY r.shop_id""", args)]
         total = db.execute(f"SELECT COUNT(*) FROM rfbs_return_records r{where}", args).fetchone()[0]
-        rows = db.execute(f"""SELECT r.shop_id,s.name shop_name,r.return_id,
+        rows = db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency,r.return_id,
           r.return_number,r.created_at,r.posting_number,r.offer_id,r.sku,r.product_name,
           r.status_raw,r.status_name,r.quantity,r.reason_raw,r.reason_name,
           r.compensation_status,r.product_amount,r.product_currency,r.logistic_return_at,
-          r.buyer_comment_raw,r.payload FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id{where}
+          r.buyer_comment_raw,r.payload,d.refund_amount,d.refund_currency,
+          d.platform_compensation_rub,d.platform_compensated_at,
+          d.logistics_compensation_cny,d.logistics_compensated_at,d.return_method,d.return_result
+          FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id
+          LEFT JOIN rfbs_return_disputes d ON d.shop_id=r.shop_id AND d.return_number=r.return_number{where}
           ORDER BY r.created_at DESC,r.return_id DESC LIMIT ? OFFSET ?""",
           args + [size, (page - 1) * size]).fetchall()
+        rows = [_with_compensation_conversion(db, dict(row)) for row in rows]
         through = db.execute(f"SELECT MAX(r.created_at) FROM rfbs_return_records r{where}", args).fetchone()[0]
         rules = load_product_rules(db)
     items = []
@@ -1119,16 +1245,130 @@ def rfbs_returns(shop_id: int = 0, page: int = 1, size: int = 50, q: str = "",
         items.append(item)
     for item in items:
         item["status_name"] = RFBS_RETURN_STATUS_ZH.get(item["status_raw"], item["status_name"] or item["status_raw"])
+        item.update(_complaint_deadline(item["created_at"]))
     return {"summary": {"records": total, "shops": totals}, "items": items, "total": total,
             "page": page, "size": size, "data_through": through}
 
 
-def _latest_snapshots(db, table, shop_id):
+@app.get("/api/exception-complaints/received")
+def received_disputes(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, size: int = 50,
+                      date_from: Annotated[str | None, Query(alias="from")] = None,
+                      date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    if status not in {"", "unfiled", "open", "closed"}:
+        raise HTTPException(400, "处理状态无效")
+    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
+    where, args = ["r.created_at>=?", "r.created_at<?"], [utc_start, utc_end]
+    if shop_id:
+        where.append("r.shop_id=?"); args.append(shop_id)
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        where.append("(r.sku LIKE ? OR r.offer_id LIKE ? OR r.posting_number LIKE ? OR r.return_number LIKE ?)")
+        args.extend([pattern] * 4)
+    if status == "unfiled":
+        where.append("d.return_number IS NULL")
+    elif status == "open":
+        where.append("d.return_number IS NOT NULL AND COALESCE(d.process_status,'') NOT IN ('结束','已完结')")
+    elif status == "closed":
+        where.append("d.process_status IN ('结束','已完结')")
+    sql = " AND ".join(where)
+    page, size = _paging(page, size)
+    with connect() as db:
+        join = """FROM rfbs_return_records r JOIN shops s ON s.id=r.shop_id
+          LEFT JOIN rfbs_return_disputes d ON d.shop_id=r.shop_id AND d.return_number=r.return_number"""
+        total = db.execute(f"SELECT COUNT(*) {join} WHERE {sql}", args).fetchone()[0]
+        rows = [dict(row) for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,s.settlement_currency,r.return_number,
+          r.created_at,r.posting_number,r.sku,r.offer_id,r.product_name,r.product_amount,r.product_currency,
+          r.reason_raw,r.reason_name,r.buyer_comment_raw,d.refund_type,d.refund_amount,d.refund_currency,
+          d.platform_compensation_rub,d.platform_compensated_at,
+          d.logistics_compensation_cny,d.logistics_compensated_at,d.process_status,d.return_method,
+          d.iml_return_number,d.iml_system_sn,d.buyer_tracking_number,d.handling_method,d.video_recorded,
+          d.outbound_order_number,d.return_result,d.notes,d.created_at manual_created_at,d.updated_at
+          {join} WHERE {sql} ORDER BY r.created_at DESC,r.return_id DESC LIMIT ? OFFSET ?""",
+          args + [size, (page - 1) * size])]
+        rules = load_product_rules(db)
+        for row in rows:
+            row.update(_complaint_deadline(row["created_at"]))
+            row["product_name"] = resolve_product(rules, row["sku"], row["offer_id"],
+                                                   row["product_name"])["display_name"]
+            row["reason_name"] = CANCEL_REASON_ZH.get(row["reason_raw"], row["reason_name"] or row["reason_raw"])
+            _with_compensation_conversion(db, row)
+        through = db.execute(f"SELECT MAX(r.created_at) {join} WHERE {sql}", args).fetchone()[0]
+    return {"items": rows, "total": total, "page": page, "size": size, "data_through": through}
+
+
+@app.post("/api/exception-complaints/received")
+@app.put("/api/exception-complaints/received")
+async def save_received_dispute(request: Request):
+    body = await request.json()
+    shop_id = int(body.get("shop_id") or 0)
+    return_number = str(body.get("return_number") or "").strip()
+    if shop_id not in (1, 2) or not return_number:
+        raise HTTPException(400, "店铺和退货申请编号均为必填")
+    enums = {
+        "refund_type": {"", "部分退款", "全额退款", "多次纠纷"},
+        "return_method": {"", "未退货", "IML", "FBO二次销售"},
+        "handling_method": {"", "退回", "销毁"},
+        "return_result": {"", "退回国内中", "已签收", "已销毁"},
+    }
+    for key, allowed in enums.items():
+        if str(body.get(key) or "") not in allowed:
+            raise HTTPException(400, f"{key}取值无效")
+    if body.get("video_recorded") not in (None, True, False):
+        raise HTTPException(400, "是否拍视频只允许未填写、是或否")
+    try:
+        refund_amount = None if body.get("refund_amount") in (None, "") else float(body["refund_amount"])
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "退款金额无效") from error
+    platform_amount, platform_at = _compensation_pair(
+        body, "platform_compensation_rub", "platform_compensated_at")
+    logistics_amount, logistics_at = _compensation_pair(
+        body, "logistics_compensation_cny", "logistics_compensated_at")
+    now = _utc_text(datetime.now(timezone.utc))
+    with transaction() as db:
+        shop = db.execute("SELECT settlement_currency FROM shops WHERE id=?", (shop_id,)).fetchone()
+        if not db.execute("""SELECT 1 FROM rfbs_return_records
+          WHERE shop_id=? AND return_number=?""", (shop_id, return_number)).fetchone():
+            raise HTTPException(400, "未找到该店铺退货申请")
+        exists = db.execute("""SELECT created_at FROM rfbs_return_disputes
+          WHERE shop_id=? AND return_number=?""", (shop_id, return_number)).fetchone()
+        refund_currency = str(body.get("refund_currency") or (shop[0] if refund_amount is not None else "")).upper() or None
+        if refund_currency not in (None, "USD", "CNY"):
+            raise HTTPException(400, "币种只允许USD或CNY")
+        db.execute("""INSERT INTO rfbs_return_disputes(
+          shop_id,return_number,refund_type,refund_amount,refund_currency,
+          platform_compensation_rub,platform_compensated_at,
+          logistics_compensation_cny,logistics_compensated_at,
+          process_status,return_method,iml_return_number,iml_system_sn,
+          buyer_tracking_number,handling_method,video_recorded,outbound_order_number,return_result,notes,
+          created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(shop_id,return_number) DO UPDATE SET refund_type=excluded.refund_type,
+          refund_amount=excluded.refund_amount,refund_currency=excluded.refund_currency,
+          platform_compensation_rub=excluded.platform_compensation_rub,
+          platform_compensated_at=excluded.platform_compensated_at,
+          logistics_compensation_cny=excluded.logistics_compensation_cny,
+          logistics_compensated_at=excluded.logistics_compensated_at,
+          process_status=excluded.process_status,return_method=excluded.return_method,
+          iml_return_number=excluded.iml_return_number,iml_system_sn=excluded.iml_system_sn,
+          buyer_tracking_number=excluded.buyer_tracking_number,handling_method=excluded.handling_method,
+          video_recorded=excluded.video_recorded,outbound_order_number=excluded.outbound_order_number,
+          return_result=excluded.return_result,notes=excluded.notes,updated_at=excluded.updated_at""",
+          (shop_id, return_number, str(body.get("refund_type") or ""), refund_amount,
+           refund_currency, platform_amount, platform_at, logistics_amount, logistics_at,
+           str(body.get("process_status") or ""), str(body.get("return_method") or ""),
+           str(body.get("iml_return_number") or ""), str(body.get("iml_system_sn") or ""),
+           str(body.get("buyer_tracking_number") or ""), str(body.get("handling_method") or ""),
+           None if body.get("video_recorded") is None else int(body["video_recorded"]),
+           str(body.get("outbound_order_number") or ""), str(body.get("return_result") or ""),
+           str(body.get("notes") or ""), exists[0] if exists else now, now))
+    return {"ok": True}
+
+
+def _latest_stock_snapshots(db, shop_id):
     where, args = _record_clause(shop_id, "r")
-    return db.execute(f"""SELECT r.shop_id,s.name shop_name,r.observed_at,r.payload FROM {table} r
-      JOIN shops s ON s.id=r.shop_id JOIN (
-        SELECT shop_id,MAX(observed_at) observed_at FROM {table} GROUP BY shop_id
-      ) latest ON latest.shop_id=r.shop_id AND latest.observed_at=r.observed_at{where}
+    return db.execute(f"""SELECT r.shop_id,s.name shop_name,r.observed_at,r.payload FROM stock_snapshots r
+      JOIN shops s ON s.id=r.shop_id{where}
       ORDER BY r.shop_id,r.record_key""", args).fetchall()
 
 
@@ -1144,23 +1384,23 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
         raise HTTPException(400, "未知排序方向")
     page, size = _paging(page, size)
     now = datetime.now(timezone.utc)
-    cutoffs = [(now - timedelta(days=days)).isoformat() for days in (7, 15, 30)]
+    cutoffs = [(now - timedelta(days=days)).isoformat().replace("+00:00", "Z") for days in (7, 15, 30)]
     shop_clause, shop_args = _shop_clause(shop_id)
     with connect() as db:
-        records = _latest_snapshots(db, "stock_snapshots", shop_id)
+        records = _latest_stock_snapshots(db, shop_id)
         sales = {(row["shop_id"], row["sku"]): dict(row) for row in db.execute(f"""SELECT i.shop_id,i.sku,
-          SUM(CASE WHEN julianday(o.created_at)>=julianday(?) THEN i.quantity ELSE 0 END) sales_7,
-          SUM(CASE WHEN julianday(o.created_at)>=julianday(?) THEN i.quantity ELSE 0 END) sales_15,
+          SUM(CASE WHEN o.created_at>=? THEN i.quantity ELSE 0 END) sales_7,
+          SUM(CASE WHEN o.created_at>=? THEN i.quantity ELSE 0 END) sales_15,
           SUM(i.quantity) sales_30
           FROM order_items i JOIN orders o USING(shop_id,posting_number)
           WHERE {ACTIVE} AND o.channel IN ('FBP','realFBS')
-            AND julianday(o.created_at)>=julianday(?) {shop_clause}
+            AND o.created_at>=? {shop_clause}
           GROUP BY i.shop_id,i.sku""", cutoffs + shop_args)}
         metadata = {}
         for row in db.execute(f"""SELECT i.shop_id,i.sku,i.offer_id,i.product_name_raw,i.source,o.created_at
           FROM order_items i JOIN orders o USING(shop_id,posting_number)
           WHERE 1=1 {shop_clause}
-          ORDER BY (i.source='api') DESC,julianday(o.created_at) DESC""", shop_args):
+          ORDER BY (i.source='api') DESC,o.created_at DESC""", shop_args):
             item = metadata.setdefault((row["shop_id"], row["sku"]), {"offer_id": "", "product_name_raw": ""})
             item["offer_id"] = item["offer_id"] or row["offer_id"] or ""
             item["product_name_raw"] = item["product_name_raw"] or row["product_name_raw"] or ""
@@ -1371,20 +1611,21 @@ def save_auto_sync_settings(values):
     for shop_id in (1, 2):
         for module in ("orders", "returns", "stock"):
             value = values[str(shop_id)][module]
-            run_time = str(value.get("run_time") or "")
-            if len(run_time) != 5:
-                raise ValueError("拉取时间格式无效")
+            if "run_time" in value:
+                raise ValueError("run_time 已停用，请提交 interval_hours")
             try:
-                datetime.strptime(run_time, "%H:%M")
+                interval_hours = int(value.get("interval_hours"))
                 range_days = int(value.get("range_days") or 0)
             except (TypeError, ValueError) as error:
-                raise ValueError("拉取时间或范围无效") from error
+                raise ValueError("拉取频率或范围无效") from error
+            if interval_hours not in AUTO_SYNC_INTERVALS:
+                raise ValueError("拉取频率只允许 1、2、3、4、6、8、12、24 小时")
             if not 1 <= range_days <= 365:
                 raise ValueError("自动拉取范围必须为 1 至 365 天")
-            settings.append((int(bool(value.get("enabled"))), run_time,
+            settings.append((int(bool(value.get("enabled"))), interval_hours,
                              1 if module == "stock" else range_days, shop_id, module))
     with transaction() as db:
-        db.executemany("""UPDATE shop_auto_sync_settings SET enabled=?,run_time=?,range_days=?
+        db.executemany("""UPDATE shop_auto_sync_settings SET enabled=?,interval_hours=?,range_days=?
           WHERE shop_id=? AND module=?""",
                        settings)
 
@@ -1420,12 +1661,12 @@ def _run_sync_job(run_id, module, shop_id, ranges):
         for index, (start, end) in enumerate(ranges, 1):
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET current_from=?,current_to=? WHERE id=?",
-                           (start.isoformat(), end.isoformat(), run_id))
+                           (_utc_text(start), _utc_text(end), run_id))
             result = sync_module(module, shop_id, start, end, include_existing_missing=run_source != "auto")
             records += int(result.get("records") or 0)
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",
-                           (index, records, end.isoformat(), run_id))
+                           (index, records, _utc_text(end), run_id))
     except Exception as error:
         message = str(error)[:500]
         with transaction() as db:
@@ -1440,45 +1681,60 @@ def _run_sync_job(run_id, module, shop_id, ranges):
     with transaction() as db:
         db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
           data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
-                   (ranges[-1][1].isoformat(), run_id))
+                   (_utc_text(ranges[-1][1]), run_id))
         _trim_sync_runs(db)
 
 
-def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_date=None):
+def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_slot=None, now=None):
     ranges = _sync_ranges(module, start, end)
     with transaction() as db:
-        if run_source == "auto" and db.execute("""SELECT 1 FROM sync_runs
-          WHERE shop_id=? AND module=? AND scheduled_date=? AND run_source='auto'
-          AND status='failed' AND started_at>=strftime('%Y-%m-%dT%H:%M:%SZ','now','-5 minutes')""",
-                                                     (shop_id, module, scheduled_date)).fetchone():
-            return None
+        if run_source == "auto":
+            if db.execute("SELECT 1 FROM sync_runs WHERE shop_id=? AND module=? AND status='running'",
+                          (shop_id, module)).fetchone():
+                return None
+            cooldown = _utc_text((now or datetime.now(BEIJING)) - timedelta(minutes=5))
+            if db.execute("""SELECT 1 FROM sync_runs
+              WHERE shop_id=? AND module=? AND scheduled_slot=? AND run_source='auto'
+              AND status='failed' AND datetime(COALESCE(finished_at,started_at))>=datetime(?)""",
+                          (shop_id, module, scheduled_slot, cooldown)).fetchone():
+                return None
         cursor = db.execute("""INSERT OR IGNORE INTO sync_runs(
-          shop_id,module,range_from,range_to,status,progress_total,run_source,scheduled_date)
+          shop_id,module,range_from,range_to,status,progress_total,run_source,scheduled_slot)
           VALUES(?,?,?,?, 'running',?,?,?)""",
-                            (shop_id, module, start.isoformat(), end.isoformat(), len(ranges),
-                             run_source, scheduled_date))
+                            (shop_id, module, _utc_text(start), _utc_text(end), len(ranges),
+                             run_source, scheduled_slot))
         if cursor.rowcount == 0:
             return None
         run_id = cursor.lastrowid
-        _trim_sync_runs(db, today=scheduled_date)
+        _trim_sync_runs(db, scheduled_slot=scheduled_slot)
     threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
     return run_id
 
 
+def auto_sync_slot(now, interval_hours):
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=BEIJING)
+    now = now.astimezone(BEIJING)
+    return now.replace(hour=(now.hour // interval_hours) * interval_hours,
+                       minute=0, second=0, microsecond=0)
+
+
 def run_auto_sync_once(now=None):
     now = now or datetime.now(BEIJING)
-    today = now.date().isoformat()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=BEIJING)
+    now = now.astimezone(BEIJING)
     with connect() as db:
         settings = db.execute("""SELECT * FROM shop_auto_sync_settings
           WHERE enabled=1 AND module IN ('orders','returns','stock') ORDER BY shop_id,rowid""").fetchall()
     started = []
     for setting in settings:
-        if now.strftime("%H:%M") < setting["run_time"]:
-            continue
+        slot = auto_sync_slot(now, setting["interval_hours"])
         end = now
         start = (now - timedelta(days=setting["range_days"] - 1)).replace(
             hour=0, minute=0, second=0, microsecond=0)
-        run_id = _create_sync_job(setting["module"], setting["shop_id"], start, end, "auto", today)
+        run_id = _create_sync_job(setting["module"], setting["shop_id"], start, end,
+                                  "auto", slot.isoformat(), now)
         if run_id:
             started.append(run_id)
     return started
@@ -1553,11 +1809,12 @@ def export_orders(shop_id: int = 0, date_from: str = "", date_to: str = ""):
     if export_range:
         _, _, utc_start, utc_end, exclusive_end = export_range
         if utc_start:
-            range_clause += " AND julianday(o.created_at)>=julianday(?)"; args.append(utc_start)
+            range_clause += " AND o.created_at>=?"; args.append(utc_start)
         if utc_end:
-            range_clause += f" AND julianday(o.created_at){'<' if exclusive_end else '<='}julianday(?)"; args.append(utc_end)
+            range_clause += f" AND o.created_at{'<' if exclusive_end else '<='}?"; args.append(utc_end)
     def lines():
         with connect() as db:
+            rules = load_product_rules(db)
             shops_value = [dict(r) for r in db.execute("SELECT id,name FROM shops ORDER BY id")
                            if shop_id not in (1, 2) or r["id"] == shop_id]
             through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}{range_clause}", args).fetchone()[0]
@@ -1565,51 +1822,57 @@ def export_orders(shop_id: int = 0, date_from: str = "", date_to: str = ""):
                               "range":{"from":export_range[0],"to":export_range[1]} if export_range else {"from":None,"to":None},
                               "order_definition":"COUNT DISTINCT posting_number","piece_definition":"SUM quantity",
                               "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
-            for row in db.execute(f"""
-              SELECT o.shop_id,s.name shop,o.posting_number,o.channel,o.created_at,o.status_raw,
-                o.cancel_reason_raw,o.amount_original,o.amount_currency
+            for raw in db.execute(f"""
+              SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,
+                o.shipped_at,o.delivered_at,o.status_changed_at,o.status_raw,o.cancel_reason_raw,
+                o.shipped,o.data_anomaly,o.amount_original,o.amount_currency
               FROM orders o JOIN shops s ON s.id=o.shop_id
               WHERE {ACTIVE}{clause}{range_clause} ORDER BY o.created_at
             """, args):
-                yield json.dumps(_translated_order(row), ensure_ascii=False) + "\n"
+                value = _translated_order(raw)
+                value["items"] = []
+                for item_raw in db.execute("""SELECT sku,offer_id,product_name_raw,quantity,
+                  unit_price,price_currency FROM order_items WHERE shop_id=? AND posting_number=?
+                  ORDER BY sku,offer_id""", (value["shop_id"], value["posting_number"])):
+                    item = dict(item_raw)
+                    resolved = resolve_product(rules, item["sku"], item["offer_id"], item["product_name_raw"])
+                    item.update({"product_name": resolved["display_name"],
+                                 "analysis_identity": resolved["identity"]})
+                    value["items"].append(item)
+                value["sku_types"] = len(value["items"])
+                value["pieces"] = sum(int(item["quantity"] or 0) for item in value["items"])
+                yield json.dumps(value, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
                              headers={"Content-Disposition":"attachment; filename=orders.jsonl"})
 
 
 @app.get("/api/export/{module}")
 def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: str = ""):
-    if module not in {"risk", "timeliness", "returns", "complaints", "stock", "rules"}:
+    if module not in {"risk", "returns", "complaints"}:
         raise HTTPException(404, "未知导出模块")
     if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
     tables = {
         "risk": ("orders o JOIN order_items i USING(shop_id,posting_number)", "o.created_at",
-                 "o.shop_id,o.channel,o.posting_number,i.sku,i.offer_id,i.product_name_raw,i.quantity,o.status_raw,o.cancel_reason_raw"),
-        "timeliness": ("orders o", "o.created_at",
-                 "o.shop_id,o.channel,o.posting_number,o.created_at,o.shipped_at,o.delivered_at"),
-        "returns": ("rfbs_return_records o", "o.created_at",
-                 "o.shop_id,o.return_id,o.return_number,o.created_at,o.posting_number,o.sku,o.offer_id,o.product_name,o.status_raw,o.status_name,o.quantity,o.reason_raw,o.reason_name,o.compensation_status,o.product_amount,o.product_currency,o.logistic_return_at,o.buyer_comment_raw"),
-        "complaints": ("complaints o", "o.complaint_at",
-                 "o.shop_id,o.posting_number,o.complaint_number,o.complaint_at,o.channel,o.resolved,o.package_returned,o.compensation_amount,o.compensation_currency,o.created_at,o.updated_at"),
-        "stock": ("stock_history o", "o.occurred_at",
-                 "o.shop_id,o.source,o.warehouse_id,o.sku,o.present,o.reserved,o.occurred_at"),
-        "rules": ("product_short_names o", "o.updated_at", "o.key_value sku,o.short_name,o.updated_at"),
+                 "o.shop_id,o.channel,o.posting_number,o.created_at,i.sku,i.offer_id,i.product_name_raw,i.quantity,o.status_raw,o.shipped,o.cancel_reason_raw"),
+        "returns": ("rfbs_return_records o LEFT JOIN rfbs_return_disputes d ON d.shop_id=o.shop_id AND d.return_number=o.return_number JOIN shops s ON s.id=o.shop_id", "o.created_at",
+                 "o.shop_id,s.name shop_name,o.return_id,o.return_number,o.created_at,o.posting_number,o.sku,o.offer_id,o.product_name,o.status_raw,o.status_name,o.quantity,o.reason_raw,o.reason_name,o.compensation_status,o.product_amount,o.product_currency,o.logistic_return_at,o.buyer_comment_raw,s.settlement_currency,d.refund_type,d.refund_amount,d.refund_currency,d.platform_compensation_rub,d.platform_compensated_at,d.logistics_compensation_cny,d.logistics_compensated_at,d.process_status,d.return_method,d.iml_return_number,d.iml_system_sn,d.buyer_tracking_number,d.handling_method,d.video_recorded,d.outbound_order_number,d.return_result,d.notes,d.created_at manual_created_at,d.updated_at manual_updated_at"),
+        "complaints": ("complaints o JOIN shops s ON s.id=o.shop_id JOIN orders x ON x.shop_id=o.shop_id AND x.posting_number=o.posting_number", "o.complaint_at",
+                 "o.shop_id,s.name shop_name,o.posting_number,o.complaint_number,o.complaint_at,o.channel,o.resolved,o.package_returned,o.compensation_amount,o.compensation_currency,o.notes,o.not_received_return,o.warehouse,o.order_process_status,o.complaint_status,o.compensation_status,o.platform_compensation_rub,o.platform_compensated_at,o.logistics_compensation_cny,o.logistics_compensated_at,s.settlement_currency,x.status_changed_at,(SELECT MAX(r.occurred_at) FROM return_records r WHERE r.shop_id=o.shop_id AND r.posting_number=o.posting_number) fallback_cancelled_at,o.created_at,o.updated_at"),
     }
     table, date_column, fields = tables[module]
     where, args = ["1=1"], []
     alias = "o"
-    export_range = _export_range(date_from, date_to) if module != "rules" else None
-    if shop_id in (1, 2) and module != "rules":
+    export_range = _export_range(date_from, date_to)
+    if shop_id in (1, 2):
         where.append(f"{alias}.shop_id=?"); args.append(shop_id)
     if export_range:
         _, _, utc_start, utc_end, exclusive_end = export_range
         if utc_start:
-            where.append(f"julianday({date_column})>=julianday(?)"); args.append(utc_start)
+            where.append(f"{date_column}>=?"); args.append(utc_start)
         if utc_end:
-            where.append(f"julianday({date_column}){'<' if exclusive_end else '<='}julianday(?)"); args.append(utc_end)
-    if module in {"risk", "timeliness"}:
+            where.append(f"{date_column}{'<' if exclusive_end else '<='}?"); args.append(utc_end)
+    if module == "risk":
         where.append(ACTIVE)
-    if module == "stock":
-        where.append("o.source IN ('api','API快照')")
     sql_where = " AND ".join(where)
 
     def lines():
@@ -1617,10 +1880,6 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
             selected = [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")
                         if shop_id not in (1, 2) or row["id"] == shop_id]
             through = db.execute(f"SELECT MAX({date_column}) FROM {table} WHERE {sql_where}", args).fetchone()[0]
-            if module == "rules":
-                through = db.execute("""SELECT MAX(value) FROM (
-                  SELECT MAX(updated_at) value FROM product_short_names
-                  UNION ALL SELECT MAX(updated_at) FROM product_groups)""").fetchone()[0]
             metadata = {"type": "metadata", "module": module, "shops": selected,
               "range": {"from": export_range[0], "to": export_range[1]} if export_range else {"from": None, "to": None},
               "timezone": "数据库UTC；页面北京时间", "currencies": "保留记录原始币种，不做跨币种汇总",
@@ -1633,43 +1892,70 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                     legacy_where.append("shop_id=?"); legacy_args.append(shop_id)
                 if export_range:
                     if utc_start:
-                        legacy_where.append("julianday(occurred_at)>=julianday(?)"); legacy_args.append(utc_start)
+                        legacy_where.append("occurred_at>=?"); legacy_args.append(utc_start)
                     if utc_end:
-                        legacy_where.append(f"julianday(occurred_at){'<' if exclusive_end else '<='}julianday(?)"); legacy_args.append(utc_end)
+                        legacy_where.append(f"occurred_at{'<' if exclusive_end else '<='}?"); legacy_args.append(utc_end)
                 for row in db.execute(f"SELECT shop_id,occurred_at,posting_number,sku,payload FROM return_records WHERE {' AND '.join(legacy_where)} ORDER BY occurred_at", legacy_args):
                     value, payload = dict(row), json.loads(row["payload"])
                     product, visual = payload.get("product") or {}, payload.get("visual") or {}
                     status = visual.get("status") or {}
                     value.pop("payload")
                     value.update({"record_type": "取消明细", "quantity": product.get("quantity"),
-                                  "product_name": product.get("name"), "reason_raw": payload.get("return_reason_name"),
+                                  "offer_id": product.get("offer_id"), "product_name": product.get("name"),
+                                  "reason_raw": payload.get("return_reason_name"),
+                                  "reason_name": CANCEL_REASON_ZH.get(payload.get("return_reason_name"), payload.get("return_reason_name")),
                                   "status": status.get("display_name") if isinstance(status, dict) else status})
+                    value.update(_complaint_deadline(value["occurred_at"]))
                     yield json.dumps(value, ensure_ascii=False) + "\n"
-            if module == "rules":
-                for row in db.execute("""SELECT n.key_value sku,n.short_name,n.updated_at
-                  FROM product_short_names n LEFT JOIN product_short_name_migrations m
-                    ON m.key_type=n.key_type AND m.key_value=n.key_value
-                  WHERE n.key_type='sku' AND COALESCE(m.enabled,1)=1 ORDER BY n.key_value"""):
-                    yield json.dumps({"rule_type": "中文短名称", **dict(row)}, ensure_ascii=False) + "\n"
-                for row in db.execute("""SELECT c.group_id,c.primary_offer_id,c.primary_sku,c.status,
-                  g.updated_at FROM product_group_config c JOIN product_groups g ON g.id=c.group_id
-                  WHERE c.status='active' ORDER BY c.primary_offer_id"""):
-                    value = dict(row)
-                    value["members"] = [dict(member) for member in db.execute("""SELECT key_type,key_value
-                      FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value""", (row["group_id"],))]
-                    yield json.dumps({"rule_type": "主货号合并", **value}, ensure_ascii=False) + "\n"
-                return
-            rules = load_product_rules(db) if module in {"risk", "stock"} else None
+            rules = load_product_rules(db) if module == "risk" else None
             for row in db.execute(f"SELECT {fields} FROM {table} WHERE {sql_where} ORDER BY {date_column}", args):
                 value = dict(row)
                 if module == "returns":
                     value["record_type"] = "退货明细"
+                    value["reason_name"] = CANCEL_REASON_ZH.get(
+                        value["reason_raw"], value["reason_name"] or value["reason_raw"])
+                    value.update(_complaint_deadline(value["created_at"]))
+                    _with_compensation_conversion(db, value)
+                elif module == "complaints":
+                    value["record_type"] = "发货未收货投诉"
+                    value.update(_complaint_deadline(value.pop("status_changed_at"),
+                                                      value.pop("fallback_cancelled_at")))
+                    _with_compensation_conversion(db, value)
                 elif module == "risk":
                     resolved = resolve_product(rules, value["sku"], value["offer_id"], value.pop("product_name_raw"))
                     value["analysis_identity"] = resolved["identity"]
                     value["analysis_product_name"] = resolved["display_name"]
-                elif module == "stock":
-                    value["analysis_identity"] = resolve_product(rules, value["sku"])["identity"]
+                    value["cancel_reason_name"] = CANCEL_REASON_ZH.get(
+                        value["cancel_reason_raw"], value["cancel_reason_raw"])
                 yield json.dumps(value, ensure_ascii=False) + "\n"
+            if module == "complaints":
+                received_where, received_args = ["1=1"], []
+                if shop_id in (1, 2):
+                    received_where.append("r.shop_id=?"); received_args.append(shop_id)
+                if export_range:
+                    if utc_start:
+                        received_where.append("r.created_at>=?"); received_args.append(utc_start)
+                    if utc_end:
+                        received_where.append(f"r.created_at{'<' if exclusive_end else '<='}?")
+                        received_args.append(utc_end)
+                for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,r.posting_number,
+                  r.return_number,r.created_at,r.sku,r.offer_id,r.product_name,r.product_amount,
+                  r.product_currency,r.reason_raw,r.reason_name,r.buyer_comment_raw,
+                  d.refund_type,d.refund_amount,d.refund_currency,d.platform_compensation_rub,
+                  d.platform_compensated_at,d.logistics_compensation_cny,d.logistics_compensated_at,
+                  d.process_status,d.return_method,d.iml_return_number,d.iml_system_sn,
+                  d.buyer_tracking_number,d.handling_method,d.video_recorded,d.outbound_order_number,
+                  d.return_result,d.notes,d.created_at manual_created_at,d.updated_at manual_updated_at,
+                  s.settlement_currency FROM rfbs_return_disputes d
+                  JOIN rfbs_return_records r ON r.shop_id=d.shop_id AND r.return_number=d.return_number
+                  JOIN shops s ON s.id=r.shop_id WHERE {' AND '.join(received_where)} ORDER BY r.created_at""",
+                  received_args):
+                    value = dict(row)
+                    value["record_type"] = "已收货纠纷"
+                    value["reason_name"] = CANCEL_REASON_ZH.get(
+                        value["reason_raw"], value["reason_name"] or value["reason_raw"])
+                    value.update(_complaint_deadline(value["created_at"]))
+                    _with_compensation_conversion(db, value)
+                    yield json.dumps(value, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
       headers={"Content-Disposition": f"attachment; filename={module}.jsonl"})

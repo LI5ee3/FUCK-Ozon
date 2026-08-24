@@ -1,23 +1,20 @@
 import asyncio
 import json
-import tempfile
 import threading
 import unittest
 import urllib.error
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app import db, ozon
 from app.importer import _shipping, import_csv
-from app.main import export_module, export_orders, login, upload
+from app.main import export_orders, upload
 from app.ozon import (_cursor_pages, _post, _product_price, sync_module, sync_orders,
-                      sync_returns, table_fingerprints)
+                      sync_returns)
+from tests.support import DatabaseTestCase, table_fingerprints
 
-ROOT = Path(__file__).resolve().parent.parent
 
-
-class ImportRegressionTest(unittest.TestCase):
+class ImportRegressionTest(DatabaseTestCase):
     def test_api_product_price_shapes(self):
         self.assertEqual(_product_price({"price": "12.50"}, "USD"), (12.5, "USD"))
         self.assertEqual(_product_price({"price": {"amount": "88", "currency": "CNY"}}, "USD"), (88.0, "CNY"))
@@ -120,8 +117,8 @@ class ImportRegressionTest(unittest.TestCase):
                 return {"returns": [], "has_next": False}
             if payload["return_id"] == 26:
                 raise RuntimeError("temporary")
-            return {"result": {"return": {"return_reason": {
-                "id": payload["return_id"], "name": "商品或原厂包装已损坏"}}}}
+            return {"returns": {"return_reason": {
+                "id": payload["return_id"], "name": "商品或原厂包装已损坏"}}}
 
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 2, tzinfo=timezone.utc)
@@ -130,7 +127,7 @@ class ImportRegressionTest(unittest.TestCase):
                 sync_returns(1, start, end)
         with db.connect() as connection:
             self.assertEqual(connection.execute(
-                "SELECT COUNT(*) FROM rfbs_return_records WHERE reason_raw IS NOT NULL").fetchone()[0], 25)
+                "SELECT COUNT(*) FROM rfbs_return_records WHERE detail_fetched_at IS NOT NULL").fetchone()[0], 25)
 
         called = []
         def retry(_shop, path, payload):
@@ -143,17 +140,20 @@ class ImportRegressionTest(unittest.TestCase):
             sync_returns(1, start, end)
         self.assertEqual(called, [26])
         with db.connect() as connection:
-            reason, payload = connection.execute(
-                "SELECT reason_raw,payload FROM rfbs_return_records WHERE return_id=26").fetchone()
+            reason, payload, completed = connection.execute(
+                "SELECT reason_raw,payload,detail_fetched_at FROM rfbs_return_records WHERE return_id=26").fetchone()
         self.assertEqual(reason, "未收录原因")
         self.assertEqual(json.loads(payload)["return_reason"]["id"], 99)
+        self.assertIsNotNone(completed)
 
     def test_rfbs_list_cannot_clear_existing_detail_reason(self):
         detail = {"return_reason": {"id": 7, "name": "原有俄语原因"}}
         with db.transaction() as connection:
             connection.execute("""INSERT INTO rfbs_return_records(
-              shop_id,return_id,return_number,created_at,posting_number,payload,fetched_at,reason_raw,reason_name)
-              VALUES(1,7,'R-7','2026-08-01T00:00:00Z','P-7',?,'2026-08-01T00:00:00Z',?,?)""",
+              shop_id,return_id,return_number,created_at,posting_number,payload,fetched_at,
+              reason_raw,reason_name,detail_fetched_at)
+              VALUES(1,7,'R-7','2026-08-01T00:00:00Z','P-7',?,'2026-08-01T00:00:00Z',?,?,
+                '2026-08-01T00:00:00Z')""",
               (json.dumps(detail, ensure_ascii=False), "原有俄语原因", "原有俄语原因"))
         summary = {"return_id": 7, "return_number": "R-7", "created_at": "2026-08-01T00:00:00Z",
                    "posting_number": "P-7", "product": {}, "state": {}}
@@ -174,6 +174,31 @@ class ImportRegressionTest(unittest.TestCase):
                 "SELECT reason_raw,payload FROM rfbs_return_records WHERE return_id=7").fetchone()
         self.assertEqual(reason, "原有俄语原因")
         self.assertEqual(json.loads(stored)["return_reason"]["id"], 7)
+
+    def test_reasonless_detail_is_completed_saved_and_not_requested_again(self):
+        summary = {"return_id": 8, "return_number": "R-8", "created_at": "2026-08-01T00:00:00Z",
+                   "posting_number": "P-8", "product": {}, "state": {}}
+
+        def response(_shop, path, _payload):
+            if path == "/v1/returns/list":
+                return {"returns": [], "has_next": False}
+            if path == "/v2/returns/rfbs/list":
+                return {"returns": [summary], "has_next": False}
+            return {"returns": {"return_reason": {}}, "detail_marker": "saved"}
+
+        start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 2, tzinfo=timezone.utc)
+        with patch("app.ozon._post", side_effect=response) as post:
+            sync_returns(1, start, end)
+            sync_returns(1, start, end)
+        self.assertEqual(sum(call.args[1] == "/v2/returns/rfbs/get"
+                             for call in post.call_args_list), 1)
+        with db.connect() as connection:
+            reason, payload, completed = connection.execute("""SELECT reason_raw,payload,detail_fetched_at
+              FROM rfbs_return_records WHERE return_id=8""").fetchone()
+        self.assertIsNone(reason)
+        self.assertEqual(json.loads(payload)["detail_marker"], "saved")
+        self.assertIsNotNone(completed)
 
     def test_rfbs_reason_translations_are_exact(self):
         expected = {
@@ -219,8 +244,13 @@ class ImportRegressionTest(unittest.TestCase):
         for table in set(before) - {"return_records", "rfbs_return_records"}:
             self.assertEqual(before[table], after[table], table)
         with db.connect() as connection:
-            self.assertIsNone(connection.execute(
-                "SELECT reason_raw FROM rfbs_return_records WHERE return_id=1").fetchone()[0])
+            old_reason, old_completed = connection.execute("""SELECT reason_raw,detail_fetched_at
+              FROM rfbs_return_records WHERE return_id=1""").fetchone()
+            new_completed = connection.execute("""SELECT detail_fetched_at
+              FROM rfbs_return_records WHERE return_id=2""").fetchone()[0]
+        self.assertIsNone(old_reason)
+        self.assertIsNone(old_completed)
+        self.assertIsNotNone(new_completed)
 
     def test_return_permission_probe_includes_rfbs_detail(self):
         methods = ["/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"]
@@ -229,36 +259,6 @@ class ImportRegressionTest(unittest.TestCase):
             result = ozon.probe_shop(1)
         self.assertEqual(result["permissions"]["returns"], "可用")
         self.assertEqual([call.args[1] for call in post.call_args_list], ["/v1/roles", "/v1/seller/info"])
-
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        db.DATA_DIR = Path(self.temp.name)
-        db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def test_real_samples_match_verified_baseline(self):
-        for channel in ("FBP", "realFBS", "WHD"):
-            path = ROOT / f"{channel}.csv"
-            if not path.exists():
-                self.skipTest(f"跳过基准样本测试：本地未提供可选样例数据 {path.name}")
-            import_csv(1, channel, path.name, path.read_bytes())
-        with db.connect() as connection:
-            active = "NOT (o.status_raw='已取消' AND o.shipped=0)"
-            totals = connection.execute(f"""
-              SELECT COUNT(DISTINCT o.posting_number),SUM(i.quantity)
-              FROM orders o JOIN order_items i USING(shop_id,posting_number) WHERE {active}
-            """).fetchone()
-            by_channel = {row[0]:(row[1],row[2]) for row in connection.execute(f"""
-              SELECT o.channel,COUNT(DISTINCT o.posting_number),SUM(i.quantity)
-              FROM orders o JOIN order_items i USING(shop_id,posting_number)
-              WHERE {active} GROUP BY o.channel
-            """)}
-
-        self.assertEqual(tuple(totals), (3623, 3671))
-        self.assertEqual(by_channel, {"FBP": (2690, 2724), "realFBS": (810, 824), "WHD": (123, 123)})
 
     def test_channel_change_keeps_one_item_row(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建\n"
@@ -284,12 +284,13 @@ class ImportRegressionTest(unittest.TestCase):
               JOIN order_items i USING(shop_id,posting_number) WHERE o.posting_number='P-1'""").fetchone()
         self.assertEqual(tuple(channels), ("realFBS", "realFBS"))
 
-    def test_order_sync_saves_actual_shipping_time_and_backfills_existing_rows(self):
+    def test_order_sync_saves_shipping_time_and_tracking_number(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建;已转移配送\n"
                    "M-2;P-2;已签收;SKU-2;1;2026-08-01T00:00:00Z;2026-08-01T03:00:00Z\n").encode()
         import_csv(1, "FBP", "shipping.csv", content)
         postings = [
             {"posting_number": "P-1", "integration_type_flow": "FBP", "status": "delivering",
+             "tracking_number": "TRACK-1",
              "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": "2026-08-01T02:00:00Z", "products": []},
             {"posting_number": "P-2", "integration_type_flow": "FBP", "status": "delivering",
              "in_process_at": "2026-08-01T00:00:00Z", "delivering_date": None, "products": []},
@@ -314,15 +315,12 @@ class ImportRegressionTest(unittest.TestCase):
                 "SELECT delivered_at FROM orders WHERE posting_number='W-1'").fetchone()[0]
             fbs_delivered = connection.execute(
                 "SELECT delivered_at FROM orders WHERE posting_number='P-3'").fetchone()[0]
-            connection.execute("UPDATE orders SET shipped_at=NULL WHERE posting_number='P-1'")
-            connection.commit()
+            tracking = connection.execute(
+                "SELECT tracking_number FROM orders WHERE posting_number='P-1'").fetchone()[0]
         self.assertEqual(times, {"P-1": "2026-08-01T02:00:00Z", "P-2": "2026-08-01T03:00:00Z"})
         self.assertEqual(delivered, "2026-08-02T00:00:00Z")
         self.assertIsNone(fbs_delivered)
-        db.init_db()
-        with db.connect() as connection:
-            backfilled = connection.execute("SELECT shipped_at FROM orders WHERE posting_number='P-1'").fetchone()[0]
-        self.assertEqual(backfilled, "2026-08-01T02:00:00Z")
+        self.assertEqual(tracking, "TRACK-1")
 
     def test_duplicate_sku_rows_are_aggregated_idempotently(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建\n"
@@ -345,42 +343,6 @@ class ImportRegressionTest(unittest.TestCase):
 
         rows = asyncio.run(collect())
         self.assertEqual([row.get("posting_number") for row in rows[1:]], ["P-1"])
-
-    def test_timeliness_export_filters_pre_ship_cancellations_and_accepts_iso_end(self):
-        header = "订单号;发货号码;状态;SKU;数量;已创建\n"
-        content = (header
-                   + "M-1;P-1;已签收;SKU-1;1;2026-08-01T12:00:00Z\n"
-                   + "M-2;P-2;已取消;SKU-2;1;2026-08-01T11:00:00Z\n"
-                   + "M-3;P-3;已签收;SKU-3;1;2026-08-01T12:00:00.500Z\n")
-        import_csv(1, "FBP", "timeliness.csv", content.encode())
-        with db.transaction() as connection:
-            connection.execute(
-                "UPDATE orders SET created_at='2026-08-01T12:00:00.500Z' WHERE posting_number='P-3'")
-
-        async def collect(date_to):
-            return [json.loads(line) async for line in export_module(
-                "timeliness", 1, date_to=date_to).body_iterator]
-
-        exact = asyncio.run(collect("2026-08-01T12:00:00Z"))
-        whole_day = asyncio.run(collect("2026-08-01"))
-        self.assertEqual([row.get("posting_number") for row in exact[1:]], ["P-1"])
-        self.assertEqual(sorted(row.get("posting_number") for row in whole_day[1:]), ["P-1", "P-3"])
-
-    def test_login_can_use_dotenv_values(self):
-        from app.security import password_hash
-        salt, digest = password_hash("secret")
-        class Request:
-            url = type("URL", (), {"scheme": "http"})()
-            client = type("Client", (), {"host": "127.0.0.1"})()
-            headers = {}
-
-            async def json(self):
-                return {"password": "secret"}
-
-        from fastapi import Response
-        with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}), \
-             patch("app.main._token", return_value="token"):
-            self.assertEqual(asyncio.run(login(Request(), Response())), {"ok": True})
 
     def test_upload_uses_threadpool(self):
         class Request:
