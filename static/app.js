@@ -1,10 +1,10 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], complaints:[], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,complaints:1,stock:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,stock:1}};
 let riskItems = [];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
 let dingSavedTemplate="", dingDefaultTemplate="";
-const titles = {overview:"总览",orders:"订单",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"退货与投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
 const syncDescriptions = {orders:"拉取订单、商品和订单状态数据",returns:"拉取退货与售后申请数据",stock:"只拉取实时库存数据，不受日期范围影响"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
@@ -16,7 +16,6 @@ const hours = (v) => v == null ? "暂无" : `${num(v,1)} 小时 / ${num(v/24,1)}
 const money = (amount,currency) => amount==null ? "金额暂无" : `${num(amount)} ${esc(currency||"")}`;
 const cell = (v) => v == null || v === "" ? "暂无" : `<span class="copyable" data-copy="${esc(v)}" title="点击复制">${esc(v)}</span>`;
 const channelTag = (v) => `<span class="tag channel-${({FBP:"fbp",realFBS:"fbs",WHD:"whd"}[v] || "")}">${esc(v)}</span>`;
-const triText = v => v == null ? "未填写" : v ? "是" : "否";
 const returnSelects = {};
 function createReturnSelect(id){
   const select=$(`#${id}`),root=select.closest("[data-return-select],[data-import-select]"),button=root.querySelector("[data-select-button]"),label=root.querySelector("[data-select-label]"),options=root.querySelector("[data-select-options]"),morph=button.querySelector("morph-icon");
@@ -361,16 +360,13 @@ function showShell(){ $("#login").classList.add("hidden"); $("#shell").classList
 async function loadShops() {
   state.shops = await api("/api/shops");
   const options = state.shops.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
-  const complaintShop = $("#complaintShop").value,importShop=$("#importShop").value;
+  const importShop=$("#importShop").value;
   const shops=[{id:0,name:"两店铺合并"},...state.shops];
   $("#shopOptions").innerHTML=shops.map(s=>`<button type="button" role="option" data-shop="${s.id}" aria-selected="${s.id===state.shop}">${esc(s.name)}</button>`).join("");
   $("#shopPickerValue").textContent=shops.find(s=>s.id===state.shop)?.name||"两店铺合并";
   $("#importShop").innerHTML = `<option value="">请选择</option>${options}`;
   $("#importShop").value = importShop;
-  $("#complaintShop").innerHTML = `<option value="">请选择</option>${options}`;
-  $("#complaintShop").value = complaintShop;
   returnSelects.importShop?.render();
-  returnSelects.complaintShop?.render();
   $("#shop1").value = state.shops[0].name; $("#shop2").value = state.shops[1].name;
 }
 let overviewReqId = 0, trendReqId = 0;
@@ -559,12 +555,6 @@ async function loadOrders() {
                 </div>
                 ${o.cancel_reason_raw ? `<div class="order-alert-box danger"><morph-icon icon="alertTriangle" size="14" stroke-width="2"></morph-icon><span><strong>取消原因：</strong>${esc(o.cancel_reason_raw)}</span></div>` : ""}
                 ${o.data_anomaly ? `<div class="order-alert-box warning"><morph-icon icon="alertOctagon" size="14" stroke-width="2"></morph-icon><span><strong>数据异常：</strong>订单实际时效字段与状态不一致，请核对原始数据。</span></div>` : ""}
-              </div>
-              <div class="order-foot-actions">
-                <button type="button" class="order-complaint-btn subtle-btn" data-add-complaint="${esc(o.posting_number)}" data-complaint-shop="${o.shop_id}">
-                  <morph-icon icon="fileWarning" size="14" stroke-width="2"></morph-icon>
-                  <span>新增投诉 / 追偿</span>
-                </button>
               </div>
             </div>
           </div>
@@ -1149,7 +1139,7 @@ async function loadRfbsReturns() {
         </td>
         <td data-label="原因／退回信息">
           <div class="return-reason-logistics">
-            <span class="return-reason-chip" title="${esc(r.reason_raw)}">${esc(r.reason_name || r.reason_raw || '—')}</span>
+            <span class="return-reason-chip" title="${esc(r.reason_raw)}">${esc(r.reason_name || r.reason_raw || '平台未提供原因')}</span>
             <span class="return-logistics-sub">退回：${r.logistic_return_at ? bj(r.logistic_return_at) : '—'}</span>
             ${r.buyer_comment_raw ? `
               <details class="return-buyer-bubble">
@@ -1170,75 +1160,7 @@ async function loadRfbsReturns() {
   }
 }
 
-async function loadComplaints() {
-  $("#complaintRows").innerHTML = '<tr><td colspan="5" class="return-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>投诉记录加载中…</span></td></tr>';
-  try {
-    const query = new URLSearchParams({
-      shop_id: state.shop,
-      q: $("#complaintQuery").value,
-      status: $("#complaintStatus").value,
-      page: state.pages.complaints,
-      from: returnsRange.start,
-      to: returnsRange.end
-    });
-    const data = await api(`/api/complaints?${query}`);
-    state.complaints = data.items;
-    $("#complaintsCount").textContent = num(data.total, 0);
-
-    $("#complaintRows").innerHTML = data.items.map(r => `
-      <tr>
-        <td data-label="店铺／订单号">
-          <div class="return-shop-time">
-            <strong class="return-shop-badge">${esc(r.shop_name)}</strong>
-            <strong class="copyable" data-copy="${esc(r.posting_number)}" title="点击复制订单号">
-              <morph-icon icon="copy" size="12" stroke-width="2"></morph-icon>
-              ${esc(r.posting_number)}
-            </strong>
-          </div>
-        </td>
-        <td data-label="投诉编号／时间／渠道">
-          <div class="complaint-meta-cell">
-            <strong class="copyable" data-copy="${esc(r.complaint_number)}" title="点击复制投诉编号">
-              <morph-icon icon="copy" size="12" stroke-width="2"></morph-icon>
-              ${esc(r.complaint_number)}
-            </strong>
-            <div class="complaint-meta-sub">
-              <span>${bj(r.complaint_at)}</span>
-              ${channelTag(r.channel)}
-            </div>
-          </div>
-        </td>
-        <td data-label="完结状态">
-          <span class="complaint-state ${r.resolved == 1 ? 'done' : r.resolved == 0 ? 'open' : 'unset'}">
-            <morph-icon icon="${r.resolved == 1 ? 'check' : r.resolved == 0 ? 'alertCircle' : 'helpCircle'}" size="12" stroke-width="2.2"></morph-icon>
-            ${triText(r.resolved)}
-          </span>
-        </td>
-        <td data-label="包裹／赔付">
-          <div class="complaint-pack-comp">
-            <span class="pack-return-tag">退回: <b>${triText(r.package_returned)}</b></span>
-            <span class="comp-amount-badge">${r.compensation_amount == null ? '赔付暂无' : `${num(r.compensation_amount)} ${esc(r.compensation_currency)}`}</span>
-          </div>
-        </td>
-        <td class="complaint-note-cell" data-label="备注／操作">
-          <div class="complaint-action-cell">
-            <span class="complaint-note-text" title="${esc(r.notes || '')}">${esc(r.notes || '暂无备注')}</span>
-            <button type="button" class="complaint-edit-btn" data-edit-complaint="${r.shop_id}:${esc(r.complaint_number)}">
-              <morph-icon icon="edit" size="12" stroke-width="2"></morph-icon>
-              <span>编辑</span>
-            </button>
-          </div>
-        </td>
-      </tr>
-    `).join("") || '<tr><td colspan="5" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有投诉记录。</span></td></tr>';
-
-    pager("complaints", data, loadComplaints);
-  } catch (error) {
-    $("#complaintRows").innerHTML = `<tr><td colspan="5" class="return-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>${esc(error.message)}</span></td></tr>`;
-    throw error;
-  }
-}
-const loadReturnPage = () => Promise.all([loadReturns(), loadRfbsReturns(), loadComplaints()]);
+const loadReturnPage = () => Promise.all([loadReturns(), loadRfbsReturns()]);
 async function loadStock() {
   $("#stockRows").innerHTML='<tr><td colspan="8" class="stock-empty">库存数据加载中…</td></tr>';
   try {const query=new URLSearchParams({shop_id:state.shop,page:state.pages.stock,sku:$("#stockSku").value,offer_id:$("#stockOffer").value,product_name:$("#stockProduct").value,sort_by:state.stockSort.key,sort_order:state.stockSort.order}),data=await api(`/api/stock?${query}`);
@@ -1295,7 +1217,7 @@ async function loadPage(page) {
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",risk:"risk",timeliness:"delivery",returns:"returns",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",dingtalk:"dingtalk"};
+const navIconMap={overview:"dashboard",orders:"orders",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",dingtalk:"dingtalk"};
 const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -1313,77 +1235,15 @@ function openPage(page) {
   });
   const hasRange=Boolean(pageDateRangeMap[page]);
   $("#headerDateRange")?.classList.toggle("hidden", !hasRange);
+  if(page==="complaintPlaceholder") renderDataThrough(null);
   $("#pageTitle").textContent=titles[page]; loadPage(page).catch(e=>toast(e.message,true));
 }
 
-for(const id of ["complaintShop","complaintResolved","complaintReturned","complaintStatus","importShop","importKind"]) returnSelects[id]=createReturnSelect(id);
+for(const id of ["importShop","importKind"]) returnSelects[id]=createReturnSelect(id);
 function activateReturnTab(name,focus=false){
   document.querySelectorAll("[data-return-tab]").forEach(button=>{const active=button.dataset.returnTab===name;button.classList.toggle("active",active);button.setAttribute("aria-selected",String(active));button.tabIndex=active?0:-1;if(active&&focus)button.focus()});
   document.querySelectorAll(".return-tab").forEach(panel=>{const active=panel.id===`returns-${name}`;panel.classList.toggle("active",active);panel.hidden=!active});
 }
-let setComplaintAt=()=>{};
-function setupComplaintDatetimePicker(){
-  const input=$("#complaintAt"),btn=$("#complaintAtBtn"),display=$("#complaintAtDisplay"),panel=$("#complaintAtPanel"),monthTitle=$("#complaintCalMonth"),daysContainer=$("#complaintCalDays"),hourInput=$("#complaintHour"),minuteInput=$("#complaintMinute");
-  if(!btn||!panel) return;
-  let viewDate=new Date(),selectedDate=new Date(),hour=selectedDate.getHours(),minute=selectedDate.getMinutes();
-  const updateDisplay=()=>{
-    if(!input.value){display.textContent="年/月/日 --:--";display.classList.add("placeholder");return}
-    const d=new Date(input.value);
-    if(isNaN(d.getTime())){display.textContent=input.value;display.classList.remove("placeholder");return}
-    display.textContent=`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
-    display.classList.remove("placeholder");
-  };
-  const renderCalendar=()=>{
-    monthTitle.textContent=`${viewDate.getFullYear()}年${viewDate.getMonth()+1}月`;
-    const first=new Date(viewDate.getFullYear(),viewDate.getMonth(),1),last=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,0),items=[];
-    for(let i=0;i<(first.getDay()+6)%7;i++)items.push('<span class="range-blank"></span>');
-    const selKey=input.value?input.value.slice(0,10):"",todayKey=isoDate(today);
-    for(let d=1;d<=last.getDate();d++){
-      const curr=new Date(viewDate.getFullYear(),viewDate.getMonth(),d),key=isoDate(curr),isSel=selKey===key,isToday=todayKey===key,isWeekend=curr.getDay()===0||curr.getDay()===6;
-      items.push(`<button type="button" data-dt-date="${key}" class="${isWeekend?'weekend ':''}${isSel?'active ':''}${isToday?'today':''}" aria-label="${key}">${d}</button>`);
-    }
-    daysContainer.innerHTML=items.join("");
-  };
-  const syncFromInput=()=>{
-    if(input.value){
-      const d=new Date(input.value);
-      if(!isNaN(d.getTime())){selectedDate=d;viewDate=new Date(d.getFullYear(),d.getMonth(),1);hour=d.getHours();minute=d.getMinutes()}
-    } else {
-      const now=new Date();selectedDate=now;viewDate=new Date(now.getFullYear(),now.getMonth(),1);hour=now.getHours();minute=now.getMinutes();
-    }
-    hourInput.value=String(hour).padStart(2,"0");
-    minuteInput.value=String(minute).padStart(2,"0");
-    updateDisplay();
-    renderCalendar();
-  };
-  btn.onclick=()=>{const hidden=panel.classList.toggle("hidden");btn.setAttribute("aria-expanded",String(!hidden));if(!hidden)syncFromInput()};
-  $("#complaintCalPrev").onclick=()=>{viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,1);renderCalendar()};
-  $("#complaintCalNext").onclick=()=>{viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,1);renderCalendar()};
-  daysContainer.onclick=e=>{
-    const dBtn=e.target.closest("[data-dt-date]");if(!dBtn)return;
-    const key=dBtn.dataset.dtDate,[y,m,d]=key.split("-").map(Number);
-    selectedDate=new Date(y,m-1,d,hour,minute);
-    input.value=`${key}T${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}`;
-    updateDisplay();renderCalendar();
-  };
-  const commit=()=>{
-    hour=Math.min(23,Math.max(0,parseInt(hourInput.value,10)||0));
-    minute=Math.min(59,Math.max(0,parseInt(minuteInput.value,10)||0));
-    hourInput.value=String(hour).padStart(2,"0");minuteInput.value=String(minute).padStart(2,"0");
-    input.value=`${isoDate(selectedDate)}T${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}`;
-    updateDisplay();panel.classList.add("hidden");btn.setAttribute("aria-expanded","false");
-  };
-  $("#complaintConfirmBtn").onclick=commit;
-  $("#complaintNowBtn").onclick=()=>{
-    const now=new Date();selectedDate=now;viewDate=new Date(now.getFullYear(),now.getMonth(),1);hour=now.getHours();minute=now.getMinutes();
-    hourInput.value=String(hour).padStart(2,"0");minuteInput.value=String(minute).padStart(2,"0");
-    input.value=`${isoDate(now)}T${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}`;
-    updateDisplay();panel.classList.add("hidden");btn.setAttribute("aria-expanded","false");
-  };
-  setComplaintAt=val=>{input.value=val||"";syncFromInput()};
-}
-function resetComplaintForm(close=false){$("#complaintForm").reset();setReturnSelect("complaintShop","");setReturnSelect("complaintResolved","");setReturnSelect("complaintReturned","");setComplaintAt("");$("#complaintEditorTitle").textContent="新增投诉";if(close)$("#complaintEditor").open=false}
-
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await Promise.all([loadOverview(),loadTrend()])}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{const button=e.target.closest("[data-page]");if(button)openPage(button.dataset.page)});
 $("#shopPickerButton").onclick=()=>{const hidden=$("#shopOptions").classList.toggle("hidden");$("#shopPickerButton").setAttribute("aria-expanded",String(!hidden));$("#shopPickerMorph")?.morphTo(!hidden?"chevronUp":"chevronDown","snappy")};
@@ -1392,7 +1252,6 @@ $("#channelPickerButton").onclick=()=>{const hidden=$("#channelOptions").classLi
 $("#channelOptions").onclick=e=>{const option=e.target.closest("[data-channel]");if(!option)return;$("#channelFilter").value=option.dataset.channel;$("#channelPickerValue").textContent=option.textContent;document.querySelectorAll("#channelOptions [data-channel]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy");$("#channelFilter").dispatchEvent(new Event("change"))};
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#orderStatusChips")?.addEventListener("click",e=>{const chip=e.target.closest("[data-order-status]");if(!chip)return;document.querySelectorAll("#orderStatusChips .status-chip").forEach(c=>{const isTarget=c===chip;c.classList.toggle("active",isTarget);c.setAttribute("aria-selected",String(isTarget))});state.orderStatus=chip.dataset.orderStatus;state.page=1;loadOrders().catch(err=>toast(err.message,true))});
-$("#orderList").onclick=e=>{const button=e.target.closest("[data-add-complaint]"),posting=button?.dataset.addComplaint;if(!posting)return;openPage("returns");resetComplaintForm();$("#complaintPosting").value=posting;setReturnSelect("complaintShop",button.dataset.complaintShop);activateReturnTab("complaints");$("#complaintEditor").open=true;$("#complaintNumber").focus()};
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
 $("#channelFilter").addEventListener("change",()=>{state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#riskSearch").addEventListener("input",renderRiskItems);
@@ -1408,10 +1267,6 @@ $("#returnsSearch").onsubmit=e=>{e.preventDefault();state.pages.returns=1;loadRe
 $("#returnsClear").onclick=()=>{$("#returnsQuery").value="";state.pages.returns=1;loadReturns().catch(err=>toast(err.message,true))};
 $("#rfbsReturnsSearch").onsubmit=e=>{e.preventDefault();state.pages.rfbsReturns=1;loadRfbsReturns().catch(err=>toast(err.message,true))};
 $("#rfbsReturnsClear").onclick=()=>{$("#rfbsReturnsQuery").value="";state.pages.rfbsReturns=1;loadRfbsReturns().catch(err=>toast(err.message,true))};
-$("#complaintSearch").onsubmit=e=>{e.preventDefault();state.pages.complaints=1;loadComplaints().catch(err=>toast(err.message,true))};
-$("#complaintRows").onclick=e=>{const key=e.target.dataset.editComplaint;if(!key)return;const [shop,...number]=key.split(":"),r=state.complaints.find(x=>x.shop_id===Number(shop)&&x.complaint_number===number.join(":"));if(!r)return;setReturnSelect("complaintShop",r.shop_id);$("#complaintPosting").value=r.posting_number;$("#complaintNumber").value=r.complaint_number;setComplaintAt(new Date(new Date(r.complaint_at).getTime()+8*3600000).toISOString().slice(0,16));$("#complaintChannel").value=r.channel;setReturnSelect("complaintResolved",r.resolved==null?"":String(Boolean(r.resolved)));setReturnSelect("complaintReturned",r.package_returned==null?"":String(Boolean(r.package_returned)));$("#complaintAmount").value=r.compensation_amount??"";$("#complaintCurrency").value=r.compensation_currency??"";$("#complaintNotes").value=r.notes??"";$("#complaintEditorTitle").textContent=`编辑投诉·${r.complaint_number}`;$("#complaintEditor").open=true;$("#complaintEditor").scrollIntoView({behavior:"smooth"})};
-$("#complaintReset").onclick=()=>resetComplaintForm();
-$("#complaintEditor").addEventListener("toggle",()=>{const m=document.getElementById("complaintMorphIcon");if(m)m.morphTo($("#complaintEditor").open?"chevronUp":"chevronDown","snappy")});
 $("#reasonRows").onclick=async e=>{const reasonBtn=e.target.closest("[data-reason]");if(!reasonBtn)return;const reason=reasonBtn.dataset.reason,target=$("#reasonDetails"),query=new URLSearchParams({shop_id:state.shop,reason,from:riskRange.start,to:riskRange.end});target.classList.remove("hidden");target.innerHTML='<div class="reason-detail-loading"><morph-icon icon="sync" size="16" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>原因对应订单加载中…</span></div>';try{const data=await api(`/api/risk/reasons?${query}`);target.innerHTML=`<div class="reason-detail-header"><div class="reason-detail-title"><morph-icon icon="alertTriangle" size="15" stroke-width="2"></morph-icon><h3>${esc(reasonBtn.textContent.trim())} · 关联订单明细</h3></div><span class="reason-detail-total">共 ${num(data.details.length,0)} 个异常订单</span></div><div class="reason-detail-grid">${data.details.map(r=>`<div class="reason-detail-card"><div class="reason-card-head"><strong class="copyable" data-copy="${esc(r.posting_number)}" title="点击复制订单号"><morph-icon icon="copy" size="12" stroke-width="2"></morph-icon>${esc(r.posting_number)}</strong></div><div class="reason-card-foot"><span class="shop-tag">${esc(r.shop_name)}</span>${channelTag(r.channel)}<span class="pieces-count">× ${num(r.pieces,0)} 件</span></div></div>`).join("")||'<span class="muted">当前时间范围内没有对应订单。</span>'}</div>`;target.scrollIntoView({behavior:"smooth",block:"nearest"})}catch(error){target.innerHTML=`<span class="error">${esc(error.message)}</span>`}};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 async function saveShopNames(){const s1=$("#shop1")?.value?.trim()||"",s2=$("#shop2")?.value?.trim()||"";if(!s1||!s2)return;const curr1=state.shops.find(s=>s.id===1)?.name,curr2=state.shops.find(s=>s.id===2)?.name;if(s1===curr1&&s2===curr2)return;try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:s1,2:s2})});await loadShops();toast("店铺名称已自动保存")}catch(err){toast(err.message,true)}}
@@ -1449,7 +1304,6 @@ const exportNames={orders:["订单","订单号、渠道、时间、状态及金�
 $("#exportButtons").innerHTML=Object.entries(exportNames).map(([key,[name,description]])=>`<article class="export-card"><div><strong>${name}</strong><p>${description}</p><small>${key==="rules"?"当前规则，不受时间筛选影响":"受当前时间范围影响"}</small></div><button type="button" data-export="${key}">导出</button></article>`).join("");
 function updateExportScope(){const shop=state.shop?state.shops.find(item=>item.id===state.shop)?.name:"两店铺合并";$("#exportScope").textContent=`当前店铺：${shop||"两店铺合并"}｜时间范围：${exportRange.start} 至 ${exportRange.end}`}
 $("#exportButtons").onclick=e=>{const button=e.target.closest("[data-export]"),module=button?.dataset.export;if(!module)return;const query=new URLSearchParams({shop_id:state.shop});if(module!=="rules"){query.set("date_from",exportRange.start);query.set("date_to",exportRange.end)}button.disabled=true;const text=button.textContent;button.textContent="正在准备…";location.href=`/api/export/${module}?${query}`;setTimeout(()=>{button.disabled=false;button.textContent=text},800)};
-$("#complaintForm").onsubmit=async e=>{e.preventDefault();const tri=id=>$(id).value===""?null:$(id).value==="true";await api("/api/complaints",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:Number($("#complaintShop").value),posting_number:$("#complaintPosting").value,complaint_number:$("#complaintNumber").value,complaint_at:new Date(`${$("#complaintAt").value}:00+08:00`).toISOString(),channel:$("#complaintChannel").value,resolved:tri("#complaintResolved"),package_returned:tri("#complaintReturned"),compensation_amount:$("#complaintAmount").value||null,compensation_currency:$("#complaintCurrency").value,notes:$("#complaintNotes").value})});toast("投诉已保存");resetComplaintForm(true);state.pages.complaints=1;await loadComplaints()};
 $("#shortNameForm").onsubmit=async e=>{e.preventDefault();const sku=$("#shortSku").value.trim(),short_name=$("#shortName").value.trim();if(!sku){$("#shortSku").focus();return toast("请输入 SKU",true)}if(!short_name){$("#shortName").focus();return toast("请输入中文短名称",true)}await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"short_name",sku,short_name})});toast("短名称已保存");$("#shortNameForm").reset();await loadRules()};
 $("#shortReset").onclick=()=>$("#shortNameForm").reset();$("#shortSearchForm").onsubmit=e=>{e.preventDefault();loadRules().catch(error=>toast(error.message,true))};$("#shortSearchClear").onclick=()=>{$("#shortSearch").value="";loadRules().catch(error=>toast(error.message,true))};
 $("#shortRuleRows").onclick=async e=>{const edit=e.target.closest("[data-edit-short]")?.dataset.editShort,remove=e.target.closest("[data-delete-short]")?.dataset.deleteShort;if(edit){const row=ruleData.short_names.find(value=>value.sku===edit);$("#shortSku").value=row.sku;$("#shortName").value=row.short_name;$("#shortName").focus()}if(remove){await api("/api/product-rules",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind:"delete_short_name",sku:remove})});toast("短名称已删除");await loadRules()}};
@@ -1518,7 +1372,7 @@ const overviewRange=createDateRange("#overviewDateRange",()=>loadOverview().catc
 const orderRange=createDateRange("#orderDateRange",()=>{state.page=1;loadOrders().catch(error=>toast(error.message,true))});
 const riskRange=createDateRange("#riskDateRange",()=>loadRisk().catch(error=>toast(error.message,true)));
 const timelinessRange=createDateRange("#timelinessDateRange",()=>{state.pages.timeliness=1;loadTimeliness().catch(error=>toast(error.message,true))});
-const returnsRange=createDateRange("#returnsDateRange",()=>{state.pages.returns=state.pages.rfbsReturns=state.pages.complaints=1;loadReturnPage().catch(error=>toast(error.message,true))});
+const returnsRange=createDateRange("#returnsDateRange",()=>{state.pages.returns=state.pages.rfbsReturns=1;loadReturnPage().catch(error=>toast(error.message,true))});
 const exportRange=createDateRange("#exportDateRange",()=>updateExportScope());
 const syncRange=createDateRange("#syncDateRange",()=>{});
 const exchangeRateRange=createDateRange("#exchangeRateDateRange",()=>{});
@@ -1537,6 +1391,4 @@ systemTheme.addEventListener("change",()=>{if(getThemeMode()==="system")applyThe
 $("#themeButton").onclick=()=>{const currentDark=document.documentElement.dataset.theme==="dark";setThemeMode(currentDark?"light":"dark")};
 $("#settingsButton").onclick=()=>{const sMorph=$("#settingsMorphIcon");if(sMorph)morphConfirm(sMorph,"settings");openPage("settings")};
 applyTheme();
-setupComplaintDatetimePicker();
-
 (async()=>{const s=await api("/api/session");if(!s.authenticated)return showLogin();state.csrf=s.csrf_token;showShell();await loadShops();await Promise.all([loadOverview(),loadTrend()])})().catch(e=>toast(e.message,true));

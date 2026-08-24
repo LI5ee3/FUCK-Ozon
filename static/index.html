@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260824-17">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260824-18">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -19,7 +19,8 @@
       <nav id="nav">
         <button data-page="overview" class="active"><morph-icon class="nav-icon" data-nav-morph="overview" icon="dashboard" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>总览</span></button><button data-page="orders"><morph-icon class="nav-icon" data-nav-morph="orders" icon="orders" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单</span></button>
         <button data-page="risk"><morph-icon class="nav-icon" data-nav-morph="risk" icon="risk" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单取消分析</span></button><button data-page="timeliness"><morph-icon class="nav-icon" data-nav-morph="timeliness" icon="delivery" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>发货与配送时效</span></button>
-        <button data-page="returns"><morph-icon class="nav-icon" data-nav-morph="returns" icon="returns" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>退货与投诉</span></button>
+        <button data-page="returns"><morph-icon class="nav-icon" data-nav-morph="returns" icon="returns" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>异常订单明细</span></button>
+        <button data-page="complaintPlaceholder"><morph-icon class="nav-icon" data-nav-morph="complaintPlaceholder" icon="messageSquareAlert" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>异常订单投诉</span></button>
         <button data-page="stock"><morph-icon class="nav-icon" data-nav-morph="stock" icon="stock" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>销量与备货建议</span></button>
         <button data-page="transfer"><morph-icon class="nav-icon" data-nav-morph="transfer" icon="transfer" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>数据导入/导出</span></button><button data-page="sync"><morph-icon class="nav-icon" data-nav-morph="sync" icon="sync" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>数据同步中心</span></button>
         <button data-page="rules"><morph-icon class="nav-icon" data-nav-morph="rules" icon="rules" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>商品匹配规则</span></button><button data-page="dingtalk"><morph-icon class="nav-icon" data-nav-morph="dingtalk" icon="dingtalk" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>钉钉机器人</span></button>
@@ -71,7 +72,7 @@
           <article class="metric blue">
             <div class="metric-head"><span>发货后取消率</span><div class="metric-icon-badge"><morph-icon icon="percent" size="18" stroke-width="1.8"></morph-icon></div></div>
             <strong id="cancelRate">0%</strong>
-            <small>按订单数</small>
+            <small>按有效货件数</small>
           </article>
         </div>
         <div class="overview-dual-grid">
@@ -341,7 +342,7 @@
       </section>
 
       <section id="returns" class="page">
-        <div id="returnTabs" class="subtabs return-subtabs" role="tablist" aria-label="退货与投诉子板块">
+        <div id="returnTabs" class="subtabs return-subtabs" role="tablist" aria-label="异常订单明细子板块">
           <button id="returnTabCancel" class="active" type="button" role="tab" aria-selected="true" aria-controls="returns-cancel" tabindex="0" data-return-tab="cancel">
             <morph-icon icon="xCircle" size="14" stroke-width="2"></morph-icon>
             <span>取消明细</span>
@@ -351,11 +352,6 @@
             <morph-icon icon="rotateCcw" size="14" stroke-width="2"></morph-icon>
             <span>退货明细</span>
             <span id="rfbsReturnsCount">0</span>
-          </button>
-          <button id="returnTabComplaints" type="button" role="tab" aria-selected="false" aria-controls="returns-complaints" tabindex="-1" data-return-tab="complaints">
-            <morph-icon icon="messageSquareAlert" size="14" stroke-width="2"></morph-icon>
-            <span>投诉管理</span>
-            <span id="complaintsCount">0</span>
           </button>
         </div>
 
@@ -444,95 +440,13 @@
           </div>
         </div>
 
-        <div id="returns-complaints" class="return-tab" role="tabpanel" aria-labelledby="returnTabComplaints" hidden>
-          <details id="complaintEditor" class="panel complaint-editor">
-            <summary>
-              <div class="complaint-summary-wrap">
-                <div class="complaint-summary-icon"><morph-icon icon="plus" size="16" stroke-width="2"></morph-icon></div>
-                <div>
-                  <strong id="complaintEditorTitle">新增投诉</strong>
-                  <small>展开填写必填信息与后续处理</small>
-                </div>
-              </div>
-              <morph-icon id="complaintMorphIcon" icon="chevronDown" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
-            </summary>
-            <form id="complaintForm">
-              <fieldset>
-                <legend>必填信息</legend>
-                <div class="complaint-form-grid">
-                  <div class="return-field"><label id="complaintShopLabel">店铺</label><div class="return-select" data-return-select><select id="complaintShop" required aria-labelledby="complaintShopLabel"></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>请选择</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintShopLabel"></div></div></div>
-                  <label>订单号<input id="complaintPosting" placeholder="输入关联订单号" required></label>
-                  <label>投诉编号<input id="complaintNumber" placeholder="输入平台投诉编号" required></label>
-                  <div class="datetime-picker" id="complaintAtWrap"><label id="complaintAtLabel">投诉时间</label><div class="datetime-input-wrap"><input id="complaintAt" type="hidden" required aria-labelledby="complaintAtLabel"><button id="complaintAtBtn" class="datetime-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="complaintAtLabel"><span id="complaintAtDisplay" class="datetime-text placeholder">年/月/日 --:--</span><morph-icon class="datetime-icon" icon="clock" size="16"></morph-icon></button><div id="complaintAtPanel" class="datetime-panel hidden" role="dialog" aria-label="选择投诉时间"><div class="datetime-cal"><div class="datetime-month-head"><button type="button" id="complaintCalPrev" aria-label="上个月"><morph-icon icon="chevronLeft" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button><strong id="complaintCalMonth"></strong><button type="button" id="complaintCalNext" aria-label="下个月"><morph-icon icon="chevronRight" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></div><div class="datetime-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div id="complaintCalDays" class="datetime-days"></div></div><div class="datetime-time-row"><div class="datetime-time-inputs"><span class="datetime-time-label">时间</span><input id="complaintHour" type="number" min="0" max="23" placeholder="时" aria-label="小时"><span>:</span><input id="complaintMinute" type="number" min="0" max="59" placeholder="分" aria-label="分钟"></div><div class="datetime-actions"><button type="button" id="complaintNowBtn" class="datetime-now-btn">现在</button><button type="button" id="complaintConfirmBtn" class="primary datetime-confirm-btn">确定</button></div></div></div></div></div>
-                  <label>投诉渠道<input id="complaintChannel" placeholder="如：FBP / realFBS" required></label>
-                </div>
-              </fieldset>
-              <fieldset>
-                <legend>后续处理</legend>
-                <div class="complaint-form-grid">
-                  <div class="return-field"><label id="complaintResolvedLabel">是否完结</label><div class="return-select" data-return-select><select id="complaintResolved" aria-labelledby="complaintResolvedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintResolvedLabel"></div></div></div>
-                  <div class="return-field"><label id="complaintReturnedLabel">包裹是否退回</label><div class="return-select" data-return-select><select id="complaintReturned" aria-labelledby="complaintReturnedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintReturnedLabel"></div></div></div>
-                  <label>赔付金额<input id="complaintAmount" type="number" step="any" placeholder="0.00"></label>
-                  <label>赔付币种<input id="complaintCurrency" placeholder="留空则使用店铺回款币种"></label>
-                  <label class="complaint-notes">备注<textarea id="complaintNotes" placeholder="填写投诉处理细节与跟进记录…"></textarea></label>
-                </div>
-              </fieldset>
-              <div class="complaint-form-actions">
-                <button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon><span>保存投诉</span></button>
-                <button id="complaintReset" type="button"><morph-icon icon="rotateCcw" size="14" stroke-width="2"></morph-icon><span>重置</span></button>
-              </div>
-            </form>
-          </details>
-          <div class="panel return-panel complaint-panel">
-            <div class="panel-title">
-              <div>
-                <h2><morph-icon icon="messageSquareAlert" size="18" stroke-width="1.8"></morph-icon> 投诉记录</h2>
-                <span class="muted">一个订单可有多条投诉；同步不会覆盖</span>
-              </div>
-              <form id="complaintSearch" class="return-filter" role="search">
-                <div class="return-search-wrap">
-                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
-                  <input id="complaintQuery" type="search" aria-label="搜索投诉" placeholder="搜索订单号或投诉编号…">
-                </div>
-                <div class="return-select filter-select" data-return-select>
-                  <select id="complaintStatus" aria-label="完结状态">
-                    <option value="">全部状态</option>
-                    <option value="open">未完结</option>
-                    <option value="closed">已完结</option>
-                    <option value="unset">未填写</option>
-                  </select>
-                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
-                    <span data-select-label>全部状态</span>
-                    <morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon>
-                  </button>
-                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="完结状态"></div>
-                </div>
-                <button class="primary" type="submit">
-                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
-                  <span>查询</span>
-                </button>
-              </form>
-            </div>
-            <div class="table-wrap return-table-wrap">
-              <table class="return-table complaint-table">
-                <thead>
-                  <tr>
-                    <th>店铺／订单号</th>
-                    <th>投诉编号／时间／渠道</th>
-                    <th>完结状态</th>
-                    <th>包裹／赔付</th>
-                    <th>备注／操作</th>
-                  </tr>
-                </thead>
-                <tbody id="complaintRows"></tbody>
-              </table>
-            </div>
-            <div class="pager">
-              <button id="complaintsPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
-              <span id="complaintsInfo"></span>
-              <button id="complaintsNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
-            </div>
-          </div>
+      </section>
+
+      <section id="complaintPlaceholder" class="page">
+        <div class="panel complaint-placeholder">
+          <div class="complaint-placeholder-icon"><morph-icon icon="messageSquareAlert" size="28" stroke-width="1.7"></morph-icon></div>
+          <strong>异常订单投诉功能正在规划中</strong>
+          <span>投诉记录方式将在后续版本重新设计</span>
         </div>
       </section>
 
@@ -545,5 +459,5 @@
     </main>
   </div>
   <script src="/static/morphicons.js?v=20260824-16"></script>
-  <script src="/static/app.js?v=20260824-17"></script>
+  <script src="/static/app.js?v=20260824-18"></script>
 </body></html>

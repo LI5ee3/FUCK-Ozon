@@ -3708,6 +3708,26 @@ textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); b
   background: rgba(255, 255, 255, 0.30);
   color: #fff;
 }
+.complaint-placeholder {
+  display: grid;
+  min-height: 300px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+  border-top: 3px solid var(--primary);
+}
+.complaint-placeholder-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--lavender);
+  color: var(--primary);
+}
+.complaint-placeholder > strong { font-size: 18px; }
+.complaint-placeholder > span { color: var(--muted); }
 
 /* Return Summary Cards */
 .return-summary {
@@ -4599,7 +4619,7 @@ textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); b
   .timeliness-empty { padding: 24px !important; }
   .timeliness-empty:before { display: none; }
 
-  .return-subtabs { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+  .return-subtabs { display: grid; grid-template-columns: repeat(2, 1fr); width: 100%; }
   .return-subtabs button { padding: 8px 4px; font-size: 12px; gap: 4px; }
   .return-panel { padding: 14px; }
   .return-panel .panel-title { align-items: flex-start; flex-direction: column; gap: 10px; }

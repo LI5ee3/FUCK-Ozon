@@ -87,13 +87,18 @@ class ImportRegressionTest(unittest.TestCase):
             {"return_id": 12, "return_number": "", "posting_number": "P-2", "product": {"sku": 3}},
         ]
 
-        def response(_shop, path, _payload):
-            return {"returns": [cancellation], "has_next": False} if path == "/v1/returns/list" else {"returns": requests}
+        def response(_shop, path, payload):
+            if path == "/v1/returns/list":
+                return {"returns": [cancellation], "has_next": False}
+            if path == "/v2/returns/rfbs/list":
+                return {"returns": requests}
+            return {"return_reason": {"id": payload["return_id"], "name": "不应该使用中文"}}
 
-        moment = datetime(2026, 8, 3, tzinfo=timezone.utc)
-        with patch("app.ozon._post", side_effect=response):
-            sync_returns(1, moment, moment)
-            sync_returns(1, moment, moment)
+        start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 3, tzinfo=timezone.utc)
+        with patch("app.ozon._post", side_effect=response) as post:
+            sync_returns(1, start, end)
+            sync_returns(1, start, end)
         with db.connect() as connection:
             cancellations = connection.execute("SELECT COUNT(*) FROM return_records").fetchone()[0]
             saved = connection.execute("SELECT return_number,posting_number FROM rfbs_return_records ORDER BY return_id").fetchall()
@@ -101,6 +106,129 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertEqual([tuple(row) for row in saved], [
             ("174763409-R14", "P-0"), ("55765650-R10", "P-1"), ("55765650-R11", "P-1")
         ])
+        self.assertEqual(sum(call.args[1] == "/v2/returns/rfbs/get" for call in post.call_args_list), 3)
+
+    def test_rfbs_reason_batches_are_saved_and_resume_after_failure(self):
+        rows = [(1, value, f"R-{value}", "2026-08-01T00:00:00Z", "{}", "2026-08-01T00:00:00Z")
+                for value in range(1, 27)]
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO rfbs_return_records(
+              shop_id,return_id,return_number,created_at,payload,fetched_at) VALUES(?,?,?,?,?,?)""", rows)
+
+        def first(_shop, path, payload):
+            if path in ("/v1/returns/list", "/v2/returns/rfbs/list"):
+                return {"returns": [], "has_next": False}
+            if payload["return_id"] == 26:
+                raise RuntimeError("temporary")
+            return {"result": {"return": {"return_reason": {
+                "id": payload["return_id"], "name": "商品或原厂包装已损坏"}}}}
+
+        start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 2, tzinfo=timezone.utc)
+        with patch("app.ozon._post", side_effect=first):
+            with self.assertRaisesRegex(RuntimeError, "temporary"):
+                sync_returns(1, start, end)
+        with db.connect() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM rfbs_return_records WHERE reason_raw IS NOT NULL").fetchone()[0], 25)
+
+        called = []
+        def retry(_shop, path, payload):
+            if path in ("/v1/returns/list", "/v2/returns/rfbs/list"):
+                return {"returns": [], "has_next": False}
+            called.append(payload["return_id"])
+            return {"return_reason": {"id": 99, "name": "未收录原因"}}
+
+        with patch("app.ozon._post", side_effect=retry):
+            sync_returns(1, start, end)
+        self.assertEqual(called, [26])
+        with db.connect() as connection:
+            reason, payload = connection.execute(
+                "SELECT reason_raw,payload FROM rfbs_return_records WHERE return_id=26").fetchone()
+        self.assertEqual(reason, "未收录原因")
+        self.assertEqual(json.loads(payload)["return_reason"]["id"], 99)
+
+    def test_rfbs_list_cannot_clear_existing_detail_reason(self):
+        detail = {"return_reason": {"id": 7, "name": "原有俄语原因"}}
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO rfbs_return_records(
+              shop_id,return_id,return_number,created_at,posting_number,payload,fetched_at,reason_raw,reason_name)
+              VALUES(1,7,'R-7','2026-08-01T00:00:00Z','P-7',?,'2026-08-01T00:00:00Z',?,?)""",
+              (json.dumps(detail, ensure_ascii=False), "原有俄语原因", "原有俄语原因"))
+        summary = {"return_id": 7, "return_number": "R-7", "created_at": "2026-08-01T00:00:00Z",
+                   "posting_number": "P-7", "product": {}, "state": {}}
+
+        def response(_shop, path, _payload):
+            if path == "/v1/returns/list":
+                return {"returns": [], "has_next": False}
+            if path == "/v2/returns/rfbs/list":
+                return {"returns": [summary], "has_next": False}
+            self.fail("已有原因不应再次请求详情")
+
+        start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 2, tzinfo=timezone.utc)
+        with patch("app.ozon._post", side_effect=response):
+            sync_returns(1, start, end)
+        with db.connect() as connection:
+            reason, stored = connection.execute(
+                "SELECT reason_raw,payload FROM rfbs_return_records WHERE return_id=7").fetchone()
+        self.assertEqual(reason, "原有俄语原因")
+        self.assertEqual(json.loads(stored)["return_reason"]["id"], 7)
+
+    def test_rfbs_reason_translations_are_exact(self):
+        expected = {
+            "Товар или заводскую упаковку повредили": "商品或原厂包装已损坏",
+            "Товар использовали до меня": "我收到前商品已被使用",
+            "Есть внешние дефекты или следы использования": "有外部缺陷或使用痕迹",
+            "Привезли не тот товар": "配送了错误的商品",
+            "Нет части товара или комплекта": "商品或套装部件缺失",
+            "Нет части товара/комплекта": "商品/套件缺失部分",
+            "Не работает, плохо работает": "无法使用，使用效果差",
+            "Подделка": "假货",
+            "Товар сломался при использовании": "商品在使用过程中坏了",
+            "Не подошёл товар": "商品不合适",
+            "Товар не подошёл": "商品不合适",
+            "Не работает или работает плохо": "不可用或无法正常工作",
+        }
+        self.assertEqual({reason: ozon.CANCEL_REASON_ZH.get(reason) for reason in expected}, expected)
+
+    def test_automatic_return_sync_only_fetches_details_for_new_records(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO rfbs_return_records(
+              shop_id,return_id,return_number,created_at,payload,fetched_at)
+              VALUES(1,1,'OLD-R1','2026-08-01T00:00:00Z','{}','2026-08-01T00:00:00Z')""")
+        new_record = {"return_id": 2, "return_number": "NEW-R2", "created_at": "2026-08-01T00:00:00Z",
+                      "product": {}, "state": {}}
+        details = []
+
+        def response(_shop, path, payload):
+            if path == "/v1/returns/list":
+                return {"returns": [], "has_next": False}
+            if path == "/v2/returns/rfbs/list":
+                return {"returns": [new_record], "has_next": False}
+            details.append(payload["return_id"])
+            return {"return_reason": {"id": 2, "name": "Новая причина"}}
+
+        start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 8, 2, tzinfo=timezone.utc)
+        before = table_fingerprints()
+        with patch("app.ozon._post", side_effect=response):
+            sync_returns(1, start, end, include_existing_missing=False)
+        after = table_fingerprints()
+        self.assertEqual(details, [2])
+        for table in set(before) - {"return_records", "rfbs_return_records"}:
+            self.assertEqual(before[table], after[table], table)
+        with db.connect() as connection:
+            self.assertIsNone(connection.execute(
+                "SELECT reason_raw FROM rfbs_return_records WHERE return_id=1").fetchone()[0])
+
+    def test_return_permission_probe_includes_rfbs_detail(self):
+        methods = ["/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"]
+        with patch("app.ozon._post", side_effect=[{"roles": [{"name": "Admin", "methods": methods}]},
+                                                   {"result": {"name": "Shop"}}]) as post:
+            result = ozon.probe_shop(1)
+        self.assertEqual(result["permissions"]["returns"], "可用")
+        self.assertEqual([call.args[1] for call in post.call_args_list], ["/v1/roles", "/v1/seller/info"])
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

@@ -427,7 +427,7 @@ def summary(shop_id: int = 0,
               "cancelled_orders": sum(row["status_raw"] == "已取消" and row["shipped"] == 1 for row in rows)}
     totals["cancelled_pieces"] = sum(row["pieces"] for row in rows
                                      if row["status_raw"] == "已取消" and row["shipped"] == 1)
-    totals["cancel_rate"] = totals["cancelled_orders"] / totals["orders"] if totals["orders"] else 0
+    totals["cancel_rate"] = totals["cancelled_pieces"] / totals["pieces"] if totals["pieces"] else 0
     channels = []
     for channel in ("FBP", "realFBS", "WHD"):
         channel_rows = [row for row in rows if row["channel"] == channel]
@@ -1414,12 +1414,14 @@ def _sync_ranges(module, start, end):
 
 def _run_sync_job(run_id, module, shop_id, ranges):
     records = 0
+    with connect() as db:
+        run_source = db.execute("SELECT run_source FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
     try:
         for index, (start, end) in enumerate(ranges, 1):
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET current_from=?,current_to=? WHERE id=?",
                            (start.isoformat(), end.isoformat(), run_id))
-            result = sync_module(module, shop_id, start, end)
+            result = sync_module(module, shop_id, start, end, include_existing_missing=run_source != "auto")
             records += int(result.get("records") or 0)
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",

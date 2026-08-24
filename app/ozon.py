@@ -43,6 +43,7 @@ RFBS_RETURN_STATUS_ZH = {
     "MoneyReturned": "已退款",
     "AwaitingProcessing": "等待处理",
     "OnSellerApproval": "待卖家审核",
+    "OnSellerClarification": "确认中",
     "OnWayToOzon": "退回 Ozon 途中",
     "UtilizedByProvider": "合作方已销毁",
     "ApprovedOnPreModerationByOzon": "Ozon 已批准",
@@ -78,6 +79,18 @@ CANCEL_REASON_ZH = {
     "Упаковка и товар повреждены": "包装和商品均损坏",
     "Товар в неполной комплектации": "商品配件不完整",
     "Товар поврежден, но упаковка цела": "商品损坏但包装完好",
+    "Товар или заводскую упаковку повредили": "商品或原厂包装已损坏",
+    "Товар использовали до меня": "我收到前商品已被使用",
+    "Есть внешние дефекты или следы использования": "有外部缺陷或使用痕迹",
+    "Привезли не тот товар": "配送了错误的商品",
+    "Нет части товара или комплекта": "商品或套装部件缺失",
+    "Нет части товара/комплекта": "商品/套件缺失部分",
+    "Не работает, плохо работает": "无法使用，使用效果差",
+    "Подделка": "假货",
+    "Товар сломался при использовании": "商品在使用过程中坏了",
+    "Не подошёл товар": "商品不合适",
+    "Товар не подошёл": "商品不合适",
+    "Не работает или работает плохо": "不可用或无法正常工作",
 }
 _request_lock = threading.Lock()
 _last_request = 0.0
@@ -297,19 +310,54 @@ def _rfbs_return_pages(shop_id, start, end):
     raise RuntimeError("/v2/returns/rfbs/list: 分页超过安全上限")
 
 
-def sync_returns(shop_id, start, end):
+def _rfbs_return_reason_details(shop_id, start, end, new_ids=(), include_existing=True):
+    new_ids = tuple(dict.fromkeys(new_ids))
+    id_clause = f"return_id IN ({','.join('?' for _ in new_ids)})" if new_ids else "0"
+    scope = (f"((julianday(created_at)>=julianday(?) AND julianday(created_at)<=julianday(?)) OR {id_clause})"
+             if include_existing else f"({id_clause})")
+    args = ((shop_id, _utc(start), _utc(end), *new_ids) if include_existing else (shop_id, *new_ids))
+    with connect() as db:
+        return_ids = [row[0] for row in db.execute(f"""
+          SELECT return_id FROM rfbs_return_records
+          WHERE shop_id=? AND NULLIF(trim(reason_raw),'') IS NULL
+            AND {scope}
+          ORDER BY created_at,return_id
+        """, args)]
+    saved = 0
+    for offset in range(0, len(return_ids), 25):
+        updates = []
+        for return_id in return_ids[offset:offset + 25]:
+            body = _post(shop_id, "/v2/returns/rfbs/get", {"return_id": return_id})
+            detail = body.get("result") if isinstance(body.get("result"), dict) else body
+            detail = detail.get("return") if isinstance(detail.get("return"), dict) else detail
+            reason = detail.get("return_reason") or {}
+            reason_name = str(reason.get("name") or "").strip() if isinstance(reason, dict) else ""
+            if reason_name:
+                updates.append((reason_name, reason_name, _json(body), _stamp(), shop_id, return_id))
+        with transaction() as db:
+            db.executemany("""UPDATE rfbs_return_records
+              SET reason_raw=?,reason_name=?,payload=?,fetched_at=?
+              WHERE shop_id=? AND return_id=? AND NULLIF(trim(reason_raw),'') IS NULL
+            """, updates)
+        saved += len(updates)
+    return saved
+
+
+def sync_returns(shop_id, start, end, include_existing_missing=True):
     payload = {"filter": {"logistic_return_date": {"time_from": _utc(start), "time_to": _utc(end)}}, "limit": 100}
     records = _cursor_pages(shop_id, "/v1/returns/list", payload, "returns", "last_id", "")
     rfbs_records = _rfbs_return_pages(shop_id, start, end)
     fetched = _stamp()
     with transaction() as db:
+        existing_ids = {row[0] for row in db.execute(
+            "SELECT return_id FROM rfbs_return_records WHERE shop_id=?", (shop_id,))}
         for record in records:
             product, logistic = record.get("product") or {}, record.get("logistic") or {}
             db.execute("""INSERT INTO return_records VALUES(?,?,?,?,?,?,?)
               ON CONFLICT(shop_id,record_key) DO UPDATE SET occurred_at=excluded.occurred_at,posting_number=excluded.posting_number,sku=excluded.sku,payload=excluded.payload,fetched_at=excluded.fetched_at
             """, (shop_id, _key(record, "id"), logistic.get("return_date") or logistic.get("final_moment"),
                   record.get("posting_number"), str(product.get("sku") or ""), _json(record), fetched))
-        saved = 0
+        saved, new_ids = 0, []
         for record in rfbs_records:
             return_number = str(record.get("return_number") or "").strip()
             if not return_number:
@@ -320,9 +368,6 @@ def sync_returns(shop_id, start, end):
             product, state = record.get("product") or {}, record.get("state") or {}
             status_raw = state.get("state") or state.get("group_state") or ""
             status_name = state.get("state_name") or state.get("money_return_state_name") or status_raw
-            reason = record.get("return_reason") or record.get("reason") or {}
-            if not isinstance(reason, dict):
-                reason = {"name": reason}
             amount = product.get("price") or {}
             if not isinstance(amount, dict):
                 amount = {"price": amount}
@@ -337,22 +382,27 @@ def sync_returns(shop_id, start, end):
                 return_number=excluded.return_number,created_at=excluded.created_at,
                 posting_number=excluded.posting_number,offer_id=excluded.offer_id,sku=excluded.sku,
                 product_name=excluded.product_name,status_raw=excluded.status_raw,
-                status_name=excluded.status_name,payload=excluded.payload,fetched_at=excluded.fetched_at,
-                order_number=excluded.order_number,quantity=excluded.quantity,reason_raw=excluded.reason_raw,
-                reason_name=excluded.reason_name,compensation_status=excluded.compensation_status,
+                status_name=excluded.status_name,
+                payload=CASE WHEN NULLIF(trim(rfbs_return_records.reason_raw),'') IS NOT NULL
+                  THEN rfbs_return_records.payload ELSE excluded.payload END,
+                fetched_at=excluded.fetched_at,order_number=excluded.order_number,quantity=excluded.quantity,
+                reason_raw=rfbs_return_records.reason_raw,reason_name=rfbs_return_records.reason_name,
+                compensation_status=excluded.compensation_status,
                 product_amount=excluded.product_amount,product_currency=excluded.product_currency,
                 logistic_return_at=excluded.logistic_return_at,buyer_comment_raw=excluded.buyer_comment_raw
             """, (shop_id, return_id, return_number, record.get("created_at"), record.get("posting_number"),
                   product.get("offer_id"), str(product.get("sku") or ""), product.get("name") or "",
                   status_raw, status_name, _json(record), fetched, record.get("order_number"),
                   int(record.get("quantity") or product.get("quantity") or 1),
-                  reason.get("reason") or reason.get("name") or reason.get("code"),
-                  reason.get("name") or reason.get("reason"),
+                  None, None,
                   state.get("money_return_state_name") or state.get("money_return_state"),
                   amount.get("price") or amount.get("amount"),
                   amount.get("currency_code") or amount.get("currency"),
                   logistic.get("return_date") or logistic.get("arrived_at"), comment))
+            if return_id not in existing_ids:
+                new_ids.append(return_id)
             saved += 1
+    _rfbs_return_reason_details(shop_id, start, end, new_ids, include_existing_missing)
     return {"records": len(records) + saved, "cancellations": len(records), "return_requests": saved}
 
 
@@ -374,9 +424,10 @@ def _sync_snapshot(shop_id, path, table):
     return {"records": len(records), "snapshot_at": observed}
 
 
-def sync_module(module, shop_id, start=None, end=None):
+def sync_module(module, shop_id, start=None, end=None, include_existing_missing=True):
     start, end = (start, end) if start and end else default_range()
-    functions = {"orders": sync_orders, "returns": sync_returns,
+    functions = {"orders": sync_orders,
+                 "returns": lambda s, a, b: sync_returns(s, a, b, include_existing_missing),
                  "stock": lambda s, _a, _b: _sync_snapshot(s, "/v4/product/info/stocks", "stock_snapshots")}
     if module not in functions:
         raise ValueError("未知同步模块")
@@ -392,7 +443,7 @@ def probe_shop(shop_id):
     methods = {method for role in roles if isinstance(role, dict) for method in role.get("methods", [])}
     required = {
         "orders": {"/v4/posting/fbs/list", "/v3/posting/fbo/list"},
-        "returns": {"/v1/returns/list", "/v2/returns/rfbs/list"},
+        "returns": {"/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"},
         "stock": {"/v4/product/info/stocks"},
     }
     permissions = {module: ("可用" if paths <= methods else "缺少：" + "、".join(sorted(paths - methods)))

@@ -57,6 +57,21 @@ class ReturnsPageTest(unittest.TestCase):
         self.assertEqual(rfbs_returns(1, q="MOTHER-42")["total"], 0)
         self.assertNotIn("order_number", rfbs_returns(1)["items"][0])
 
+    def test_rfbs_reason_translation_fallback_and_buyer_text_stays_original(self):
+        with db.transaction() as connection:
+            connection.execute("""UPDATE rfbs_return_records
+              SET reason_raw='Товар не подошёл',reason_name='Товар не подошёл' WHERE return_id=42""")
+        item = rfbs_returns(1)["items"][0]
+        self.assertEqual(item["reason_name"], "商品不合适")
+        self.assertEqual(item["buyer_comment_raw"], "Текст покупателя")
+        with db.transaction() as connection:
+            connection.execute("""UPDATE rfbs_return_records
+              SET reason_raw='Неизвестная причина',reason_name='Неизвестная причина' WHERE return_id=42""")
+        self.assertEqual(rfbs_returns(1)["items"][0]["reason_name"], "Неизвестная причина")
+        script = (Path(__file__).resolve().parent.parent / "static/app.js").read_text()
+        self.assertIn("r.reason_name || r.reason_raw || '平台未提供原因'", script)
+        self.assertIn('title="${esc(r.reason_raw)}"', script)
+
     def test_complaint_filters_combine_and_validate(self):
         data = complaints(1, q="C-UN", status="unset", date_from="2026-08-01", date_to="2026-08-02")
         self.assertEqual(data["total"], 1)
