@@ -359,6 +359,38 @@ function toast(message, error=false) {
     }, 200);
   }, duration);
 }
+function showConfirm(options) {
+  const {
+    title = "确认操作",
+    message = typeof options === "string" ? options : "",
+    confirmText = "确认开始",
+    cancelText = "取消",
+    icon = "alertTriangle"
+  } = typeof options === "string" ? { message: options } : (options || {});
+  const modal = $("#confirmModal");
+  if (!modal) return Promise.resolve(window.confirm(message));
+  $("#confirmTitle").textContent = title;
+  $("#confirmMessage").textContent = message;
+  $("#confirmOkButton").textContent = confirmText;
+  $("#confirmCancelButton").textContent = cancelText;
+  const iconEl = $("#confirmModalIcon");
+  if (iconEl?.morphTo) iconEl.morphTo(icon, "snappy");
+  return new Promise(resolve => {
+    let done = false;
+    const finish = res => {
+      if (done) return;
+      done = true;
+      modal.close();
+      resolve(res);
+    };
+    $("#confirmOkButton").onclick = () => finish(true);
+    $("#confirmCancelButton").onclick = () => finish(false);
+    modal.oncancel = e => { e.preventDefault(); finish(false); };
+    modal.onclick = e => { if (e.target === modal) finish(false); };
+    if (!modal.open) modal.showModal();
+    $("#confirmOkButton").focus();
+  });
+}
 function showLogin(){ $("#shell").classList.add("hidden"); $("#login").classList.remove("hidden"); }
 function showShell(){ $("#login").classList.add("hidden"); $("#shell").classList.remove("hidden"); }
 
@@ -1455,8 +1487,17 @@ async function waitForSync(runId, module) {
 $("#syncButtons").onclick = async e => {
   const button = e.target.closest("[data-module]"), module = button?.dataset.module;
   if (!module) return;
-  if (!state.shop) return toast("请先在左上角选择一个店铺", true);
-  if (syncRange.preset === "all" && !confirm("整个时段将按自然月逐段拉取，耗时可能较长。确认开始？")) return;
+  if (!state.shop) return toast("请先在右上角选择一个店铺", true);
+  if (syncRange.preset === "all") {
+    const ok = await showConfirm({
+      title: "确认开始全量拉取？",
+      message: "整个时段将按自然月逐段拉取，耗时可能较长。确认开始？",
+      confirmText: "确认开始",
+      cancelText: "取消",
+      icon: "alertTriangle"
+    });
+    if (!ok) return;
+  }
   const text = button.textContent;
   button.disabled = true;
   button.textContent = "拉取中…";

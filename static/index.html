@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260824-19">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260825-01">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -501,6 +501,23 @@
       </div><section id="ruleConflicts" class="panel rule-conflicts hidden"></section></section>
     </main>
   </div>
-  <script src="/static/morphicons.js?v=20260824-19"></script>
-  <script src="/static/app.js?v=20260824-19"></script>
+  <dialog id="confirmModal" class="confirm-modal" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <div class="confirm-modal-card">
+      <div class="confirm-modal-head">
+        <div class="confirm-modal-icon">
+          <morph-icon id="confirmModalIcon" icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon>
+        </div>
+        <div class="confirm-modal-head-content">
+          <strong id="confirmTitle">确认操作</strong>
+          <p id="confirmMessage">请确认是否继续执行</p>
+        </div>
+      </div>
+      <div class="confirm-modal-actions">
+        <button id="confirmCancelButton" type="button">取消</button>
+        <button id="confirmOkButton" class="primary" type="button">确定</button>
+      </div>
+    </div>
+  </dialog>
+  <script src="/static/morphicons.js?v=20260825-01"></script>
+  <script src="/static/app.js?v=20260825-01"></script>
 </body></html>
