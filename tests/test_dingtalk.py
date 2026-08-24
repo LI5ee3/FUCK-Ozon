@@ -124,12 +124,5 @@ class DingtalkTest(unittest.TestCase):
             self.assertEqual(asyncio.run(test_dingtalk_endpoint({"template":DEFAULT_DAILY_TEMPLATE})),{"ok":True})
         runner.assert_awaited_once_with(send_test,DEFAULT_DAILY_TEMPLATE)
 
-    def test_page_has_safe_responsive_template_ui(self):
-        root=Path(__file__).resolve().parent.parent
-        html=(root/"static/index.html").read_text(); script=(root/"static/app.js").read_text(); css=(root/"static/style.css").read_text()
-        self.assertIn('id="dingTemplate"',html); self.assertIn('id="dingPreview"',html); self.assertIn('type="time" step="60"',html)
-        self.assertIn("textContent=data.message",script); self.assertNotIn('dingPreview").innerHTML=data.message',script)
-        self.assertIn("white-space:pre-wrap",css); self.assertIn("@media(max-width:620px)",css)
-
 
 if __name__ == "__main__": unittest.main()

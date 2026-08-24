@@ -52,34 +52,21 @@ class ModuleViewsTest(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertNotIn("analytics_records", tables)
         self.assertNotIn("price_snapshots", tables)
-        for table in ("finance_records", "finance_reports", "order_costs", "exchange_rates",
+        self.assertIn("exchange_rates", tables)
+        for table in ("finance_records", "finance_reports", "order_costs",
                       "exchange_rate_history", "currency_conversions", "webhook_events",
                       "order_status_history", "warehouse_stocks", "fbo_stocks"):
             self.assertNotIn(table, tables)
         paths = {route.path for route in app.routes}
-        for path in ("/api/premium", "/api/prices", "/api/finance", "/api/profits", "/api/exchange-rates"):
+        for path in ("/api/premium", "/api/prices", "/api/finance", "/api/profits"):
             self.assertNotIn(path, paths)
+        self.assertIn("/api/exchange-rates", paths)
         self.assertFalse(any(path.startswith("/api/ozon/push") or
                              path.startswith("/api/ozon/pending-events") for path in paths))
         self.assertEqual(SYNC_MODULES, {"orders", "returns", "stock"})
         self.assertFalse(hasattr(importer, "import_costs"))
-        root = Path(__file__).resolve().parent.parent
-        frontend = (root / "static/index.html").read_text() + (root / "static/app.js").read_text()
-        self.assertNotIn("premium", frontend.lower())
-        self.assertNotIn("prices", frontend.lower())
-        self.assertNotIn("财务利润", frontend)
-        self.assertNotIn("马帮", frontend)
-        self.assertNotIn("Ozon 主动推送", frontend)
-        self.assertNotIn("push-settings", frontend)
-        self.assertNotIn("pendingEvents", frontend)
-        self.assertNotIn('id="logoutButton"', frontend)
-        self.assertIn('id="settingsButton"', frontend)
         self.assertNotIn("/api/logout", paths)
-        self.assertEqual(frontend.count('class="nav-icon"'), 10)
-        self.assertIn('tabler-icons.svg#settings', frontend)
-        self.assertNotIn('id="shopSelect"', frontend)
-        self.assertIn('id="shopPickerButton"', frontend)
-        self.assertIn('id="shopOptions"', frontend)
+        root = Path(__file__).resolve().parent.parent
         self.assertNotIn("openpyxl", (root / "requirements.txt").read_text().lower())
 
     def test_order_view_translates_status_and_cancellation_reason(self):

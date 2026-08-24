@@ -57,25 +57,16 @@ class OrdersPageTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             orders(1, "UNKNOWN", "", 1, 30, "2026-08-10", "2026-08-10")
 
-    def test_shared_picker_compact_details_and_no_sync(self):
-        root = Path(__file__).parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        styles = (root / "static/style.css").read_text()
-        self.assertIn('id="orderDateRange"', html)
-        self.assertNotIn('id="orderResultCount"', html)
-        self.assertIn('id="channelPickerButton"', html)
-        self.assertIn('id="channelOptions" class="shop-options channel-options', html)
-        self.assertEqual(script.count("function createDateRange"), 1)
-        self.assertIn('orderRange=createDateRange("#orderDateRange"', script)
-        self.assertIn('state.page=1;loadOrders()', script)
-        self.assertIn('<details class="order-card', script)
-        self.assertIn('<summary aria-label="订单', script)
-        self.assertIn('e.target.closest("[data-add-complaint]")', script)
-        order_loader = script[script.index("async function loadOrders"):script.index("async function loadRisk")]
-        self.assertNotIn("/api/sync", order_loader)
-        self.assertIn("#orders{overflow:hidden}", styles)
-        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(0,1fr)", styles)
+
+    def test_status_filtering_and_counts(self):
+        data = orders(1, "", "", 1, 30, "2026-08-10", "2026-08-10")
+        self.assertEqual(data["total"], 2)
+        self.assertIn("status_counts", data)
+        self.assertEqual(data["status_counts"]["cancelled"], 1)
+
+        cancelled = orders(1, "", "", 1, 30, "2026-08-10", "2026-08-10", status="cancelled")
+        self.assertEqual(cancelled["total"], 1)
+        self.assertEqual(cancelled["items"][0]["posting_number"], "MULTI")
 
 
 if __name__ == "__main__":

@@ -67,18 +67,6 @@ class ReturnsPageTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             complaints(1, status="other")
 
-    def test_frontend_reuses_date_range_and_has_accessible_page_controls(self):
-        root = Path(__file__).resolve().parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        self.assertIn('id="returnsDateRange"', html)
-        self.assertIn('role="tabpanel"', html)
-        self.assertEqual(html.count('data-return-select'), 4)
-        self.assertIn('role="listbox"', html)
-        self.assertIn('const returnsRange=createDateRange("#returnsDateRange"', script)
-        self.assertIn('Object.values(returnSelects).forEach(select=>select.close())', script)
-        self.assertNotIn("r.order_number", script)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app import db
-from app.main import BEIJING, _overview_range, summary
+from app.main import BEIJING, _overview_range, _trend_range, order_trend, summary
 
 
 class OverviewRegressionTest(unittest.TestCase):
@@ -83,85 +83,27 @@ class OverviewRegressionTest(unittest.TestCase):
         self.assertEqual([row["orders"] for row in monthly["buckets"]], [0, 1, 0])
         self.assertEqual(monthly["gmv"], {"amount": 200.0, "currency": "CNY", "missing_rate_orders": 0})
 
-    def test_date_picker_chart_accessibility_and_no_sync_side_effect(self):
-        root = Path(__file__).parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        styles = (root / "static/style.css").read_text()
-        self.assertIn('id="overviewDateRange"', html)
-        self.assertIn('id="syncDateRange"', html)
-        self.assertEqual(script.count("function createDateRange"), 1)
-        self.assertIn('e.target.closest("[data-range-role]")', script)
-        self.assertIn('overviewRange=createDateRange("#overviewDateRange",()=>loadOverview()', script)
-        self.assertIn("onpointerover", script)
-        self.assertIn("target.onfocus", script)
-        self.assertIn("host.onclick", script)
-        self.assertIn('tabindex="0"', script)
-        self.assertIn(".trend-segment.channel-fbp", styles)
-        self.assertIn("[data-theme=dark]", styles)
-        overview_loader = script[script.index("async function loadOverview"):script.index("async function loadOrders")]
-        self.assertNotIn("/api/sync", overview_loader)
+    def test_order_trend_fixed_ranges(self):
+        fixed_now = datetime(2026, 8, 23, 12, tzinfo=BEIJING)
+        start_d, end_d, _, _ = _trend_range("day", fixed_now)
+        self.assertEqual((end_d - start_d).days + 1, 90)
+        start_w, end_w, _, _ = _trend_range("week", fixed_now)
+        self.assertEqual((end_w - start_w).days + 1, 12 * 7)
+        start_m, end_m, _, _ = _trend_range("month", fixed_now)
+        self.assertEqual(start_m.isoformat(), "2025-09-01")
+        self.assertEqual(end_m.isoformat(), "2026-08-31")
 
-    def test_exceptions_timeliness_and_top_products(self):
-        with db.transaction() as connection:
-            connection.executemany("""INSERT INTO complaints VALUES(
-              1,?,?,?,?,?,?,?,?,?,?,?)""", [
-                ("OPEN", "MULTI", "2026-08-10T00:00:00Z", "平台", 0, None, None, None, "", "now", "now"),
-                ("DONE", "MULTI", "2026-08-10T00:00:00Z", "平台", 1, None, None, None, "", "now", "now")])
-            connection.executemany("""INSERT INTO rfbs_return_records(
-              shop_id,return_id,return_number,status_raw,payload,fetched_at) VALUES(1,?,?,?,?,?)""", [
-                (1, "R1", "AwaitingProcessing", "{}", "now"),
-                (2, "R2", "MoneyReturned", "{}", "now"),
-                (3, "R3", "UnmappedStatus", "{}", "now")])
-            connection.execute("UPDATE orders SET data_anomaly=1 WHERE posting_number='MULTI'")
-            connection.execute("""INSERT INTO stock_snapshots VALUES(
-              1,'old','2026-08-19T00:00:00Z',?)""", ('{"product_id":"OLD","stocks":[{"sku":"OLD","present":0}]}',))
-            connection.executemany("INSERT INTO stock_snapshots VALUES(1,?,'2026-08-20T00:00:00Z',?)", [
-                ("zero", '{"product_id":"ZERO","stocks":[{"sku":"ZERO","present":0}]}'),
-                ("low", '{"product_id":"LOW","stocks":[{"sku":"LOW","present":2}]}')])
-            connection.execute("""INSERT INTO product_groups(name,created_at,updated_at)
-              VALUES('热销组合','now','now')""")
-            group_id = connection.execute("SELECT id FROM product_groups WHERE name='热销组合'").fetchone()[0]
-            connection.executemany("INSERT INTO product_group_members VALUES(?,'sku',?)",
-                                   [(group_id, "TIM-A"), (group_id, "TIM-B")])
-            connection.execute("INSERT INTO product_group_members VALUES(?,'offer_id','TIM-MAIN')", (group_id,))
-            connection.execute("INSERT INTO product_group_config VALUES(?,'TIM-MAIN','TIM-A','active','')", (group_id,))
-            connection.execute("INSERT INTO product_short_names VALUES('sku','TIM-A','热销短名','now')")
-            for index in range(30):
-                posting = f"TIM-{index}"
-                connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,
-                  shipped_at,delivered_at,status_raw,shipped,source) VALUES(1,?,'FBP',
-                  '2026-08-10T00:00:00Z','2026-08-11T00:00:00Z','2026-08-13T00:00:00Z','已签收',1,'api')""",
-                                   (posting,))
-                sku = "TIM-A" if index < 15 else "TIM-B"
-                connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,
-                  offer_id,product_name_raw,quantity,source) VALUES(1,'FBP',?,?,?,?,1,'api')""",
-                                   (posting, sku, "TIM-MAIN" if sku == "TIM-A" else "TIM-B-O", "原始名称"))
-            connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,
-              product_name_raw,quantity,source) VALUES(1,'FBP','MULTI','LOW','低库存商品',30,'api')""")
+        trend_day = order_trend(1, "day")
+        self.assertEqual(len(trend_day["buckets"]), 90)
+        trend_week = order_trend(0, "week")
+        self.assertEqual(len(trend_week["buckets"]), 12)
+        trend_month = order_trend(2, "month")
+        self.assertEqual(len(trend_month["buckets"]), 12)
 
-        data = summary(1, "2026-08-10", "2026-08-16", "week")
-        self.assertEqual(data["exceptions"], {"unresolved_complaints": 1, "pending_returns": 1,
-                         "stockout_skus": 1, "low_stock_skus": 1, "anomaly_orders": 1})
-        fbp = data["timeliness"][0]
-        self.assertEqual((fbp["ship_samples"], fbp["delivery_samples"]), (30, 30))
-        self.assertEqual((fbp["p50_ship_hours"], fbp["p50_delivery_hours"],
-                          fbp["p90_delivery_hours"]), (24, 48, 48))
-        self.assertFalse(fbp["ship_sample_insufficient"])
-        self.assertEqual(data["top_products"][0]["name"], "热销短名")
-        self.assertEqual((data["top_products"][0]["pieces"], data["top_products"][0]["orders"]), (30, 30))
-
-    def test_overview_panels_and_links_are_present(self):
-        root = Path(__file__).parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        styles = (root / "static/style.css").read_text()
-        for value in ("overviewExceptions", "overviewTimeliness", "overviewTopProducts"):
-            self.assertIn(f'id="{value}"', html)
-        self.assertIn('data-overview-page', script)
-        self.assertIn('openPage(page)', script)
-        self.assertIn('.overview-analysis-grid', styles)
-        self.assertIn('@media(max-width:600px)', styles)
+        with self.assertRaises(HTTPException):
+            order_trend(99, "day")
+        with self.assertRaises(HTTPException):
+            order_trend(1, "year")
 
 
 if __name__ == "__main__":

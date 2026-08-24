@@ -24,6 +24,10 @@ def connect():
     db.execute("PRAGMA foreign_keys=ON")
     db.execute("PRAGMA busy_timeout=30000")
     db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA synchronous=NORMAL")
+    db.execute("PRAGMA cache_size=-64000")
+    db.execute("PRAGMA mmap_size=268435456")
+    db.execute("PRAGMA temp_store=MEMORY")
     try:
         yield db
     finally:
@@ -98,6 +102,18 @@ def init_db():
           settlement_currency TEXT NOT NULL CHECK(settlement_currency IN ('USD','CNY'))
         );
         INSERT OR IGNORE INTO shops(id,name,settlement_currency) VALUES (1, '店铺1', 'USD'), (2, '店铺2', 'CNY');
+
+        CREATE TABLE IF NOT EXISTS exchange_rates (
+          from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
+          to_currency TEXT NOT NULL CHECK(to_currency='RUB'),
+          valid_from_utc TEXT NOT NULL,
+          valid_to_utc TEXT NOT NULL,
+          base_rate TEXT NOT NULL,
+          rate_with_adjustment TEXT,
+          source TEXT NOT NULL DEFAULT 'ozon_xapi' CHECK(source='ozon_xapi'),
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY(from_currency,to_currency,valid_from_utc,valid_to_utc)
+        );
 
         CREATE TABLE IF NOT EXISTS import_batches (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -265,6 +281,8 @@ def init_db():
           payload_json TEXT NOT NULL, UNIQUE(shop_id,source,event_key,warehouse_id,sku)
         );
         CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(shop_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_orders_perf ON orders(shop_id, created_at, status_raw, channel, shipped);
+        CREATE INDEX IF NOT EXISTS idx_orders_cancelled ON orders(shop_id, status_raw, shipped, created_at);
         CREATE INDEX IF NOT EXISTS idx_items_sku ON order_items(shop_id, sku);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_items_identity ON order_items(shop_id, posting_number, sku);
         CREATE INDEX IF NOT EXISTS idx_complaints_order ON complaints(shop_id,posting_number);

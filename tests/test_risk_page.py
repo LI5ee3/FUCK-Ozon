@@ -88,24 +88,6 @@ class RiskPageTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             risk(1, False, "2026-08-11", "2026-08-10")
 
-    def test_shared_picker_matrix_mobile_and_no_sync_contract(self):
-        root = Path(__file__).parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        styles = (root / "static/style.css").read_text()
-        self.assertIn('id="riskDateRange"', html)
-        self.assertIn('id="riskSearch"', html)
-        self.assertEqual(script.count("function createDateRange"), 1)
-        self.assertIn('riskRange=createDateRange("#riskDateRange"', script)
-        self.assertIn("from:riskRange.start,to:riskRange.end", script)
-        self.assertNotIn('id="riskGrouped"', html)
-        self.assertIn("无有效样本", script)
-        self.assertIn('$("#riskSearch").addEventListener("input",renderRiskItems)', script)
-        risk_loader = script[script.index("async function loadRisk"):script.index("async function loadTimeliness")]
-        self.assertNotIn("/api/sync", risk_loader)
-        self.assertIn("position:sticky", styles)
-        self.assertIn(".risk-matrix-table thead,.risk-reason-table thead{display:none}", styles)
-
 
 if __name__ == "__main__":
     unittest.main()

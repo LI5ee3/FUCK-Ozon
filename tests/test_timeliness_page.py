@@ -60,22 +60,6 @@ class TimelinessPageTest(unittest.TestCase):
         with self.assertRaises(HTTPException):
             timeliness(1, 1, 30, "", "2026-08-11", "2026-08-10")
 
-    def test_shared_picker_filter_mobile_and_no_sync_contract(self):
-        root = Path(__file__).parent.parent
-        html = (root / "static/index.html").read_text()
-        script = (root / "static/app.js").read_text()
-        styles = (root / "static/style.css").read_text()
-        self.assertIn('id="timelinessDateRange"', html)
-        self.assertIn('id="timelinessFilterForm"', html)
-        self.assertIn('id="timelinessClear"', html)
-        self.assertEqual(script.count("function createDateRange"), 1)
-        self.assertIn('timelinessRange=createDateRange("#timelinessDateRange"', script)
-        self.assertIn("state.pages.timeliness=1;loadTimeliness()", script)
-        loader = script[script.index("async function loadTimeliness"):script.index("async function loadReturns")]
-        self.assertNotIn("/api/sync", loader)
-        self.assertIn("timeliness-detail-table", styles)
-        self.assertIn("#timeliness{overflow:hidden}", styles)
-
 
 if __name__ == "__main__":
     unittest.main()

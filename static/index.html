@@ -2,9 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260823-48">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260824-17">
 </head>
 <body>
+  <div id="notice" role="status" aria-live="polite"></div>
   <div id="login" class="login hidden">
     <form id="loginForm" class="panel login-card">
       <img class="logo big" src="/static/logo.svg" alt=""><h1>FUCK Ozon</h1>
@@ -15,7 +16,6 @@
   <div id="shell" class="shell hidden">
     <aside>
       <div class="brand"><img class="logo" src="/static/logo.svg" alt=""><strong>FUCK Ozon</strong></div>
-      <div class="shop-label"><span>当前店铺</span><button id="shopPickerButton" class="shop-picker-button" type="button" aria-expanded="false" aria-controls="shopOptions"><span id="shopPickerValue">两店铺合并</span><morph-icon id="shopPickerMorph" icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div id="shopOptions" class="shop-options hidden" role="listbox" aria-label="当前店铺"></div></div>
       <nav id="nav">
         <button data-page="overview" class="active"><morph-icon class="nav-icon" data-nav-morph="overview" icon="dashboard" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>总览</span></button><button data-page="orders"><morph-icon class="nav-icon" data-nav-morph="orders" icon="orders" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单</span></button>
         <button data-page="risk"><morph-icon class="nav-icon" data-nav-morph="risk" icon="risk" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单取消分析</span></button><button data-page="timeliness"><morph-icon class="nav-icon" data-nav-morph="timeliness" icon="delivery" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>发货与配送时效</span></button>
@@ -27,35 +27,221 @@
       <div class="aside-actions"><button id="themeButton" class="icon-button" type="button" aria-label="切换主题" title="切换主题"><morph-icon id="themeMorphIcon" icon="sun" size="20" spring="snappy" stroke-width="1.5"></morph-icon></button><button id="settingsButton" class="icon-button" type="button" aria-label="系统设置" title="系统设置"><morph-icon id="settingsMorphIcon" icon="settings" size="20" spring="snappy" stroke-width="1.5"></morph-icon></button></div>
     </aside>
     <main>
-      <header><div><p class="eyebrow">I HATE OZON · MACARON EDITION</p><h1 id="pageTitle">总览</h1></div><span id="dataThrough" class="pill">数据截止：暂无</span></header>
-      <div id="notice" role="status"></div>
+      <header>
+        <div><p class="eyebrow">I HATE OZON · MACARON EDITION</p><h1 id="pageTitle">总览</h1></div>
+        <div class="header-actions">
+          <div class="shop-picker-wrap">
+            <button id="shopPickerButton" class="shop-picker-pill" type="button" aria-expanded="false" aria-controls="shopOptions">
+              <morph-icon icon="store" size="14" stroke-width="1.8"></morph-icon>
+              <span id="shopPickerValue">两店铺合并</span>
+              <morph-icon id="shopPickerMorph" icon="chevronDown" size="14" spring="snappy" stroke-width="1.8"></morph-icon>
+            </button>
+            <div id="shopOptions" class="shop-options header-shop-options hidden" role="listbox" aria-label="当前店铺"></div>
+          </div>
+          <div id="headerDateRange" class="header-date-wrap">
+            <div id="overviewDateRange"></div>
+            <div id="orderDateRange" class="hidden"></div>
+            <div id="riskDateRange" class="hidden"></div>
+            <div id="timelinessDateRange" class="hidden"></div>
+            <div id="returnsDateRange" class="hidden"></div>
+            <div id="exportDateRange" class="hidden"></div>
+            <div id="syncDateRange" class="hidden"></div>
+          </div>
+          <span id="dataThrough" class="data-through-badge"><span class="pulse-dot" aria-hidden="true"></span><span class="data-through-label">数据截止</span><span class="data-through-time">暂无</span></span>
+        </div>
+      </header>
 
       <section id="overview" class="page active">
-        <div id="overviewDateRange"></div>
         <div class="cards">
-          <article class="metric peach"><span>有效订单数</span><strong id="totalOrders">0</strong><small>不同订单号</small></article>
-          <article class="metric mint"><span>有效货件数</span><strong id="totalPieces">0</strong><small>商品数量合计</small></article>
-          <article class="metric lavender"><span>发货后取消订单</span><strong id="cancelOrders">0</strong><small>按订单数</small></article>
-          <article class="metric blue"><span>发货后取消率</span><strong id="cancelRate">0%</strong><small>按订单数</small></article>
+          <article class="metric peach">
+            <div class="metric-head"><span>有效订单数</span><div class="metric-icon-badge"><morph-icon icon="orders" size="18" stroke-width="1.8"></morph-icon></div></div>
+            <strong id="totalOrders">0</strong>
+            <small>不同订单号</small>
+          </article>
+          <article class="metric mint">
+            <div class="metric-head"><span>有效货件数</span><div class="metric-icon-badge"><morph-icon icon="package" size="18" stroke-width="1.8"></morph-icon></div></div>
+            <strong id="totalPieces">0</strong>
+            <small>商品数量合计</small>
+          </article>
+          <article class="metric lavender">
+            <div class="metric-head"><span>发货后取消订单</span><div class="metric-icon-badge"><morph-icon icon="alertTriangle" size="18" stroke-width="1.8"></morph-icon></div></div>
+            <strong id="cancelOrders">0</strong>
+            <small>按订单数</small>
+          </article>
+          <article class="metric blue">
+            <div class="metric-head"><span>发货后取消率</span><div class="metric-icon-badge"><morph-icon icon="percent" size="18" stroke-width="1.8"></morph-icon></div></div>
+            <strong id="cancelRate">0%</strong>
+            <small>按订单数</small>
+          </article>
         </div>
-        <div class="panel trend-panel"><div class="panel-title"><div><h2>订单量趋势</h2><span class="muted">柱高表示有效订单数；按北京时间归组</span></div><div id="trendGranularity" class="trend-switch" role="group" aria-label="趋势粒度"><button type="button" data-granularity="day">日</button><button type="button" data-granularity="week" class="active">周</button><button type="button" data-granularity="month">月</button></div></div><div id="trendScroll" class="trend-scroll"><div id="orderTrend" class="trend-stage" aria-label="订单量堆叠柱状图"></div></div></div>
-        <div class="panel overview-alert-panel"><div class="panel-title"><div><h2>运营异常摘要</h2><span class="muted">库存、投诉与退货为当前状态；异常订单跟随所选时间</span></div></div><div id="overviewExceptions" class="overview-alerts"></div></div>
+        <div class="overview-dual-grid">
+          <div class="panel trend-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8"></morph-icon> 订单量趋势</h2>
+                <span class="muted">柱高表示有效订单数；按北京时间归组</span>
+              </div>
+              <div id="trendGranularity" class="trend-switch" role="group" aria-label="趋势粒度">
+                <button type="button" data-granularity="day">日</button>
+                <button type="button" data-granularity="week" class="active">周</button>
+                <button type="button" data-granularity="month">月</button>
+              </div>
+            </div>
+            <div id="trendScroll" class="trend-scroll">
+              <div id="orderTrend" class="trend-stage" aria-label="订单量趋势平滑折线图"></div>
+            </div>
+            <div id="trendInsights" class="trend-insights"></div>
+          </div>
+          <div class="panel channel-overview-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="layers" size="18" stroke-width="1.8"></morph-icon> 渠道概览</h2>
+                <span class="muted">各履约渠道订单与取消结构</span>
+              </div>
+            </div>
+            <div id="channelGrid" class="channel-grid"></div>
+          </div>
+        </div>
         <div class="overview-analysis-grid">
-          <div class="panel"><div class="panel-title"><h2>时效概览</h2></div><div id="overviewTimeliness" class="overview-timing"></div></div>
-          <div class="panel"><div class="panel-title"><h2>热销商品 Top 5</h2></div><div id="overviewTopProducts" class="overview-products"></div></div>
-        </div>
-        <div class="panel"><div class="panel-title"><h2>渠道概览</h2></div>
-          <div class="table-wrap"><table><thead><tr><th>渠道</th><th class="num">订单数</th><th class="num">货件数</th><th class="risk-col">发货后取消货件</th></tr></thead><tbody id="channelRows"></tbody></table></div>
+          <div class="panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="delivery" size="18" stroke-width="1.8"></morph-icon> 时效概览</h2>
+                <span class="muted">各渠道履约中位数与高分位时效</span>
+              </div>
+            </div>
+            <div id="overviewTimeliness" class="overview-timing"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="flame" size="18" stroke-width="1.8"></morph-icon> 热销商品 Top 5</h2>
+                <span class="muted">有效货件销量排行</span>
+              </div>
+            </div>
+            <div id="overviewTopProducts" class="overview-products"></div>
+          </div>
         </div>
       </section>
 
       <section id="orders" class="page">
-        <div id="orderDateRange"></div>
-        <form id="orderFilterForm" class="panel order-filter-bar"><input id="orderSearch" type="search" aria-label="搜索订单" placeholder="搜索订单号、SKU、货号或商品名称"><div class="channel-picker"><input id="channelFilter" type="hidden" value=""><button id="channelPickerButton" class="shop-picker-button" type="button" aria-expanded="false" aria-controls="channelOptions"><span id="channelPickerValue">全部渠道</span><morph-icon id="channelPickerMorph" icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div id="channelOptions" class="shop-options channel-options hidden" role="listbox" aria-label="渠道"><button type="button" role="option" data-channel="" aria-selected="true">全部渠道</button><button type="button" role="option" data-channel="FBP" aria-selected="false">FBP</button><button type="button" role="option" data-channel="realFBS" aria-selected="false">realFBS</button><button type="button" role="option" data-channel="WHD" aria-selected="false">WHD</button></div></div><button id="searchButton" class="primary">查询</button></form>
-        <div id="orderList" class="order-list"></div><div class="pager"><button id="prevPage">上一页</button><span id="pageInfo"></span><button id="nextPage">下一页</button></div>
+        <div class="panel order-toolbar-panel">
+          <form id="orderFilterForm" class="order-filter-bar">
+            <div class="order-search-wrap">
+              <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+              <input id="orderSearch" type="search" aria-label="搜索订单" placeholder="搜索订单号、SKU、货号或商品名称…">
+            </div>
+            <div class="channel-picker">
+              <input id="channelFilter" type="hidden" value="">
+              <button id="channelPickerButton" class="shop-picker-button" type="button" aria-expanded="false" aria-controls="channelOptions">
+                <span id="channelPickerValue">全部渠道</span>
+                <morph-icon id="channelPickerMorph" icon="chevronDown" size="16" spring="snappy" stroke-width="1.5"></morph-icon>
+              </button>
+              <div id="channelOptions" class="shop-options channel-options hidden" role="listbox" aria-label="渠道">
+                <button type="button" role="option" data-channel="" aria-selected="true">全部渠道</button>
+                <button type="button" role="option" data-channel="FBP" aria-selected="false">FBP</button>
+                <button type="button" role="option" data-channel="realFBS" aria-selected="false">realFBS</button>
+                <button type="button" role="option" data-channel="WHD" aria-selected="false">WHD</button>
+              </div>
+            </div>
+            <button id="searchButton" class="primary" type="submit">
+              <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+              <span>查询</span>
+            </button>
+          </form>
+          <div id="orderStatusChips" class="order-status-chips" role="tablist" aria-label="订单状态快速筛选">
+            <button type="button" class="status-chip active" data-order-status="" role="tab" aria-selected="true">
+              <span>全部订单</span>
+              <b class="chip-count" id="orderCountAll">—</b>
+            </button>
+            <button type="button" class="status-chip chip-pending" data-order-status="pending" role="tab" aria-selected="false">
+              <morph-icon icon="box" size="13" stroke-width="2"></morph-icon>
+              <span>待备货</span>
+              <b class="chip-count" id="orderCountPending">—</b>
+            </button>
+            <button type="button" class="status-chip chip-shipping" data-order-status="shipping" role="tab" aria-selected="false">
+              <morph-icon icon="truck" size="13" stroke-width="2"></morph-icon>
+              <span>运输中</span>
+              <b class="chip-count" id="orderCountShipping">—</b>
+            </button>
+            <button type="button" class="status-chip chip-delivered" data-order-status="delivered" role="tab" aria-selected="false">
+              <morph-icon icon="checkCircle" size="13" stroke-width="2"></morph-icon>
+              <span>已签收</span>
+              <b class="chip-count" id="orderCountDelivered">—</b>
+            </button>
+            <button type="button" class="status-chip chip-cancelled" data-order-status="cancelled" role="tab" aria-selected="false">
+              <morph-icon icon="alertTriangle" size="13" stroke-width="2"></morph-icon>
+              <span>已取消</span>
+              <b class="chip-count" id="orderCountCancelled">—</b>
+            </button>
+          </div>
+        </div>
+        <div id="orderList" class="order-list"></div>
+        <div class="pager">
+          <button id="prevPage"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+          <span id="pageInfo"></span>
+          <button id="nextPage">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+        </div>
       </section>
 
-      <section id="risk" class="page"><div id="riskDateRange"></div><div id="riskSummary" class="risk-summary"></div><div class="panel risk-panel"><div class="panel-title"><div><h2>SKU风险矩阵</h2><span class="muted">买家未取货率表示因指定买家原因导致的未完成收货；全局应用主货号合并</span></div><div class="risk-controls"><input id="riskSearch" type="search" aria-label="筛选SKU风险矩阵" placeholder="搜索SKU、货号或商品名称"></div></div><div class="table-wrap risk-table-wrap"><table class="risk-matrix-table"><thead><tr><th>商品信息</th><th>综合</th><th>FBP</th><th>realFBS</th><th>WHD</th></tr></thead><tbody id="riskRows"></tbody></table></div></div><div class="panel risk-panel"><div class="panel-title"><div><h2>平台固定取消原因</h2><span class="muted">仅统计发货后取消；点击原因查看对应订单</span></div></div><div class="table-wrap risk-reason-wrap"><table class="risk-reason-table"><thead><tr><th>固定原因</th><th>综合</th><th>FBP</th><th>realFBS</th><th>WHD</th></tr></thead><tbody id="reasonRows"></tbody></table></div><div id="reasonDetails" class="risk-reason-details hidden"></div></div></section>
+      <section id="risk" class="page">
+        <div id="riskSummary" class="risk-summary"></div>
+        <div class="panel risk-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="shieldAlert" size="18" stroke-width="1.8"></morph-icon> SKU 风险矩阵</h2>
+              <span class="muted">买家未取货率表示因指定买家原因导致的未完成收货；全局应用主货号合并</span>
+            </div>
+            <div class="risk-controls">
+              <button id="riskHighToggle" type="button" class="status-chip risk-filter-chip" aria-pressed="false">
+                <morph-icon icon="zap" size="13" stroke-width="2"></morph-icon>
+                <span>仅看高危 (&ge;15%)</span>
+              </button>
+              <div class="risk-search-wrap">
+                <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                <input id="riskSearch" type="search" aria-label="筛选SKU风险矩阵" placeholder="搜索SKU、货号或商品名称…">
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap risk-table-wrap">
+            <table class="risk-matrix-table">
+              <thead>
+                <tr>
+                  <th>商品信息</th>
+                  <th>综合概览</th>
+                  <th>FBP 渠道</th>
+                  <th>realFBS 渠道</th>
+                  <th>WHD 渠道</th>
+                </tr>
+              </thead>
+              <tbody id="riskRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel risk-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="alertTriangle" size="18" stroke-width="1.8"></morph-icon> 平台固定取消原因</h2>
+              <span class="muted">仅统计发货后取消；点击原因查看对应订单明细</span>
+            </div>
+          </div>
+          <div class="table-wrap risk-reason-wrap">
+            <table class="risk-reason-table">
+              <thead>
+                <tr>
+                  <th>固定取消原因</th>
+                  <th>综合合计</th>
+                  <th>FBP</th>
+                  <th>realFBS</th>
+                  <th>WHD</th>
+                </tr>
+              </thead>
+              <tbody id="reasonRows"></tbody>
+            </table>
+          </div>
+          <div id="reasonDetails" class="risk-reason-details hidden"></div>
+        </div>
+      </section>
 
       <section id="transfer" class="page">
         <div class="transfer-grid">
@@ -68,418 +254,296 @@
             </div>
             <div class="import-actions"><button id="importSubmit" class="primary" type="submit" disabled>导入数据</button><span id="importStatus" class="muted" role="status">请选择店铺、渠道和 CSV 文件</span></div>
           </form>
-          <section class="panel transfer-panel export-panel"><div class="panel-title"><div><h2>数据导出</h2><span class="muted">每次单独导出一个模块，保留适合AI分析的结构化字段，不包含密钥、密码、母订单号或买家联系方式。</span></div></div><div id="exportDateRange"></div><p id="exportScope" class="export-scope"></p><div id="exportButtons" class="export-grid"></div></section>
+          <section class="panel transfer-panel export-panel"><div class="panel-title"><div><h2>数据导出</h2><span class="muted">每次单独导出一个模块，保留适合AI分析的结构化字段，不包含密钥、密码、母订单号或买家联系方式。</span></div></div><p id="exportScope" class="export-scope"></p><div id="exportButtons" class="export-grid"></div></section>
         </div>
         <section class="panel transfer-panel imports-panel"><div class="panel-title"><div><h2>最近导入</h2><span class="muted">仅保留最近 10 次 CSV 导入记录，不受导出时间范围影响</span></div></div><div class="table-wrap import-table-wrap"><table class="import-table"><thead><tr><th>文件</th><th>店铺／渠道</th><th>导入行数</th><th>导入时间</th></tr></thead><tbody id="importRows"></tbody></table></div></section>
       </section>
 
       <section id="sync" class="page">
-        <section class="panel sync-manual-panel" aria-labelledby="syncManualTitle"><div class="panel-title"><div><h2 id="syncManualTitle">手动拉取</h2><p>当前店铺：<strong id="syncManualShop">请选择具体店铺</strong></p></div></div><div id="syncDateRange"></div><div id="syncButtons" class="sync-manual-grid"></div></section>
-        <form id="autoSyncForm" class="panel auto-sync-panel"><div class="panel-title"><div><h2>自动拉取设置</h2><p class="muted">两个店铺的三个模块独立设置，启用后每天执行</p></div></div><div id="autoSyncCards" class="auto-sync-shop-grid"></div><button class="primary auto-sync-save" type="submit">保存</button></form>
+        <section class="panel sync-manual-panel" aria-labelledby="syncManualTitle"><div class="panel-title"><div><h2 id="syncManualTitle">手动拉取</h2><p>当前店铺：<strong id="syncManualShop">请选择具体店铺</strong></p></div></div><div id="syncButtons" class="sync-manual-grid"></div><article class="exchange-rate-card"><div class="exchange-rate-head"><div><strong>Ozon 汇率</strong><p>全局拉取 USD/RUB 与 CNY/RUB 基础汇率，不需要选择店铺</p></div><div id="exchangeRateDateRange"></div><button id="exchangeRateButton" class="primary" type="button">拉取汇率</button></div><dl id="exchangeRateStatus" class="exchange-rate-status"><div><dt>最后成功同步</dt><dd>暂无</dd></div><div><dt>数据截止</dt><dd>暂无</dd></div><div><dt>USD/RUB 基础汇率</dt><dd>暂无</dd></div><div><dt>CNY/RUB 基础汇率</dt><dd>暂无</dd></div></dl></article></section>
+        <section id="autoSyncForm" class="panel auto-sync-panel"><div class="panel-title"><div><h2>自动拉取设置</h2><p class="muted">两个店铺的三个模块独立设置，启用后每天执行</p></div></div><div id="autoSyncCards" class="auto-sync-shop-grid"></div></section>
         <section class="panel sync-record-panel" aria-labelledby="syncRecordTitle"><div class="panel-title"><div><h2 id="syncRecordTitle">拉取记录</h2><p class="muted">最近 10 条任务及实时进度</p></div></div><div class="table-wrap sync-record-wrap"><table class="sync-record-table"><thead><tr><th>店铺</th><th>模块</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead><tbody id="syncRows"><tr><td colspan="5" class="sync-message">拉取记录加载中…</td></tr></tbody></table></div></section>
       </section>
 
-      <section id="settings" class="page"><div class="settings-grid"><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#theme"/></svg></span><div><h2>显示偏好</h2><p>控制当前浏览器的界面主题</p></div></div><label class="settings-toggle-row"><span><strong>跟随系统外观</strong><small id="themePreferenceText">关闭后可使用左下角按钮手动切换</small></span><span class="settings-switch"><input id="themeFollowSystem" type="checkbox"><span aria-hidden="true"></span></span></label></article><form id="shopForm" class="settings-card"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#settings"/></svg></span><div><h2>店铺名称</h2><p>仅修改展示名称，不改变店铺ID与数据归属</p></div><button class="primary" type="submit">保存</button></div><div class="settings-fields"><label>店铺1<input id="shop1" required></label><label>店铺2<input id="shop2" required></label></div></form></div><section class="settings-card settings-api"><div class="settings-card-head"><span class="settings-icon"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#sync"/></svg></span><div><h2>API连接与权限</h2><p>只检测凭据、店铺身份与模块权限，不同步业务数据</p></div></div><div id="probeShops" class="settings-shop-grid"></div></section></section>
+      <section id="settings" class="page"><div class="settings-grid"><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="sun" size="20" spring="snappy"></morph-icon></span><div><h2>显示偏好</h2><p>控制当前浏览器的界面外观主题</p></div></div><div class="settings-fields settings-fields-single"><label>外观模式<div id="themeSegmented" class="macaron-segmented-control" role="radiogroup" aria-label="界面外观主题"><button type="button" role="radio" data-theme-mode="system" aria-checked="true" class="active"><morph-icon icon="settings" size="14" stroke-width="1.8"></morph-icon><span>跟随系统</span></button><button type="button" role="radio" data-theme-mode="light" aria-checked="false"><morph-icon icon="sun" size="14" stroke-width="1.8"></morph-icon><span>浅色模式</span></button><button type="button" role="radio" data-theme-mode="dark" aria-checked="false"><morph-icon icon="moon" size="14" stroke-width="1.8"></morph-icon><span>深色模式</span></button></div></label></div></article><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="settings" size="20" spring="snappy"></morph-icon></span><div><h2>店铺名称</h2><p>仅修改展示名称，输入后自动即时保存</p></div></div><form id="shopForm" class="settings-fields"><label>店铺1<input id="shop1" placeholder="如：1店" required></label><label>店铺2<input id="shop2" placeholder="如：4店" required></label></form></article></div><section class="settings-card settings-api"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="sync" size="20" spring="snappy"></morph-icon></span><div><h2>API连接与权限</h2><p>只检测凭据、店铺身份与模块权限，不同步业务数据</p></div><button id="probeAllButton" class="macaron-icon-btn" type="button" aria-label="检测 API 连接与权限" title="检测 API 连接与权限"><morph-icon icon="sync" size="16" stroke-width="1.8" spring="snappy"></morph-icon></button></div><div id="probeShops" class="settings-shop-grid"></div></section></section>
 
       <section id="dingtalk" class="page">
         <div class="ding-status" aria-label="钉钉机器人状态"><article><span>机器人</span><strong id="dingtalkConfigured">读取中…</strong></article><article><span>每日汇总</span><strong id="dingEnabledStatus">读取中…</strong></article><article><span>下一次预计推送</span><strong id="dingNext">—</strong></article><article><span>最近一次推送</span><strong id="dingLastStatus">暂无记录</strong></article></div>
         <p class="ding-system-note">同步失败告警为不可编辑的系统风险通知，不受每日汇总设置和自定义模板影响。Webhook 与 Secret 仅从服务器 .env 读取。</p>
         <div class="ding-grid">
-          <form id="dingtalkForm" class="panel ding-panel"><div class="panel-title"><div><h2>推送计划</h2></div></div><label class="ding-toggle-row"><span><strong>启用昨日取消与退货订单汇总</strong><small>定时按北京时间执行</small></span><span class="settings-switch"><input id="dingEnabled" type="checkbox" aria-label="启用昨日取消与退货订单汇总"><span aria-hidden="true"></span></span></label><label class="ding-time-field" for="dingTime">推送时间<span class="auto-time-wrap"><svg aria-hidden="true"><use href="/static/tabler-icons.svg#clock"/></svg><input id="dingTime" type="time" step="60" required></span></label><fieldset class="ding-week-field"><legend>推送星期</legend><div id="dingWeekdays" class="ding-weekdays"><label><input type="checkbox" value="1"><span>一</span></label><label><input type="checkbox" value="2"><span>二</span></label><label><input type="checkbox" value="3"><span>三</span></label><label><input type="checkbox" value="4"><span>四</span></label><label><input type="checkbox" value="5"><span>五</span></label><label><input type="checkbox" value="6"><span>六</span></label><label><input type="checkbox" value="7"><span>日</span></label></div></fieldset><div class="ding-actions"><button class="primary" type="submit">保存设置</button><button id="dingTestButton" type="button">测试当前模板</button></div></form>
+          <form id="dingtalkForm" class="panel ding-panel"><div class="panel-title"><div><h2>推送计划</h2></div></div><label class="ding-toggle-row"><span><strong>启用昨日取消与退货订单汇总</strong><small>定时按北京时间执行</small></span><span class="settings-switch"><input id="dingEnabled" type="checkbox" aria-label="启用昨日取消与退货订单汇总"><span aria-hidden="true"></span></span></label><label class="ding-time-field" for="dingTime">推送时间<span class="auto-time-wrap"><morph-icon icon="clock" size="16"></morph-icon><input id="dingTime" type="time" step="60" required></span></label><fieldset class="ding-week-field"><legend>推送星期</legend><div id="dingWeekdays" class="ding-weekdays"><label><input type="checkbox" value="1"><span>一</span></label><label><input type="checkbox" value="2"><span>二</span></label><label><input type="checkbox" value="3"><span>三</span></label><label><input type="checkbox" value="4"><span>四</span></label><label><input type="checkbox" value="5"><span>五</span></label><label><input type="checkbox" value="6"><span>六</span></label><label><input type="checkbox" value="7"><span>日</span></label></div></fieldset><div class="ding-actions"><button class="primary" type="submit">保存设置</button><button id="dingTestButton" type="button">测试当前模板</button></div></form>
           <section class="panel ding-panel" aria-labelledby="dingTemplateTitle"><div class="panel-title"><div><h2 id="dingTemplateTitle">消息模板</h2></div></div><label class="ding-template-field" for="dingTemplate"><textarea id="dingTemplate" rows="10" maxlength="5000" aria-label="纯文本模板"></textarea></label><p class="ding-variables">可用变量：<code>{{统计日期}}</code> <code>{{取消总数}}</code> <code>{{退货总数}}</code> <code>{{店铺明细}}</code> <code>{{数据截止}}</code></p><div class="ding-actions"><button id="dingPreviewButton" type="button">预览消息</button><button id="dingResetTemplate" type="button">恢复默认模板</button><button id="dingSaveTemplate" class="primary" type="button">保存模板</button></div><div class="ding-preview"><strong>消息预览</strong><pre id="dingPreview">点击“预览消息”查看真实昨日数据。</pre></div></section>
         </div>
         <section class="panel ding-recent"><div class="panel-title"><div><h2>最近一次汇总</h2><p class="muted">只显示最近一次正式定时推送</p></div><span id="dingTemplateSaved" class="tag">当前模板已保存</span></div><dl id="dingtalkLast" class="ding-last"><div><dt>统计日期</dt><dd>—</dd></div><div><dt>推送状态</dt><dd>暂无记录</dd></div><div><dt>实际发送时间</dt><dd>—</dd></div><div><dt>失败原因</dt><dd>—</dd></div></dl></section>
       </section>
 
-      <section id="timeliness" class="page"><div id="timelinessDateRange"></div><div id="timelinessSummary" class="timeliness-summary"></div><div class="panel timeliness-panel"><div class="panel-title"><h2>店铺与渠道时效矩阵</h2></div><div class="table-wrap timeliness-matrix-wrap"><table class="timeliness-matrix"><thead><tr><th>店铺／渠道</th><th>订单与完整率</th><th>发货时效</th><th>配送时效</th></tr></thead><tbody id="timelinessGroupRows"></tbody></table></div></div><div class="panel timeliness-panel"><div class="panel-title"><div><h2>订单时效明细</h2><span class="muted">仅支持按订单号筛选</span></div></div><form id="timelinessFilterForm" class="timeliness-filter"><input id="timelinessSearch" type="search" aria-label="搜索时效订单号" placeholder="输入完整或部分订单号"><button class="primary" type="submit">查询</button><button id="timelinessClear" type="button">清除</button></form><div class="table-wrap timeliness-detail-wrap"><table class="timeliness-detail-table"><thead><tr><th>店铺／渠道</th><th>订单号</th><th>创建时间</th><th>发货时间／发货耗时</th><th>签收时间／配送耗时</th></tr></thead><tbody id="timelinessRows"></tbody></table></div><div class="pager"><button id="timelinessPrev">上一页</button><span id="timelinessInfo"></span><button id="timelinessNext">下一页</button></div></div></section>
-
-      <section id="returns" class="page">
-        <div id="returnsDateRange"></div>
-        <div id="returnTabs" class="subtabs return-subtabs" role="tablist" aria-label="退货与投诉子板块">
-          <button id="returnTabCancel" class="active" type="button" role="tab" aria-selected="true" aria-controls="returns-cancel" tabindex="0" data-return-tab="cancel">取消明细 <span id="returnsCount">0</span></button>
-          <button id="returnTabRfbs" type="button" role="tab" aria-selected="false" aria-controls="returns-rfbs" tabindex="-1" data-return-tab="rfbs">退货明细 <span id="rfbsReturnsCount">0</span></button>
-          <button id="returnTabComplaints" type="button" role="tab" aria-selected="false" aria-controls="returns-complaints" tabindex="-1" data-return-tab="complaints">投诉管理 <span id="complaintsCount">0</span></button>
-        </div>
-        <div id="returns-cancel" class="return-tab active" role="tabpanel" aria-labelledby="returnTabCancel">
-          <div id="returnsSummary" class="summary-grid"></div>
-          <div class="panel return-panel cancel-panel"><div class="panel-title"><div><h2>取消明细</h2></div></div>
-            <form id="returnsSearch" class="return-filter"><input id="returnsQuery" type="search" aria-label="搜索取消明细" placeholder="搜索SKU、货号或订单号"><button class="primary" type="submit">查询</button><button id="returnsClear" type="button">清除</button></form>
-            <div class="table-wrap return-table-wrap"><table class="return-table cancel-table"><thead><tr><th>店铺／时间</th><th>订单号</th><th>商品信息</th><th>数量</th><th>取消原因／状态</th></tr></thead><tbody id="returnsRows"></tbody></table></div>
-            <div class="pager"><button id="returnsPrev">上一页</button><span id="returnsInfo"></span><button id="returnsNext">下一页</button></div>
+      <section id="timeliness" class="page">
+        <div id="timelinessSummary" class="timeliness-summary"></div>
+        <div class="panel timeliness-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 店铺与渠道时效矩阵</h2>
+              <span class="muted">统计发货耗时与在途配送耗时的中位数(P50)及尾部时效(P90)</span>
+            </div>
+          </div>
+          <div class="table-wrap timeliness-matrix-wrap">
+            <table class="timeliness-matrix">
+              <thead>
+                <tr>
+                  <th>店铺／渠道</th>
+                  <th>订单与数据完整率</th>
+                  <th>发货时效分析</th>
+                  <th>配送时效分析</th>
+                </tr>
+              </thead>
+              <tbody id="timelinessGroupRows"></tbody>
+            </table>
           </div>
         </div>
-        <div id="returns-rfbs" class="return-tab" role="tabpanel" aria-labelledby="returnTabRfbs" hidden>
-          <div id="rfbsReturnsSummary" class="summary-grid"></div>
-          <div class="panel return-panel rfbs-panel"><div class="panel-title"><div><h2>退货明细</h2><span class="muted">仅显示有申请编号的 rFBS 退货申请</span></div></div>
-            <form id="rfbsReturnsSearch" class="return-filter"><input id="rfbsReturnsQuery" type="search" aria-label="搜索退货明细" placeholder="搜索SKU、货号、订单号或申请编号"><button class="primary" type="submit">查询</button><button id="rfbsReturnsClear" type="button">清除</button></form>
-            <div class="table-wrap return-table-wrap"><table class="return-table rfbs-table"><thead><tr><th>店铺／申请时间</th><th>申请编号／订单号</th><th>商品信息</th><th>状态／赔偿</th><th>数量／金额</th><th>原因／退回信息</th></tr></thead><tbody id="rfbsReturnsRows"></tbody></table></div>
-            <div class="pager"><button id="rfbsReturnsPrev">上一页</button><span id="rfbsReturnsInfo"></span><button id="rfbsReturnsNext">下一页</button></div>
-          </div>
-        </div>
-        <div id="returns-complaints" class="return-tab" role="tabpanel" aria-labelledby="returnTabComplaints" hidden>
-          <details id="complaintEditor" class="panel complaint-editor"><summary><span><strong id="complaintEditorTitle">新增投诉</strong><small>展开填写必填信息与后续处理</small></span><span aria-hidden="true">⌕</span></summary>
-            <form id="complaintForm">
-              <fieldset><legend>必填信息</legend><div class="complaint-form-grid">
-                <div class="return-field"><label id="complaintShopLabel">店铺</label><div class="return-select" data-return-select><select id="complaintShop" required aria-labelledby="complaintShopLabel"></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>请选择</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintShopLabel"></div></div></div>
-                <label>订单号<input id="complaintPosting" required></label><label>投诉编号<input id="complaintNumber" required></label><label>投诉时间<input id="complaintAt" type="datetime-local" required></label><label>投诉渠道<input id="complaintChannel" required></label>
-              </div></fieldset>
-              <fieldset><legend>后续处理</legend><div class="complaint-form-grid">
-                <div class="return-field"><label id="complaintResolvedLabel">是否完结</label><div class="return-select" data-return-select><select id="complaintResolved" aria-labelledby="complaintResolvedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintResolvedLabel"></div></div></div>
-                <div class="return-field"><label id="complaintReturnedLabel">包裹是否退回</label><div class="return-select" data-return-select><select id="complaintReturned" aria-labelledby="complaintReturnedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintReturnedLabel"></div></div></div>
-                <label>赔付金额<input id="complaintAmount" type="number" step="any"></label><label>赔付币种<input id="complaintCurrency" placeholder="留空则使用店铺回款币种"></label><label class="complaint-notes">备注<textarea id="complaintNotes"></textarea></label>
-              </div></fieldset>
-              <div class="complaint-form-actions"><button class="primary" type="submit">保存投诉</button><button id="complaintReset" type="button">重置</button></div>
+        <div class="panel timeliness-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="truck" size="18" stroke-width="1.8"></morph-icon> 订单时效明细</h2>
+              <span class="muted">仅支持按订单号筛选，点击订单号可直接复制</span>
+            </div>
+            <form id="timelinessFilterForm" class="timeliness-filter" role="search">
+              <div class="timeliness-search-wrap">
+                <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                <input id="timelinessSearch" type="search" aria-label="搜索时效订单号" placeholder="输入完整或部分订单号…">
+              </div>
+              <button class="primary" type="submit">
+                <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                <span>查询</span>
+              </button>
+              <button id="timelinessClear" type="button">清除</button>
             </form>
-          </details>
-          <div class="panel return-panel complaint-panel"><div class="panel-title"><div><h2>投诉记录</h2><span class="muted">一个订单可有多条投诉；同步不会覆盖</span></div></div>
-            <form id="complaintSearch" class="return-filter"><input id="complaintQuery" type="search" aria-label="搜索投诉" placeholder="搜索订单号或投诉编号"><div class="return-select filter-select" data-return-select><select id="complaintStatus" aria-label="完结状态"><option value="">全部状态</option><option value="open">未完结</option><option value="closed">已完结</option><option value="unset">未填写</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>全部状态</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="完结状态"></div></div><button class="primary" type="submit">查询</button></form>
-            <div class="table-wrap return-table-wrap"><table class="return-table complaint-table"><thead><tr><th>店铺／订单号</th><th>投诉编号／时间／渠道</th><th>完结状态</th><th>包裹／赔付</th><th>备注／操作</th></tr></thead><tbody id="complaintRows"></tbody></table></div>
-            <div class="pager"><button id="complaintsPrev">上一页</button><span id="complaintsInfo"></span><button id="complaintsNext">下一页</button></div>
+          </div>
+          <div class="table-wrap timeliness-detail-wrap">
+            <table class="timeliness-detail-table">
+              <thead>
+                <tr>
+                  <th>店铺／渠道</th>
+                  <th>订单号</th>
+                  <th>创建时间</th>
+                  <th>发货时间／发货耗时</th>
+                  <th>签收时间／配送耗时</th>
+                </tr>
+              </thead>
+              <tbody id="timelinessRows"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button id="timelinessPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+            <span id="timelinessInfo"></span>
+            <button id="timelinessNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
           </div>
         </div>
       </section>
 
-      <section id="stock" class="page"><div id="stockSummary" class="summary-grid"></div><div class="panel stock-panel"><div class="panel-title"><div><h2>库存决策表</h2><span class="muted">销量参考：FBP＋realFBS｜库存基准：FBP</span></div><span class="muted" id="stockUpdated"></span></div><form id="stockFilterForm" class="stock-filter"><input id="stockSku" type="search" placeholder="SKU" aria-label="筛选SKU"><input id="stockOffer" type="search" placeholder="货号" aria-label="筛选货号"><input id="stockProduct" type="search" placeholder="产品名称" aria-label="筛选产品名称"><button class="primary" type="submit">查询</button><button id="stockClear" type="button">重置</button></form><div class="table-wrap stock-table-wrap"><table class="stock-table"><thead><tr><th>商品信息</th><th data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp">FBP <span aria-hidden="true">↕</span></button></th><th data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs">realFBS <span aria-hidden="true">↕</span></button></th><th data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd">WHD <span aria-hidden="true">↕</span></button></th><th>有效销量</th><th data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast">综合预测 <span aria-hidden="true">↕</span></button></th><th data-stock-sort-column="replenishment"><button type="button" class="stock-sort" data-stock-sort="replenishment">FBP备货决策 <span aria-hidden="true">↕</span></button></th><th>数据更新</th></tr></thead><tbody id="stockRows"></tbody></table></div><div class="pager"><button id="stockPrev">上一页</button><span id="stockInfo"></span><button id="stockNext">下一页</button></div></div></section>
+      <section id="returns" class="page">
+        <div id="returnTabs" class="subtabs return-subtabs" role="tablist" aria-label="退货与投诉子板块">
+          <button id="returnTabCancel" class="active" type="button" role="tab" aria-selected="true" aria-controls="returns-cancel" tabindex="0" data-return-tab="cancel">
+            <morph-icon icon="xCircle" size="14" stroke-width="2"></morph-icon>
+            <span>取消明细</span>
+            <span id="returnsCount">0</span>
+          </button>
+          <button id="returnTabRfbs" type="button" role="tab" aria-selected="false" aria-controls="returns-rfbs" tabindex="-1" data-return-tab="rfbs">
+            <morph-icon icon="rotateCcw" size="14" stroke-width="2"></morph-icon>
+            <span>退货明细</span>
+            <span id="rfbsReturnsCount">0</span>
+          </button>
+          <button id="returnTabComplaints" type="button" role="tab" aria-selected="false" aria-controls="returns-complaints" tabindex="-1" data-return-tab="complaints">
+            <morph-icon icon="messageSquareAlert" size="14" stroke-width="2"></morph-icon>
+            <span>投诉管理</span>
+            <span id="complaintsCount">0</span>
+          </button>
+        </div>
+
+        <div id="returns-cancel" class="return-tab active" role="tabpanel" aria-labelledby="returnTabCancel">
+          <div id="returnsSummary" class="return-summary"></div>
+          <div class="panel return-panel cancel-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="xCircle" size="18" stroke-width="1.8"></morph-icon> 取消明细</h2>
+                <span class="muted">查看所有订单取消记录与明细信息</span>
+              </div>
+              <form id="returnsSearch" class="return-filter" role="search">
+                <div class="return-search-wrap">
+                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                  <input id="returnsQuery" type="search" aria-label="搜索取消明细" placeholder="搜索SKU、货号或订单号…">
+                </div>
+                <button class="primary" type="submit">
+                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                  <span>查询</span>
+                </button>
+                <button id="returnsClear" type="button">清除</button>
+              </form>
+            </div>
+            <div class="table-wrap return-table-wrap">
+              <table class="return-table cancel-table">
+                <thead>
+                  <tr>
+                    <th>店铺／时间</th>
+                    <th>订单号</th>
+                    <th>商品信息</th>
+                    <th>取消件数</th>
+                    <th>取消原因／状态</th>
+                  </tr>
+                </thead>
+                <tbody id="returnsRows"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button id="returnsPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+              <span id="returnsInfo"></span>
+              <button id="returnsNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+            </div>
+          </div>
+        </div>
+
+        <div id="returns-rfbs" class="return-tab" role="tabpanel" aria-labelledby="returnTabRfbs" hidden>
+          <div id="rfbsReturnsSummary" class="return-summary"></div>
+          <div class="panel return-panel rfbs-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="rotateCcw" size="18" stroke-width="1.8"></morph-icon> 退货明细</h2>
+                <span class="muted">仅显示有申请编号的 rFBS 退货申请</span>
+              </div>
+              <form id="rfbsReturnsSearch" class="return-filter" role="search">
+                <div class="return-search-wrap">
+                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                  <input id="rfbsReturnsQuery" type="search" aria-label="搜索退货明细" placeholder="搜索SKU、货号、订单号或申请编号…">
+                </div>
+                <button class="primary" type="submit">
+                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                  <span>查询</span>
+                </button>
+                <button id="rfbsReturnsClear" type="button">清除</button>
+              </form>
+            </div>
+            <div class="table-wrap return-table-wrap">
+              <table class="return-table rfbs-table">
+                <thead>
+                  <tr>
+                    <th>店铺／申请时间</th>
+                    <th>申请编号／订单号</th>
+                    <th>商品信息</th>
+                    <th>状态／赔偿</th>
+                    <th>数量／金额</th>
+                    <th>原因／退回信息</th>
+                  </tr>
+                </thead>
+                <tbody id="rfbsReturnsRows"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button id="rfbsReturnsPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+              <span id="rfbsReturnsInfo"></span>
+              <button id="rfbsReturnsNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+            </div>
+          </div>
+        </div>
+
+        <div id="returns-complaints" class="return-tab" role="tabpanel" aria-labelledby="returnTabComplaints" hidden>
+          <details id="complaintEditor" class="panel complaint-editor">
+            <summary>
+              <div class="complaint-summary-wrap">
+                <div class="complaint-summary-icon"><morph-icon icon="plus" size="16" stroke-width="2"></morph-icon></div>
+                <div>
+                  <strong id="complaintEditorTitle">新增投诉</strong>
+                  <small>展开填写必填信息与后续处理</small>
+                </div>
+              </div>
+              <morph-icon id="complaintMorphIcon" icon="chevronDown" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            </summary>
+            <form id="complaintForm">
+              <fieldset>
+                <legend>必填信息</legend>
+                <div class="complaint-form-grid">
+                  <div class="return-field"><label id="complaintShopLabel">店铺</label><div class="return-select" data-return-select><select id="complaintShop" required aria-labelledby="complaintShopLabel"></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>请选择</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintShopLabel"></div></div></div>
+                  <label>订单号<input id="complaintPosting" placeholder="输入关联订单号" required></label>
+                  <label>投诉编号<input id="complaintNumber" placeholder="输入平台投诉编号" required></label>
+                  <div class="datetime-picker" id="complaintAtWrap"><label id="complaintAtLabel">投诉时间</label><div class="datetime-input-wrap"><input id="complaintAt" type="hidden" required aria-labelledby="complaintAtLabel"><button id="complaintAtBtn" class="datetime-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-labelledby="complaintAtLabel"><span id="complaintAtDisplay" class="datetime-text placeholder">年/月/日 --:--</span><morph-icon class="datetime-icon" icon="clock" size="16"></morph-icon></button><div id="complaintAtPanel" class="datetime-panel hidden" role="dialog" aria-label="选择投诉时间"><div class="datetime-cal"><div class="datetime-month-head"><button type="button" id="complaintCalPrev" aria-label="上个月"><morph-icon icon="chevronLeft" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button><strong id="complaintCalMonth"></strong><button type="button" id="complaintCalNext" aria-label="下个月"><morph-icon icon="chevronRight" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></div><div class="datetime-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div id="complaintCalDays" class="datetime-days"></div></div><div class="datetime-time-row"><div class="datetime-time-inputs"><span class="datetime-time-label">时间</span><input id="complaintHour" type="number" min="0" max="23" placeholder="时" aria-label="小时"><span>:</span><input id="complaintMinute" type="number" min="0" max="59" placeholder="分" aria-label="分钟"></div><div class="datetime-actions"><button type="button" id="complaintNowBtn" class="datetime-now-btn">现在</button><button type="button" id="complaintConfirmBtn" class="primary datetime-confirm-btn">确定</button></div></div></div></div></div>
+                  <label>投诉渠道<input id="complaintChannel" placeholder="如：FBP / realFBS" required></label>
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend>后续处理</legend>
+                <div class="complaint-form-grid">
+                  <div class="return-field"><label id="complaintResolvedLabel">是否完结</label><div class="return-select" data-return-select><select id="complaintResolved" aria-labelledby="complaintResolvedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintResolvedLabel"></div></div></div>
+                  <div class="return-field"><label id="complaintReturnedLabel">包裹是否退回</label><div class="return-select" data-return-select><select id="complaintReturned" aria-labelledby="complaintReturnedLabel"><option value="">未填写</option><option value="false">否</option><option value="true">是</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-labelledby="complaintReturnedLabel"></div></div></div>
+                  <label>赔付金额<input id="complaintAmount" type="number" step="any" placeholder="0.00"></label>
+                  <label>赔付币种<input id="complaintCurrency" placeholder="留空则使用店铺回款币种"></label>
+                  <label class="complaint-notes">备注<textarea id="complaintNotes" placeholder="填写投诉处理细节与跟进记录…"></textarea></label>
+                </div>
+              </fieldset>
+              <div class="complaint-form-actions">
+                <button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon><span>保存投诉</span></button>
+                <button id="complaintReset" type="button"><morph-icon icon="rotateCcw" size="14" stroke-width="2"></morph-icon><span>重置</span></button>
+              </div>
+            </form>
+          </details>
+          <div class="panel return-panel complaint-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="messageSquareAlert" size="18" stroke-width="1.8"></morph-icon> 投诉记录</h2>
+                <span class="muted">一个订单可有多条投诉；同步不会覆盖</span>
+              </div>
+              <form id="complaintSearch" class="return-filter" role="search">
+                <div class="return-search-wrap">
+                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                  <input id="complaintQuery" type="search" aria-label="搜索投诉" placeholder="搜索订单号或投诉编号…">
+                </div>
+                <div class="return-select filter-select" data-return-select>
+                  <select id="complaintStatus" aria-label="完结状态">
+                    <option value="">全部状态</option>
+                    <option value="open">未完结</option>
+                    <option value="closed">已完结</option>
+                    <option value="unset">未填写</option>
+                  </select>
+                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-label>全部状态</span>
+                    <morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon>
+                  </button>
+                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="完结状态"></div>
+                </div>
+                <button class="primary" type="submit">
+                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                  <span>查询</span>
+                </button>
+              </form>
+            </div>
+            <div class="table-wrap return-table-wrap">
+              <table class="return-table complaint-table">
+                <thead>
+                  <tr>
+                    <th>店铺／订单号</th>
+                    <th>投诉编号／时间／渠道</th>
+                    <th>完结状态</th>
+                    <th>包裹／赔付</th>
+                    <th>备注／操作</th>
+                  </tr>
+                </thead>
+                <tbody id="complaintRows"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button id="complaintsPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+              <span id="complaintsInfo"></span>
+              <button id="complaintsNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="stock" class="page"><div id="stockSummary" class="summary-grid"></div><div class="panel stock-panel"><div class="panel-title"><div><h2>库存决策表</h2><span class="muted">销量参考：FBP＋realFBS｜库存基准：FBP</span></div><span class="muted" id="stockUpdated"></span></div><form id="stockFilterForm" class="stock-filter"><input id="stockSku" type="search" placeholder="SKU" aria-label="筛选SKU"><input id="stockOffer" type="search" placeholder="货号" aria-label="筛选货号"><input id="stockProduct" type="search" placeholder="产品名称" aria-label="筛选产品名称"><button class="primary" type="submit">查询</button><button id="stockClear" type="button">重置</button></form><div class="table-wrap stock-table-wrap"><table class="stock-table"><thead><tr><th>商品信息</th><th data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp">FBP <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs">realFBS <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd">WHD <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th>有效销量</th><th data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast">综合预测 <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="replenishment"><button type="button" class="stock-sort" data-stock-sort="replenishment">FBP备货决策 <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th>数据更新</th></tr></thead><tbody id="stockRows"></tbody></table></div><div class="pager"><button id="stockPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button><span id="stockInfo"></span><button id="stockNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button></div></div></section>
 
       <section id="rules" class="page"><div id="ruleSummary" class="summary-grid rule-summary"></div><div class="rules-grid">
-        <section class="panel rule-panel short-rule-panel"><div class="panel-title"><div><h2>中文短名称</h2><span class="muted">仅按 SKU 匹配</span></div><span id="ruleFixedRule" class="rule-fixed"></span></div><form id="shortNameForm" class="rule-form"><label>SKU<input id="shortSku" list="ruleSkuOptions" required></label><label>中文短名称<input id="shortName" required></label><button class="primary" type="submit">保存</button><button id="shortReset" type="button">重置</button></form><form id="shortSearchForm" class="rule-search"><input id="shortSearch" type="search" placeholder="搜索SKU或中文短名称" aria-label="搜索短名称规则"><button class="primary" type="submit">查询</button><button id="shortSearchClear" type="button">清除</button></form><div class="table-wrap"><table class="rule-table"><thead><tr><th>SKU</th><th>中文短名称</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="shortRuleRows"></tbody></table></div></section>
-        <section class="panel rule-panel merge-rule-panel"><div class="panel-title"><div><h2>SKU/货号全局合并</h2><span class="muted">主货号作为唯一分析身份</span></div></div><form id="mergeForm" class="merge-form"><input id="mergeId" type="hidden"><label>主货号<input id="primaryOffer" list="ruleOfferOptions" required></label><label>名称解析 SKU<input id="primarySku" list="ruleSkuOptions" placeholder="仅主货号对应多个SKU时必填"></label><div class="merge-members-head"><strong>合并成员</strong><button id="addMergeMember" type="button">增加成员</button></div><div id="mergeMembers" class="merge-members"></div><div class="rule-actions"><button class="primary" type="submit">保存合并</button><button id="mergeReset" type="button">重置</button></div></form><div id="mergeRuleList" class="merge-rule-list"></div></section>
-      </div><section id="ruleConflicts" class="panel rule-conflicts hidden"></section><datalist id="ruleSkuOptions"></datalist><datalist id="ruleOfferOptions"></datalist></section>
+        <section class="panel rule-panel short-rule-panel"><div class="panel-title"><div><h2><morph-icon icon="tag" size="18" stroke-width="1.8"></morph-icon> 中文短名称</h2><p class="muted">仅按 SKU 匹配</p></div><span id="ruleFixedRule" class="rule-fixed"></span></div><form id="shortNameForm" class="rule-form" novalidate><div class="rule-field"><label for="shortSku">SKU</label><input id="shortSku" placeholder="输入 SKU" autocomplete="off" required></div><div class="rule-field"><label for="shortName">中文短名称</label><input id="shortName" placeholder="如：Xiaomi Tag" autocomplete="off" required></div><div class="rule-form-actions"><button class="primary" type="submit"><morph-icon icon="plus" size="14" stroke-width="2"></morph-icon>保存</button><button id="shortReset" type="button">重置</button></div></form><form id="shortSearchForm" class="rule-search"><div class="rule-search-wrap"><morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon><input id="shortSearch" type="search" placeholder="搜索 SKU 或中文短名称…" aria-label="搜索短名称规则"></div><button class="primary" type="submit">查询</button><button id="shortSearchClear" type="button">清除</button></form><div class="table-wrap"><table class="rule-table"><thead><tr><th>SKU</th><th>中文短名称</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="shortRuleRows"></tbody></table></div></section>
+        <section class="panel rule-panel merge-rule-panel"><div class="panel-title"><div><h2><morph-icon icon="gitMerge" size="18" stroke-width="1.8"></morph-icon> SKU/货号全局合并</h2><p class="muted">主货号作为唯一分析身份</p></div></div><form id="mergeForm" class="merge-form" novalidate><input id="mergeId" type="hidden"><div class="merge-fields-row"><div class="rule-field"><label for="primaryOffer">主货号</label><input id="primaryOffer" placeholder="输入主货号" autocomplete="off" required></div><div class="rule-field"><label for="primarySku">名称解析 SKU</label><input id="primarySku" placeholder="仅主货号对应多 SKU 时必填" autocomplete="off"></div></div><div class="merge-members-head"><strong>合并成员列表</strong><button id="addMergeMember" type="button" class="subtle-btn"><morph-icon icon="plus" size="13" stroke-width="2.2"></morph-icon>增加成员</button></div><div id="mergeMembers" class="merge-members"></div><div class="rule-actions"><button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon>保存合并</button><button id="mergeReset" type="button">重置</button></div></form><div id="mergeRuleList" class="merge-rule-list"></div></section>
+      </div><section id="ruleConflicts" class="panel rule-conflicts hidden"></section></section>
     </main>
   </div>
-  <script src="/static/morphicons.js?v=20260823-13"></script>
-  <script src="/static/app.js?v=20260823-08"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      // 1. Theme Toggle Morph (Sun <-> Moon)
-      const themeMorph = document.getElementById("themeMorphIcon");
-      const updateTheme = () => {
-        const isDark = document.documentElement.dataset.theme === "dark";
-        if (themeMorph) {
-          themeMorph.morphTo(isDark ? "moon" : "sun", "snappy");
-        }
-      };
-      const themeObserver = new MutationObserver(updateTheme);
-      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-      updateTheme();
-
-      // 2. Dropdown Pickers Morph (ChevronDown <-> ChevronUp)
-      const bindPickerMorph = (btnId, morphId) => {
-        const btn = document.getElementById(btnId);
-        const morph = document.getElementById(morphId);
-        if (!btn || !morph) return;
-        const obs = new MutationObserver(() => {
-          const expanded = btn.getAttribute("aria-expanded") === "true";
-          morph.morphTo(expanded ? "chevronUp" : "chevronDown", "snappy");
-        });
-        obs.observe(btn, { attributes: true, attributeFilter: ["aria-expanded"] });
-      };
-      bindPickerMorph("shopPickerButton", "shopPickerMorph");
-      bindPickerMorph("channelPickerButton", "channelPickerMorph");
-
-      // 3. Navigation Bar Icons (Direct Canonical Morphicons)
-      const navIconMap = {
-        overview: "dashboard",
-        orders: "orders",
-        risk: "risk",
-        timeliness: "delivery",
-        returns: "returns",
-        stock: "stock",
-        transfer: "transfer",
-        sync: "sync",
-        rules: "rules",
-        dingtalk: "dingtalk"
-      };
-
-      let activePage = "overview";
-      document.querySelectorAll("#nav button").forEach(btn => {
-        const page = btn.dataset.page;
-        const iconName = navIconMap[page];
-        const morph = btn.querySelector("morph-icon");
-        if (morph && iconName) {
-          btn.addEventListener("click", () => {
-            if (activePage !== page) {
-              const fromIcon = navIconMap[activePage] || "dashboard";
-              morph.set(fromIcon);
-              morph.morphTo(iconName, "snappy");
-              activePage = page;
-            }
-          });
-        }
-      });
-
-      // 4. Settings Button Morph
-      const settingsBtn = document.getElementById("settingsButton");
-      const settingsMorph = document.getElementById("settingsMorphIcon");
-      if (settingsBtn && settingsMorph) {
-        settingsBtn.addEventListener("click", () => {
-          settingsMorph.set("sync");
-          settingsMorph.morphTo("settings", "snappy");
-        });
-      }
-
-      // 5. Date Range Picker Morph Icons (Calendar, Prev/Next, Caret)
-      const enhanceDatePickers = () => {
-        document.querySelectorAll(".date-range-wrap").forEach(wrap => {
-          if (wrap.dataset.morphEnhanced) return;
-          wrap.dataset.morphEnhanced = "true";
-
-          const btn = wrap.querySelector(".date-range-button");
-          if (btn) {
-            // Replace static ⌄ with morph-icon
-            const caretSpan = btn.querySelector("span[aria-hidden]");
-            if (caretSpan) {
-              const caretMorph = document.createElement("morph-icon");
-              caretMorph.setAttribute("icon", "chevronDown");
-              caretMorph.setAttribute("size", "15");
-              caretMorph.setAttribute("spring", "snappy");
-              caretMorph.setAttribute("stroke-width", "1.5");
-              caretSpan.replaceWith(caretMorph);
-
-              const obs = new MutationObserver(() => {
-                const expanded = btn.getAttribute("aria-expanded") === "true";
-                caretMorph.morphTo(expanded ? "chevronUp" : "chevronDown", "snappy");
-              });
-              obs.observe(btn, { attributes: true, attributeFilter: ["aria-expanded"] });
-            }
-
-            // Prepend calendar icon
-            if (!btn.querySelector("morph-icon[icon='calendar']")) {
-              const calMorph = document.createElement("morph-icon");
-              calMorph.setAttribute("icon", "calendar");
-              calMorph.setAttribute("size", "16");
-              calMorph.setAttribute("spring", "snappy");
-              calMorph.setAttribute("stroke-width", "1.5");
-              calMorph.style.marginRight = "4px";
-              btn.prepend(calMorph);
-            }
-          }
-
-          // Replace calendar prev/next text with morph-icons
-          const prevBtn = wrap.querySelector('[data-range-role="prev"]');
-          if (prevBtn && prevBtn.textContent.trim() === "‹") {
-            prevBtn.innerHTML = '<morph-icon icon="chevronLeft" size="16" spring="snappy" stroke-width="1.5"></morph-icon>';
-          }
-          const nextBtn = wrap.querySelector('[data-range-role="next"]');
-          if (nextBtn && nextBtn.textContent.trim() === "›") {
-            nextBtn.innerHTML = '<morph-icon icon="chevronRight" size="16" spring="snappy" stroke-width="1.5"></morph-icon>';
-          }
-        });
-      };
-
-      enhanceDatePickers();
-      setTimeout(enhanceDatePickers, 200);
-      setTimeout(enhanceDatePickers, 600);
-
-      // 6. Stock Table Sort Morph Icons
-      const enhanceStockSort = () => {
-        document.querySelectorAll("[data-stock-sort-column]").forEach(th => {
-          const btn = th.querySelector(".stock-sort");
-          const span = th.querySelector("span");
-          if (!btn || th.dataset.sortMorphBound) return;
-          th.dataset.sortMorphBound = "true";
-
-          if (span) {
-            span.style.display = "none";
-          }
-          const morph = document.createElement("morph-icon");
-          morph.setAttribute("icon", "sortUpDown");
-          morph.setAttribute("size", "14");
-          morph.setAttribute("spring", "snappy");
-          morph.setAttribute("stroke-width", "1.5");
-          morph.style.marginLeft = "3px";
-          morph.style.display = "inline-flex";
-          btn.appendChild(morph);
-
-          const updateSortIcon = () => {
-            const sort = th.getAttribute("aria-sort");
-            if (sort === "ascending") {
-              morph.morphTo("arrowUp", "snappy");
-            } else if (sort === "descending") {
-              morph.morphTo("arrowDown", "snappy");
-            } else {
-              morph.morphTo("sortUpDown", "snappy");
-            }
-          };
-
-          const obs = new MutationObserver(updateSortIcon);
-          obs.observe(th, { attributes: true, attributeFilter: ["aria-sort"] });
-          updateSortIcon();
-        });
-      };
-
-      enhanceStockSort();
-      setTimeout(enhanceStockSort, 300);
-
-      // 7. Clean shadcn / Apple HIG Segmented Inline Time Picker
-      const initMacaronInlineTimePicker = (input) => {
-        if (!input || input.dataset.macaronTimeBound) return;
-        input.dataset.macaronTimeBound = "true";
-        const wrap = input.closest(".auto-time-wrap");
-        if (!wrap) return;
-
-        input.style.display = "none";
-
-        const picker = document.createElement("div");
-        picker.className = "macaron-inline-time";
-        picker.innerHTML = `
-          <input class="m-time-seg m-time-hour" type="text" inputmode="numeric" maxlength="2" aria-label="小时">
-          <span class="m-time-colon">:</span>
-          <input class="m-time-seg m-time-min" type="text" inputmode="numeric" maxlength="2" aria-label="分钟">
-        `;
-
-        const hourSeg = picker.querySelector(".m-time-hour");
-        const minSeg = picker.querySelector(".m-time-min");
-
-        let activeSeg = hourSeg;
-        hourSeg.addEventListener("focus", () => { activeSeg = hourSeg; hourSeg.select(); });
-        minSeg.addEventListener("focus", () => { activeSeg = minSeg; minSeg.select(); });
-
-        const syncFromInput = () => {
-          const val = input.value || "09:15";
-          const parts = val.split(":");
-          hourSeg.value = String(parts[0] || "09").padStart(2, "0");
-          minSeg.value = String(parts[1] || "00").padStart(2, "0");
-        };
-
-        const syncToInput = () => {
-          let h = parseInt(hourSeg.value, 10);
-          if (isNaN(h) || h < 0) h = 0;
-          if (h > 23) h = 23;
-
-          let m = parseInt(minSeg.value, 10);
-          if (isNaN(m) || m < 0) m = 0;
-          if (m > 59) m = 59;
-
-          const formattedH = String(h).padStart(2, "0");
-          const formattedM = String(m).padStart(2, "0");
-          hourSeg.value = formattedH;
-          minSeg.value = formattedM;
-
-          const newVal = `${formattedH}:${formattedM}`;
-          if (input.value !== newVal) {
-            input.value = newVal;
-            input.dispatchEvent(new Event("input", { bubbles: true }));
-            input.dispatchEvent(new Event("change", { bubbles: true }));
-          }
-        };
-
-        const step = (delta) => {
-          if (activeSeg === hourSeg) {
-            let h = (parseInt(hourSeg.value, 10) || 0) + delta;
-            if (h < 0) h = 23;
-            if (h > 23) h = 0;
-            hourSeg.value = String(h).padStart(2, "0");
-          } else {
-            let m = (parseInt(minSeg.value, 10) || 0) + delta;
-            if (m < 0) m = 55;
-            if (m > 59) m = 0;
-            minSeg.value = String(m).padStart(2, "0");
-          }
-          syncToInput();
-          activeSeg.select();
-        };
-
-        hourSeg.addEventListener("keydown", (e) => {
-          if (e.key === "ArrowUp") { e.preventDefault(); step(1); }
-          else if (e.key === "ArrowDown") { e.preventDefault(); step(-1); }
-          else if (e.key === "ArrowRight" || e.key === ":") { e.preventDefault(); minSeg.focus(); }
-        });
-
-        minSeg.addEventListener("keydown", (e) => {
-          if (e.key === "ArrowUp") { e.preventDefault(); step(1); }
-          else if (e.key === "ArrowDown") { e.preventDefault(); step(-1); }
-          else if (e.key === "ArrowLeft") { e.preventDefault(); hourSeg.focus(); }
-        });
-
-        hourSeg.addEventListener("input", () => {
-          hourSeg.value = hourSeg.value.replace(/\D/g, "");
-          if (hourSeg.value.length >= 2) {
-            syncToInput();
-            minSeg.focus();
-          }
-        });
-
-        minSeg.addEventListener("input", () => {
-          minSeg.value = minSeg.value.replace(/\D/g, "");
-          if (minSeg.value.length >= 2) {
-            syncToInput();
-          }
-        });
-
-        hourSeg.addEventListener("blur", syncToInput);
-        minSeg.addEventListener("blur", syncToInput);
-
-        picker.addEventListener("wheel", (e) => {
-          e.preventDefault();
-          step(e.deltaY < 0 ? 1 : -1);
-        }, { passive: false });
-
-        const syncDisabled = () => {
-          const dis = Boolean(input.disabled);
-          picker.classList.toggle("is-disabled", dis);
-          hourSeg.disabled = dis;
-          minSeg.disabled = dis;
-        };
-
-        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-        if (descriptor && descriptor.set) {
-          Object.defineProperty(input, "value", {
-            get: function() {
-              return descriptor.get.call(this);
-            },
-            set: function(val) {
-              descriptor.set.call(this, val);
-              syncFromInput();
-            },
-            configurable: true
-          });
-        }
-
-        const disabledDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "disabled");
-        if (disabledDesc && disabledDesc.set) {
-          Object.defineProperty(input, "disabled", {
-            get: function() {
-              return disabledDesc.get.call(this);
-            },
-            set: function(val) {
-              disabledDesc.set.call(this, val);
-              syncDisabled();
-            },
-            configurable: true
-          });
-        }
-
-        syncFromInput();
-        syncDisabled();
-        wrap.appendChild(picker);
-      };
-
-      const updateSnapshotTags = () => {
-        document.querySelectorAll("#autoSyncCards .snapshot-tag").forEach(tag => {
-          if (tag.textContent.trim() === "实时库存") tag.textContent = "实时";
-        });
-      };
-
-      const enhanceTimePickers = () => {
-        const dingInput = document.getElementById("dingTime");
-        if (dingInput) initMacaronInlineTimePicker(dingInput);
-        document.querySelectorAll("#autoSyncCards input[type=time]").forEach(initMacaronInlineTimePicker);
-        updateSnapshotTags();
-      };
-
-      const syncCardsEl = document.getElementById("autoSyncCards");
-      if (syncCardsEl) {
-        const syncObserver = new MutationObserver(() => {
-          syncCardsEl.querySelectorAll("input[type=time]").forEach(initMacaronInlineTimePicker);
-          updateSnapshotTags();
-        });
-        syncObserver.observe(syncCardsEl, { childList: true, subtree: true });
-      }
-
-      enhanceTimePickers();
-      setTimeout(enhanceTimePickers, 300);
-      setTimeout(enhanceTimePickers, 800);
-    });
-  </script>
+  <script src="/static/morphicons.js?v=20260824-16"></script>
+  <script src="/static/app.js?v=20260824-17"></script>
 </body></html>

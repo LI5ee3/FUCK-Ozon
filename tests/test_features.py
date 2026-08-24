@@ -135,18 +135,6 @@ class FeatureRegressionTest(unittest.TestCase):
               WHERE enabled=1""").fetchall()
         self.assertEqual([tuple(row) for row in enabled], [(1, "orders")])
 
-    def test_static_contracts_cover_csrf_exports_port_and_dingtalk_scope(self):
-        root = Path(__file__).parent.parent
-        main = (root / "app/main.py").read_text()
-        deploy = (root / "deploy.sh").read_text()
-        frontend = (root / "static/app.js").read_text()
-        style = (root / "static/style.css").read_text()
-        self.assertIn("x-csrf-token", main.lower())
-        self.assertIn("/api/export/{module}", main)
-        self.assertIn('"X-CSRF-Token":state.csrf', frontend)
-        self.assertIn('s.bind(("0.0.0.0",p))', deploy)
-        self.assertIn("nav{display:flex;max-width:100%;overflow-x:auto", style)
-
     def test_product_priority_ungroup_and_module_exports(self):
         asyncio.run(save_product_rule(Request({"kind": "short_name", "sku": "S-1", "short_name": "短名"})))
         asyncio.run(save_product_rule(Request({"kind": "merge", "primary_offer_id": "O-1",

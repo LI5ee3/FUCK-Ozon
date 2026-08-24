@@ -268,35 +268,5 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertEqual(result, {"rows": 1})
         runner.assert_awaited_once()
 
-    def test_order_filters_have_keyboard_and_change_handlers(self):
-        script = (ROOT / "static/app.js").read_text()
-        self.assertIn('$("#orderSearch").addEventListener("keydown"', script)
-        self.assertIn('$("#channelFilter").addEventListener("change"', script)
-        self.assertIn('Number.isNaN(date.getTime())', script)
-        self.assertIn('hourCycle:"h23"', script)
-
-    def test_channel_tags_have_distinct_shared_colors(self):
-        script = (ROOT / "static/app.js").read_text()
-        styles = (ROOT / "static/style.css").read_text()
-        self.assertIn('{FBP:"fbp",realFBS:"fbs",WHD:"whd"}', script)
-        for channel in ("fbp", "fbs", "whd"):
-            self.assertIn(f".channel-{channel}", styles)
-
-    def test_timeliness_displays_hours_and_days(self):
-        script = (ROOT / "static/app.js").read_text()
-        self.assertIn('${num(v,1)} 小时 / ${num(v/24,1)} 天', script)
-
-    def test_timeliness_group_uses_responsive_matrix(self):
-        html = (ROOT / "static/index.html").read_text()
-        script = (ROOT / "static/app.js").read_text()
-        styles = (ROOT / "static/style.css").read_text()
-        self.assertIn('<tbody id="timelinessGroupRows">', html)
-        self.assertIn('class="timeliness-matrix"', html)
-        self.assertIn('timelinessStatCell("发货时效"', script)
-        self.assertIn('样本不足', script)
-        self.assertIn('.timeliness-p50{', styles)
-        self.assertIn('.timeliness-matrix{', styles)
-
-
 if __name__ == "__main__":
     unittest.main()

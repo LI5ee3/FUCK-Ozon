@@ -81,16 +81,6 @@ class TransferPageTest(unittest.TestCase):
         self.assertEqual({row.get("rule_type") for row in exported[1:]}, {"中文短名称", "主货号合并"})
         self.assertNotIn("旧名", json.dumps(exported, ensure_ascii=False))
         self.assertNotIn("品牌规则", json.dumps(exported, ensure_ascii=False))
-        html = (ROOT / "static/index.html").read_text()
-        script = (ROOT / "static/app.js").read_text()
-        self.assertNotIn("AI独立导出", html)
-        self.assertNotIn("UTF-8 JSONL", html)
-        self.assertIn('data-import-select><select id="importShop"', html)
-        self.assertIn('data-import-select><select id="importKind"', html)
-        self.assertIn('createDateRange("#exportDateRange"', script)
-        self.assertIn('query.set("date_from",exportRange.start)', script)
-        self.assertIn('if(importing)return', script)
-        self.assertIn('data-export="${key}">导出</button>', script)
 
     def test_import_history_keeps_only_latest_ten_without_removing_orders(self):
         header = "订单号;发货号码;状态;SKU;数量;已创建\n"

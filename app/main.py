@@ -7,6 +7,7 @@ import statistics
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import unquote
@@ -21,6 +22,8 @@ from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import (DEFAULT_DAILY_TEMPLATE, configured as dingtalk_configured, daily_message, next_push_time,
                        send_sync_failure, send_test, start_scheduler, stop_scheduler,
                        validate_template)
+from .exchange import (exchange_rate_status, load_base_rate_periods,
+                       rates_for_order, sync_exchange_rates)
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
                    RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, probe_shop, sync_module)
@@ -125,7 +128,7 @@ def index():
 
 @app.get("/macaron")
 def macaron_preview():
-    return FileResponse(STATIC / "macaron.html")
+    return FileResponse(STATIC / "index.html")
 
 
 @app.get("/api/session")
@@ -315,26 +318,30 @@ def _beijing_date(value):
     return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(BEIJING).date()
 
 
-def _gmv_summary(rows, shop_id):
+def _gmv_summary(rows, shop_id, rate_periods=()):
     currency = "USD" if shop_id == 1 else "CNY"
-    amount = 0.0
+    amount = Decimal("0")
     missing = 0
     for row in rows:
         value = row["amount_original"] if row["amount_original"] is not None else row["item_amount"]
-        value_currency = row["amount_currency"] or row["item_currency"] or row["settlement_currency"]
-        if value is None or (shop_id == 0 and value_currency != "CNY") or (shop_id and value_currency != currency):
-            missing += 1
-        else:
+        value_currency = (row["amount_currency"] or row["item_currency"] or
+                          row["settlement_currency"] or "").upper()
+        if value is None:
+            continue
+        value = Decimal(str(value))
+        if shop_id:
+            if value_currency == currency:
+                amount += value
+        elif value_currency == "CNY":
             amount += value
-    return {"amount": round(amount, 2), "currency": currency if shop_id else "CNY",
+        elif value_currency == "USD":
+            rates = rates_for_order(rate_periods, row["created_at"])
+            if not rates or not rates.get("USD") or not rates.get("CNY"):
+                missing += 1
+            else:
+                amount += value * rates["USD"] / rates["CNY"]
+    return {"amount": float(amount.quantize(Decimal("0.01"))), "currency": currency if shop_id else "CNY",
             "missing_rate_orders": missing}
-
-
-RETURN_PENDING_STATUSES = {
-    "AwaitingProcessing", "OnSellerApproval", "OnWayToOzon", "CheckingStatus",
-    "PassedToPartner", "ApprovedOnPreModerationByOzon", "Approved", "OnWay",
-    "UtilizingByOzon", "OnSellerClarificationAfterPartialCompensation",
-}
 
 
 def _overview_timeliness(rows):
@@ -360,37 +367,13 @@ def _overview_timeliness(rows):
             for channel, values in grouped.items()]
 
 
-def _overview_stock_alerts(db, shop_id):
-    records = _latest_snapshots(db, "stock_snapshots", shop_id)
-    latest = {}
-    for row in records:
-        payload = json.loads(row["payload"])
-        for value in payload.get("stocks") or []:
-            sku = str(value.get("sku") or payload.get("product_id") or "")
-            if sku:
-                item = latest.setdefault((row["shop_id"], sku), {"present": 0})
-                item["present"] += int(value.get("present") or 0)
-    if not latest:
-        return None, None
-    clause, args = _shop_clause(shop_id)
-    sales = {(row["shop_id"], row["sku"]): row["pieces"] for row in db.execute(f"""
-      SELECT i.shop_id,i.sku,SUM(i.quantity) pieces FROM order_items i
-      JOIN orders o USING(shop_id,posting_number)
-      WHERE {ACTIVE} AND julianday(o.created_at)>=julianday('now','-30 days'){clause}
-      GROUP BY i.shop_id,i.sku""", args)}
-    stockouts = sum(item["present"] <= 0 for item in latest.values())
-    low_stock = sum(0 < item["present"] / (sales.get(key, 0) / 30) <= 7
-                    for key, item in latest.items() if sales.get(key, 0))
-    return stockouts, low_stock
-
-
 def _overview_top_products(db, utc_start, utc_end, shop_id):
     clause, shop_args = _shop_clause(shop_id)
     rows = db.execute(f"""SELECT o.shop_id,o.posting_number,o.status_raw,o.shipped,
       i.sku,i.offer_id,i.product_name_raw,i.quantity
       FROM orders o JOIN order_items i USING(shop_id,posting_number)
-      WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
-        AND julianday(o.created_at)<julianday(?) {clause}""", [utc_start, utc_end] + shop_args)
+      WHERE {ACTIVE} AND o.created_at>=?
+        AND o.created_at<? {clause}""", [utc_start, utc_end] + shop_args)
     rules = load_product_rules(db)
     products = {}
     for row in rows:
@@ -433,22 +416,13 @@ def summary(shop_id: int = 0,
             CASE WHEN COUNT(DISTINCT i.price_currency)=1 THEN MIN(i.price_currency) END item_currency
           FROM orders o JOIN shops s ON s.id=o.shop_id
           LEFT JOIN order_items i USING(shop_id,posting_number)
-          WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
-            AND julianday(o.created_at)<julianday(?) {clause}
+          WHERE {ACTIVE} AND o.created_at>=?
+            AND o.created_at<? {clause}
           GROUP BY o.shop_id,o.posting_number
           ORDER BY o.created_at
         """, args)]
-        complaint_clause, complaint_args = _record_clause(shop_id, "c")
-        unresolved_complaints = db.execute(
-            f"SELECT COUNT(*) FROM complaints c{complaint_clause}{' AND' if complaint_clause else ' WHERE'} c.resolved IS NOT 1",
-            complaint_args).fetchone()[0]
-        return_clause, return_args = _record_clause(shop_id, "r")
-        placeholders = ",".join("?" for _ in RETURN_PENDING_STATUSES)
-        pending_returns = db.execute(
-            f"SELECT COUNT(*) FROM rfbs_return_records r{return_clause}{' AND' if return_clause else ' WHERE'} r.status_raw IN ({placeholders})",
-            return_args + sorted(RETURN_PENDING_STATUSES)).fetchone()[0]
-        stockouts, low_stock = _overview_stock_alerts(db, shop_id)
         top_products = _overview_top_products(db, utc_start, utc_end, shop_id)
+        rate_periods = load_base_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
     totals = {"orders": len(rows), "pieces": sum(row["pieces"] for row in rows),
               "cancelled_orders": sum(row["status_raw"] == "已取消" and row["shipped"] == 1 for row in rows)}
     totals["cancelled_pieces"] = sum(row["pieces"] for row in rows
@@ -474,21 +448,89 @@ def summary(shop_id: int = 0,
         channel_values = {}
         for channel in ("FBP", "realFBS", "WHD"):
             values = [row for row in bucket_rows if row["channel"] == channel]
-            channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id)}
+            channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id, rate_periods)}
         buckets.append({"key": bucket_date.isoformat(),
                         "from": max(bucket_date, start).isoformat(),
                         "to": min(next_date - timedelta(days=1), end).isoformat(),
-                        "orders": len(bucket_rows), "gmv": _gmv_summary(bucket_rows, shop_id),
+                        "orders": len(bucket_rows), "gmv": _gmv_summary(bucket_rows, shop_id, rate_periods),
                         "channels": channel_values})
     return {"range": {"from": start.isoformat(), "to": end.isoformat()},
             "granularity": granularity, "totals": totals, "channels": channels,
-            "buckets": buckets, "gmv": _gmv_summary(rows, shop_id),
-            "exceptions": {"unresolved_complaints": unresolved_complaints,
-                           "pending_returns": pending_returns, "stockout_skus": stockouts,
-                           "low_stock_skus": low_stock,
-                           "anomaly_orders": sum(bool(row["data_anomaly"]) for row in rows)},
+            "buckets": buckets, "gmv": _gmv_summary(rows, shop_id, rate_periods),
             "timeliness": _overview_timeliness(rows), "top_products": top_products,
             "data_through": max((row["created_at"] for row in rows), default=None)}
+
+
+def _trend_range(granularity: str, now: datetime | None = None):
+    today = (now or datetime.now(BEIJING)).date()
+    if granularity == "day":
+        start = today - timedelta(days=89)
+        end = today
+    elif granularity == "week":
+        cur_week = _bucket_start(today, "week")
+        start = cur_week - timedelta(weeks=11)
+        end = cur_week + timedelta(days=6)
+    else:
+        cur_month = today.replace(day=1)
+        year = cur_month.year
+        month = cur_month.month - 11
+        if month <= 0:
+            year -= 1
+            month += 12
+        start = date(year, month, 1)
+        next_m = _next_bucket(cur_month, "month")
+        end = next_m - timedelta(days=1)
+    utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat()
+    utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc).isoformat()
+    return start, end, utc_start, utc_end
+
+
+@app.get("/api/order-trend")
+def order_trend(shop_id: int = 0, granularity: str = "day"):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    if granularity not in ("day", "week", "month"):
+        raise HTTPException(400, "granularity 必须为 day、week 或 month")
+    start, end, utc_start, utc_end = _trend_range(granularity)
+    clause, shop_args = _shop_clause(shop_id)
+    args = [utc_start, utc_end] + shop_args
+    with connect() as db:
+        rows = [dict(row) for row in db.execute(f"""
+          SELECT o.shop_id,o.posting_number,o.channel,o.created_at,o.status_raw,o.shipped,
+            o.amount_original,o.amount_currency,s.settlement_currency,
+            COALESCE(SUM(i.quantity),0) pieces,
+            CASE WHEN o.amount_original IS NULL AND COUNT(i.sku)>0
+              AND COUNT(i.unit_price)=COUNT(i.sku) AND COUNT(DISTINCT i.price_currency)=1
+              THEN SUM(i.unit_price*i.quantity) END item_amount,
+            CASE WHEN COUNT(DISTINCT i.price_currency)=1 THEN MIN(i.price_currency) END item_currency
+          FROM orders o JOIN shops s ON s.id=o.shop_id
+          LEFT JOIN order_items i USING(shop_id,posting_number)
+          WHERE {ACTIVE} AND o.created_at>=?
+            AND o.created_at<? {clause}
+          GROUP BY o.shop_id,o.posting_number
+          ORDER BY o.created_at
+        """, args)]
+        rate_periods = load_base_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
+    bucket_dates = []
+    cursor = _bucket_start(start, granularity)
+    while cursor <= end:
+        bucket_dates.append(cursor)
+        cursor = _next_bucket(cursor, granularity)
+    buckets = []
+    for bucket_date in bucket_dates:
+        next_date = _next_bucket(bucket_date, granularity)
+        bucket_rows = [row for row in rows
+                       if _bucket_start(_beijing_date(row["created_at"]), granularity) == bucket_date]
+        channel_values = {}
+        for channel in ("FBP", "realFBS", "WHD"):
+            values = [row for row in bucket_rows if row["channel"] == channel]
+            channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id, rate_periods)}
+        buckets.append({"key": bucket_date.isoformat(),
+                        "from": max(bucket_date, start).isoformat(),
+                        "to": min(next_date - timedelta(days=1), end).isoformat(),
+                        "orders": len(bucket_rows), "gmv": _gmv_summary(bucket_rows, shop_id, rate_periods),
+                        "channels": channel_values})
+    return {"granularity": granularity, "from": start.isoformat(), "to": end.isoformat(), "buckets": buckets}
 
 
 def _translated_order(row):
@@ -501,11 +543,12 @@ def _translated_order(row):
 @app.get("/api/orders")
 def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size: int = 30,
            date_from: Annotated[str | None, Query(alias="from")] = None,
-           date_to: Annotated[str | None, Query(alias="to")] = None):
+           date_to: Annotated[str | None, Query(alias="to")] = None,
+           status: str = ""):
     if shop_id not in (0, 1, 2):
         raise HTTPException(400, "未知店铺")
     _, _, utc_start, utc_end = _overview_range(date_from, date_to)
-    where, args = ["julianday(o.created_at)>=julianday(?)", "julianday(o.created_at)<julianday(?)"], [utc_start, utc_end]
+    where, args = ["o.created_at>=?", "o.created_at<?"], [utc_start, utc_end]
     if shop_id in (1, 2):
         where.append("o.shop_id=?"); args.append(shop_id)
     if channel:
@@ -514,11 +557,52 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
     if q:
         where.append("(o.posting_number LIKE ? OR EXISTS(SELECT 1 FROM order_items x WHERE x.shop_id=o.shop_id AND x.posting_number=o.posting_number AND (x.sku LIKE ? OR x.offer_id LIKE ? OR x.product_name_raw LIKE ?)))")
         args.extend([f"%{q}%"] * 4)
+
+    base_where_sql = " AND ".join(where)
+    base_args = list(args)
+
+    if status == "pending":
+        where.append("o.status_raw IN ('待备货', '等待发运', '待发货', 'awaiting_packaging', 'awaiting_deliver')")
+    elif status == "shipping":
+        where.append("o.status_raw IN ('运输中', 'delivering', 'driver_pickup')")
+    elif status == "delivered":
+        where.append("o.status_raw IN ('已签收', 'delivered')")
+    elif status == "cancelled":
+        where.append("o.status_raw IN ('已取消', 'cancelled')")
+    elif status == "cancelled_shipped":
+        where.append("o.status_raw IN ('已取消', 'cancelled') AND o.shipped=1")
+    elif status == "anomaly":
+        where.append("o.data_anomaly=1")
+
     page, size = max(page, 1), min(max(size, 1), 100)
     sql_where = " AND ".join(where)
     with connect() as db:
         rules = load_product_rules(db)
         total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {sql_where}", args).fetchone()[0]
+
+        # Calculate status breakdown for chips
+        count_rows = db.execute(f"""
+          SELECT o.status_raw, o.shipped, o.data_anomaly, COUNT(*) c
+          FROM orders o WHERE {base_where_sql}
+          GROUP BY o.status_raw, o.shipped, o.data_anomaly
+        """, base_args).fetchall()
+        status_counts = {"all": 0, "pending": 0, "shipping": 0, "delivered": 0, "cancelled": 0, "cancelled_shipped": 0, "anomaly": 0}
+        for r in count_rows:
+            raw, shipped, anomaly, cnt = r["status_raw"], r["shipped"], r["data_anomaly"], r["c"]
+            status_counts["all"] += cnt
+            if anomaly:
+                status_counts["anomaly"] += cnt
+            if raw in ("待备货", "等待发运", "待发货", "awaiting_packaging", "awaiting_deliver"):
+                status_counts["pending"] += cnt
+            elif raw in ("运输中", "delivering", "driver_pickup"):
+                status_counts["shipping"] += cnt
+            elif raw in ("已签收", "delivered"):
+                status_counts["delivered"] += cnt
+            elif raw in ("已取消", "cancelled"):
+                status_counts["cancelled"] += cnt
+                if shipped:
+                    status_counts["cancelled_shipped"] += cnt
+
         result = [_translated_order(row) for row in db.execute(f"""
           SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at,
             o.status_raw,o.cancel_reason_raw,o.shipped,o.data_anomaly,o.amount_original,o.amount_currency
@@ -536,7 +620,7 @@ def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size
                     rules, item["sku"], item["offer_id"], item["product_name_original"])["display_name"]
             order["sku_types"] = len(order["items"])
             order["pieces"] = sum(item["quantity"] for item in order["items"])
-    return {"items": result, "total": total, "page": page, "size": size}
+    return {"items": result, "total": total, "page": page, "size": size, "status_counts": status_counts}
 
 
 @app.get("/api/risk")
@@ -556,8 +640,8 @@ def risk(shop_id: int = 0, grouped: bool = False,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw IN ({unclaimed}) THEN i.quantity ELSE 0 END) unclaimed_pieces,
             SUM(CASE WHEN o.status_raw='已取消' AND o.shipped=1 AND o.cancel_reason_raw='Отправление не прошло таможенное оформление' THEN i.quantity ELSE 0 END) customs_pieces
           FROM orders o JOIN shops s ON s.id=o.shop_id JOIN order_items i USING(shop_id,posting_number)
-          WHERE {ACTIVE} AND julianday(o.created_at)>=julianday(?)
-            AND julianday(o.created_at)<julianday(?){clause}
+          WHERE {ACTIVE} AND o.created_at>=?
+            AND o.created_at<?{clause}
           GROUP BY o.shop_id,o.channel,i.sku,i.offer_id,i.product_name_raw
         """, [*BUYER_UNCLAIMED_REASONS, utc_start, utc_end, *args])]
         rules = load_product_rules(db)
@@ -611,14 +695,14 @@ def risk_reasons(shop_id: int = 0, reason: str = "",
           COALESCE(NULLIF(o.cancel_reason_raw,''),'原因暂缺') reason_raw,
           COUNT(DISTINCT o.posting_number) orders,SUM(i.quantity) pieces
           FROM orders o JOIN shops s ON s.id=o.shop_id JOIN order_items i USING(shop_id,posting_number)
-          WHERE o.status_raw='已取消' AND o.shipped=1 AND julianday(o.created_at)>=julianday(?)
-            AND julianday(o.created_at)<julianday(?){clause}{extra}
+          WHERE o.status_raw='已取消' AND o.shipped=1 AND o.created_at>=?
+            AND o.created_at<?{clause}{extra}
           GROUP BY o.shop_id,o.channel,reason_raw ORDER BY pieces DESC""", [utc_start, utc_end, *args])]
         details = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,o.channel,
           o.posting_number,SUM(i.quantity) pieces FROM orders o JOIN shops s ON s.id=o.shop_id
           JOIN order_items i USING(shop_id,posting_number)
-          WHERE o.status_raw='已取消' AND o.shipped=1 AND julianday(o.created_at)>=julianday(?)
-            AND julianday(o.created_at)<julianday(?){clause}{extra}
+          WHERE o.status_raw='已取消' AND o.shipped=1 AND o.created_at>=?
+            AND o.created_at<?{clause}{extra}
           GROUP BY o.shop_id,o.channel,o.posting_number ORDER BY o.posting_number""",
           [utc_start, utc_end, *args])] if reason else []
     items = []
@@ -674,7 +758,7 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30, q: str = "",
     start_date, end_date, utc_start, utc_end = _overview_range(date_from, date_to)
     clause, shop_args = _shop_clause(shop_id)
     page, size = _paging(page, size)
-    base_where = f"{ACTIVE} AND julianday(o.created_at)>=julianday(?) AND julianday(o.created_at)<julianday(?){clause}"
+    base_where = f"{ACTIVE} AND o.created_at>=? AND o.created_at<?{clause}"
     base_args = [utc_start, utc_end, *shop_args]
     detail_where, detail_args = base_where, list(base_args)
     if q.strip():
@@ -684,13 +768,13 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30, q: str = "",
         all_rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,
           o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at
           FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {base_where}
-          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC""", base_args)]
+          ORDER BY o.created_at DESC,o.posting_number DESC""", base_args)]
         through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {base_where}", base_args).fetchone()[0]
         total = db.execute(f"SELECT COUNT(*) FROM orders o WHERE {detail_where}", detail_args).fetchone()[0]
         rows = [dict(row) for row in db.execute(f"""SELECT o.shop_id,s.name shop_name,
           o.posting_number,o.channel,o.created_at,o.shipped_at,o.delivered_at
           FROM orders o JOIN shops s ON s.id=o.shop_id WHERE {detail_where}
-          ORDER BY julianday(o.created_at) DESC,o.posting_number DESC LIMIT ? OFFSET ?""",
+          ORDER BY o.created_at DESC,o.posting_number DESC LIMIT ? OFFSET ?""",
           [*detail_args, size, (page - 1) * size])]
     ship_values, delivery_values = [], []
     grouped = {}
@@ -1244,6 +1328,21 @@ def sync_runs():
         return [dict(row) for row in db.execute("""
           SELECT r.*,s.name shop_name FROM sync_runs r JOIN shops s ON s.id=r.shop_id ORDER BY r.id DESC LIMIT 10
         """)]
+
+
+@app.get("/api/exchange-rates")
+def get_exchange_rate_status():
+    return exchange_rate_status()
+
+
+@app.post("/api/exchange-rates/sync")
+async def sync_exchange_rate_data(request: Request):
+    body = await request.json()
+    start, end, _, _ = _overview_range(body.get("from"), body.get("to"))
+    try:
+        return await run_in_threadpool(sync_exchange_rates, start, end)
+    except (OSError, ValueError) as error:
+        raise HTTPException(502, f"汇率拉取失败：{error}") from error
 
 
 @app.get("/api/sync/{run_id}")
