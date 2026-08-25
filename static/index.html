@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>oPanel</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
-  <link rel="stylesheet" href="/static/macaron.css?v=20260825-38">
+  <link rel="stylesheet" href="/static/macaron.css?v=20260826-07">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -474,12 +474,60 @@
                 </button>
               </div>
             </div>
-            <dl id="exchangeRateStatus" class="exchange-rate-status">
-              <div><dt>最后成功同步</dt><dd>暂无</dd></div>
-              <div><dt>数据截止</dt><dd>暂无</dd></div>
-              <div><dt>USD/RUB 基础汇率</dt><dd>暂无</dd></div>
-              <div><dt>CNY/RUB 基础汇率</dt><dd>暂无</dd></div>
-            </dl>
+            <div id="exchangeRateStatus" class="exchange-rate-status">
+              <div class="exchange-rate-card tone-mint">
+                <div class="exchange-card-head">
+                  <div class="exchange-card-meta">
+                    <strong class="exchange-card-title">最后成功同步</strong>
+                    <span class="exchange-card-tag">同步状态</span>
+                  </div>
+                  <div class="exchange-icon-badge">
+                    <morph-icon icon="checkCircle" size="14" stroke-width="2"></morph-icon>
+                  </div>
+                </div>
+                <strong class="exchange-card-value">暂无记录</strong>
+                <small class="exchange-card-desc">最近一次官方汇率同步完成时间</small>
+              </div>
+              <div class="exchange-rate-card tone-lavender">
+                <div class="exchange-card-head">
+                  <div class="exchange-card-meta">
+                    <strong class="exchange-card-title">数据截止</strong>
+                    <span class="exchange-card-tag">生效范围</span>
+                  </div>
+                  <div class="exchange-icon-badge">
+                    <morph-icon icon="calendar" size="14" stroke-width="2"></morph-icon>
+                  </div>
+                </div>
+                <strong class="exchange-card-value">暂无数据</strong>
+                <small class="exchange-card-desc">当前汇率有效覆盖截止期</small>
+              </div>
+              <div class="exchange-rate-card tone-azure">
+                <div class="exchange-card-head">
+                  <div class="exchange-card-meta">
+                    <strong class="exchange-card-title">USD / RUB</strong>
+                    <span class="exchange-card-tag">美元基准</span>
+                  </div>
+                  <div class="exchange-icon-badge">
+                    <morph-icon icon="trendingUp" size="14" stroke-width="2"></morph-icon>
+                  </div>
+                </div>
+                <strong class="exchange-card-value">暂无汇率</strong>
+                <small class="exchange-card-desc">美元对俄罗斯卢布官方基准汇率</small>
+              </div>
+              <div class="exchange-rate-card tone-peach">
+                <div class="exchange-card-head">
+                  <div class="exchange-card-meta">
+                    <strong class="exchange-card-title">CNY / RUB</strong>
+                    <span class="exchange-card-tag">人民币基准</span>
+                  </div>
+                  <div class="exchange-icon-badge">
+                    <morph-icon icon="percent" size="14" stroke-width="2"></morph-icon>
+                  </div>
+                </div>
+                <strong class="exchange-card-value">暂无汇率</strong>
+                <small class="exchange-card-desc">人民币对俄罗斯卢布官方基准汇率</small>
+              </div>
+            </div>
           </section>
         </div>
 
@@ -1328,6 +1376,6 @@
       </div>
     </div>
   </dialog>
-  <script src="/static/morphicons.js?v=20260825-36"></script>
-  <script src="/static/app.js?v=20260825-36"></script>
+  <script src="/static/morphicons.js?v=20260826-07"></script>
+  <script src="/static/app.js?v=20260826-07"></script>
 </body></html>

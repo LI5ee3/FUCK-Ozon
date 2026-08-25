@@ -859,7 +859,8 @@ header {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  width: auto;
+  width: 442px;
+  max-width: none;
   background: var(--panel-solid);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -872,6 +873,7 @@ header {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   overflow: hidden;
+  box-sizing: border-box;
   animation: appleDropdownIn 0.18s var(--ease-apple-fluid) both;
 }
 
@@ -879,6 +881,8 @@ header {
   display: flex;
   gap: 16px;
   align-items: flex-start;
+  width: 408px;
+  flex-shrink: 0;
 }
 
 .range-slide-left {
@@ -916,6 +920,10 @@ header {
   flex-direction: column;
   gap: 6px;
   width: 196px;
+  min-width: 196px;
+  max-width: 196px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .range-month-head {
@@ -956,8 +964,9 @@ header {
 
 .range-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
+  grid-template-columns: repeat(7, 28px);
+  width: 196px;
+  gap: 0;
   text-align: center;
   font-size: 11px;
   font-weight: 600;
@@ -965,6 +974,7 @@ header {
 }
 .range-weekdays span {
   height: 20px;
+  width: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -972,17 +982,20 @@ header {
 
 .range-days {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, 28px);
+  width: 196px;
   gap: 2px 0;
 }
 
 .range-blank {
+  width: 28px;
   height: 26px;
+  display: block;
 }
 
 .range-days button {
   height: 26px;
-  width: 100%;
+  width: 28px;
   border: none;
   background: transparent;
   font-size: 11.5px;
@@ -998,6 +1011,9 @@ header {
   transition: background 0.1s ease, color 0.1s ease;
   border-radius: 4px;
   user-select: none;
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
 }
 .range-days button:hover {
   background: var(--panel-hover);
@@ -1011,12 +1027,49 @@ header {
   color: var(--primary);
   border-radius: 0;
 }
+.range-days button.in-range:nth-child(7n + 1),
+.range-days .range-blank + button.in-range,
+.range-days button:not(.in-range) + button.in-range {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+.range-days button.in-range:nth-child(7n),
+.range-days button.in-range:has(+ button:not(.in-range)),
+.range-days button.in-range:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
 .range-days button.range-edge {
   background: var(--primary);
   color: #FFFFFF;
   font-weight: 650;
   border-radius: 6px;
   box-shadow: none;
+  z-index: 1;
+}
+.range-days button.range-start::before,
+.range-days button.range-end::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--primary-soft);
+  z-index: -1;
+  pointer-events: none;
+}
+.range-days button.range-start::before {
+  left: 50%;
+  right: 0;
+}
+.range-days button.range-start:nth-child(7n)::before {
+  display: none;
+}
+.range-days button.range-end::before {
+  left: 0;
+  right: 50%;
+}
+.range-days button.range-end:nth-child(7n + 1)::before {
+  display: none;
 }
 .range-days button.weekend {
   color: var(--muted);
@@ -4819,29 +4872,118 @@ th.text-right .stock-sort {
   margin-top: 16px;
   flex: 1;
 }
-.exchange-rate-status div {
+
+.exchange-rate-card {
   padding: 14px 16px;
   border-radius: var(--radius-card);
   background: var(--panel-hover);
   border: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  transition: all 0.15s var(--ease-apple-fluid);
+  justify-content: space-between;
+  gap: 8px;
+  transition: transform 0.18s var(--ease-apple-fluid), box-shadow 0.18s var(--ease-apple-fluid), border-color 0.18s var(--ease-apple-fluid);
 }
-.exchange-rate-status dt {
-  font-size: 11px;
-  font-weight: 600;
+.exchange-rate-card:hover {
+  transform: translateY(-1px);
+}
+
+.exchange-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.exchange-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.exchange-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.015em;
+}
+
+.exchange-card-tag {
+  font-size: 10px;
+  font-weight: 650;
   color: var(--muted);
-  letter-spacing: -0.01em;
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  padding: 1.5px 6px;
+  border-radius: var(--radius-xs);
+  letter-spacing: 0.01em;
 }
-.exchange-rate-status dd {
-  font-size: 15px;
+
+.exchange-icon-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-xs);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease-apple-spring);
+}
+.exchange-rate-card:hover .exchange-icon-badge {
+  transform: scale(1.08);
+}
+
+/* Macaron Tone Variants */
+.exchange-rate-card.tone-mint {
+  background: color-mix(in srgb, var(--mint) 25%, var(--panel-hover));
+  border-color: color-mix(in srgb, var(--mint-text) 18%, var(--line));
+}
+.exchange-rate-card.tone-mint .exchange-icon-badge {
+  background: var(--mint);
+  color: var(--mint-text);
+}
+
+.exchange-rate-card.tone-lavender {
+  background: color-mix(in srgb, var(--lavender) 25%, var(--panel-hover));
+  border-color: color-mix(in srgb, var(--lavender-text) 18%, var(--line));
+}
+.exchange-rate-card.tone-lavender .exchange-icon-badge {
+  background: var(--lavender);
+  color: var(--lavender-text);
+}
+
+.exchange-rate-card.tone-azure {
+  background: color-mix(in srgb, var(--azure) 25%, var(--panel-hover));
+  border-color: color-mix(in srgb, var(--azure-text) 18%, var(--line));
+}
+.exchange-rate-card.tone-azure .exchange-icon-badge {
+  background: var(--azure);
+  color: var(--azure-text);
+}
+
+.exchange-rate-card.tone-peach {
+  background: color-mix(in srgb, var(--peach) 25%, var(--panel-hover));
+  border-color: color-mix(in srgb, var(--peach-text) 18%, var(--line));
+}
+.exchange-rate-card.tone-peach .exchange-icon-badge {
+  background: var(--peach);
+  color: var(--peach-text);
+}
+
+.exchange-card-value {
+  font-size: 17px;
   font-weight: 750;
   color: var(--text);
-  margin: 4px 0 0 0;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
+  margin: 2px 0 0 0;
+  word-break: break-all;
+}
+
+.exchange-card-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 /* Auto Sync Schedule Settings */
@@ -6523,15 +6665,17 @@ th.text-right .stock-sort {
   .date-range-panel, .header-date-panel {
     right: 0;
     left: auto;
-    width: min(calc(100vw - 32px), 320px);
+    width: min(calc(100vw - 32px), 244px);
     padding: 12px;
   }
   .range-calendars {
+    width: 100%;
     flex-direction: column;
     gap: 10px;
   }
   .range-calendar {
-    width: 100%;
+    width: 196px;
+    margin: 0 auto;
   }
   .range-calendar:nth-child(2) {
     display: none;
