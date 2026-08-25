@@ -1,7 +1,7 @@
 ---
-version: 1.1.0
+version: 1.2.0
 name: FUCK-Ozon-Design-System
-description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro, negative tracking, tabular nums, 1px hairlines, 18px cards) with an Open Macaron Pastel color philosophy (low-saturation harmonic shells with high-contrast text) and tactile spring physics."
+description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro, negative tracking, tabular nums, 1px hairlines, 18px cards) with an Open Macaron Pastel color philosophy (low-saturation harmonic shells with high-contrast text), rigid 3-way alignment, and tactile spring physics."
 
 colors:
   # Brand & Core Interactive (Apple Action Blue)
@@ -85,6 +85,17 @@ colors:
   success-soft-light: "#EAF9ED"
   success-soft-dark: "#193E23"
 
+alignment:
+  grid-unit: "8px"
+  baseline-grid: "4px"
+  columns:
+    text: "left"
+    numeric: "right"
+    status: "center"
+    actions: "right"
+  tabular-nums: true
+  optical-icon-centering: true
+
 typography:
   font-family-display: "SF Pro Display, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif"
   font-family-body: "SF Pro Text, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif"
@@ -139,6 +150,11 @@ iconography:
 - All numeric metrics, currency amounts, order numbers, and timestamps enforce `font-variant-numeric: tabular-nums` to eliminate visual jitter and guarantee columnar alignment.
 - Minimal chrome: decorative containers recede so operational insights take focus.
 
-### 3. Tactile Physical Motion
+### 3. Rigid 3-Way Table Alignment & Spatial Rhythm
+- **Text Left, Numbers Right, Badges Center**: SKU, titles, and strings align left for scanning; GMV, piece counts, and percentages align right with tabular digits for vertical magnitude comparison; status chips and channel tags center horizontally.
+- **8pt Spatial Grid**: Padding, margins, and gaps follow rigid 8px increments (`8px / 16px / 24px / 32px`).
+- **Optical Vertical Centering**: Icon-text pairs are optically centered against font x-height to prevent baseline drift.
+
+### 4. Tactile Physical Motion
 - Touch feedback via immediate `scale(0.95)` press physics.
 - Seamless state morphing via `<morph-icon>` powered by Apple spring kinematics.
