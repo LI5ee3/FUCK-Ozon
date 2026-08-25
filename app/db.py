@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
-LEGACY_DB_PATH = DATA_DIR / "fuck-ozon.db"
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
 SCHEMA_VERSION = 1
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
@@ -15,15 +14,6 @@ DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 @contextmanager
 def connect():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not DB_PATH.exists() and LEGACY_DB_PATH.exists():
-        try:
-            LEGACY_DB_PATH.rename(DB_PATH)
-            for ext in ("-wal", "-shm"):
-                legacy_file = DATA_DIR / f"fuck-ozon.db{ext}"
-                if legacy_file.exists():
-                    legacy_file.rename(DATA_DIR / f"opanel.db{ext}")
-        except OSError:
-            pass
     db = sqlite3.connect(DB_PATH, timeout=30)
     db.row_factory = sqlite3.Row
     for pragma in ("foreign_keys=ON", "busy_timeout=30000", "journal_mode=WAL",
