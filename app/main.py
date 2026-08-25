@@ -55,7 +55,7 @@ def _trim_sync_runs(db, keep=10, scheduled_slot=None, today=None):
       AND NOT (run_source='auto' AND substr(COALESCE(scheduled_slot,''),1,10)=?)""", (keep, today))
 
 
-app = FastAPI(title="FUCK Ozon", docs_url=None, redoc_url=None)
+app = FastAPI(title="oPanel", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 

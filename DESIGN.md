@@ -1,6 +1,6 @@
 ---
 version: 1.2.0
-name: FUCK-Ozon-Design-System
+name: oPanel-Design-System
 description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro, negative tracking, tabular nums, 1px hairlines, 18px cards) with an Open Macaron Pastel color philosophy (low-saturation harmonic shells with high-contrast text), rigid 3-way alignment, and tactile spring physics."
 
 colors:

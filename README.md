@@ -1,6 +1,6 @@
-# FUCK Ozon
+# oPanel
 
-FUCK Ozon 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与纯原生现代前端（零构建工具、零外部网络依赖）开发，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
+oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与纯原生现代前端（零构建工具、零外部网络依赖）开发，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
 
 ## 主要功能
 
@@ -51,8 +51,8 @@ deploy.sh         Linux 服务器一键部署运维脚本
 ### 2. 下载项目
 
 ```sh
-git clone https://github.com/LI5ee3/FUCK-Ozon.git
-cd FUCK-Ozon
+git clone https://github.com/LI5ee3/oPanel.git
+cd oPanel
 ```
 
 ### 3. 配置 Ozon API 密钥
@@ -119,8 +119,8 @@ http://127.0.0.1:APP_PORT
 建议使用 Python 3.14（或 Python 3.12+）：
 
 ```sh
-git clone https://github.com/LI5ee3/FUCK-Ozon.git
-cd FUCK-Ozon
+git clone https://github.com/LI5ee3/oPanel.git
+cd oPanel
 python3.14 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -255,7 +255,7 @@ docker compose down
 
 ### 数据库位置
 
-默认数据库为 `data/fuck-ozon.db`。Docker 部署时 `data/` 会挂载到容器内的 `/app/data`。
+默认数据库为 `data/opanel.db`。Docker 部署时 `data/` 会挂载到容器内的 `/app/data`。
 
 ## 开源协议与鸣谢
 
