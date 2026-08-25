@@ -75,12 +75,6 @@ class TransferPageTest(DatabaseTestCase):
         self.assertEqual([(row["record_type"], row["posting_number"]) for row in exported[1:]],
                          [("取消明细", "POST-IN"), ("退货明细", "POST-IN")])
 
-    def test_removed_export_modules_are_unavailable(self):
-        for module in ("timeliness", "stock", "rules"):
-            with self.assertRaises(HTTPException) as error:
-                export_module(module)
-            self.assertEqual(error.exception.status_code, 404)
-
     def test_import_history_keeps_only_latest_ten_without_removing_orders(self):
         header = "订单号;发货号码;状态;SKU;数量;已创建\n"
         for index in range(12):

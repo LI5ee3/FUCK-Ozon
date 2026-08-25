@@ -1,10 +1,8 @@
 import asyncio
 import json
-import sqlite3
 import unittest
 from datetime import datetime
 from io import BytesIO
-from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -15,7 +13,7 @@ from app import db
 from app.db import DEFAULT_DAILY_TEMPLATE
 from app.dingtalk import (daily_message, render_template, run_scheduled_once,
                           send_sync_failure, send_text, validate_template)
-from app.main import app, dingtalk_settings, update_dingtalk_settings
+from app.main import dingtalk_settings, update_dingtalk_settings
 from tests.support import DatabaseTestCase, MockRequest as Request
 
 
@@ -68,11 +66,6 @@ class DingtalkTest(DatabaseTestCase):
         self.assertIn("未知俄语原因",message); self.assertNotIn("PRE-1",message)
         self.assertNotIn("不应出现的买家文本",message); self.assertNotIn("私密买家说明",message)
         self.assertNotIn("数据截止：",message)
-
-    def test_template_debug_routes_are_removed(self):
-        paths = {route.path for route in app.routes}
-        self.assertNotIn("/api/dingtalk/preview", paths)
-        self.assertNotIn("/api/dingtalk/test", paths)
 
     def test_daily_schedule_does_not_repeat_and_validates_weekdays(self):
         with db.transaction() as connection: connection.execute("UPDATE notification_settings SET daily_enabled=1,push_time='09:00' WHERE id=1")

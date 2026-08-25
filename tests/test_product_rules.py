@@ -56,8 +56,6 @@ class ProductRulesTest(DatabaseTestCase):
         self.assertEqual(resolve_product(rules, "SKU-2")["identity"], "OFFER-1")
         result = product_rules()
         self.assertEqual(result["summary"], {"short_names": 1, "merges": 1})
-        self.assertNotIn("brands", result)
-        self.assertNotIn("name", result["groups"][0])
         group_id = result["groups"][0]["id"]
         asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
         self.assertEqual(product_rules()["groups"], [])

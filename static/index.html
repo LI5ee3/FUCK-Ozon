@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>oPanel</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
-  <link rel="stylesheet" href="/static/macaron.css?v=20260825-20">
+  <link rel="stylesheet" href="/static/macaron.css?v=20260825-38">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -17,17 +17,85 @@
   </div>
   <div id="shell" class="shell hidden">
     <aside>
-      <div class="brand"><img class="logo" src="/static/logo.svg" alt=""><strong>oPanel</strong></div>
+      <div class="brand">
+        <img class="logo" src="/static/logo.svg" alt="oPanel">
+        <div class="brand-text">
+          <strong class="brand-name">oPanel</strong>
+          <span class="brand-pill">Macaron</span>
+        </div>
+      </div>
       <nav id="nav">
-        <button data-page="overview" class="active"><morph-icon class="nav-icon" data-nav-morph="overview" icon="dashboard" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>总览</span></button><button data-page="orders"><morph-icon class="nav-icon" data-nav-morph="orders" icon="orders" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单</span></button>
-        <button data-page="risk"><morph-icon class="nav-icon" data-nav-morph="risk" icon="risk" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>订单取消分析</span></button><button data-page="timeliness"><morph-icon class="nav-icon" data-nav-morph="timeliness" icon="delivery" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>发货与配送时效</span></button>
-        <button data-page="returns"><morph-icon class="nav-icon" data-nav-morph="returns" icon="returns" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>异常订单明细</span></button>
-        <button data-page="complaintPlaceholder"><morph-icon class="nav-icon" data-nav-morph="complaintPlaceholder" icon="messageSquareAlert" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>异常订单投诉</span></button>
-        <button data-page="stock"><morph-icon class="nav-icon" data-nav-morph="stock" icon="stock" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>销量与备货建议</span></button>
-        <button data-page="transfer"><morph-icon class="nav-icon" data-nav-morph="transfer" icon="transfer" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>数据导入/导出</span></button><button data-page="sync"><morph-icon class="nav-icon" data-nav-morph="sync" icon="sync" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>数据同步中心</span></button>
-        <button data-page="rules"><morph-icon class="nav-icon" data-nav-morph="rules" icon="rules" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>商品匹配规则</span></button><button data-page="dingtalk"><morph-icon class="nav-icon" data-nav-morph="dingtalk" icon="dingtalk" size="20" spring="snappy" stroke-width="1.5"></morph-icon><span>钉钉机器人</span></button>
+        <div class="nav-group">
+          <div class="nav-group-title">业务概览</div>
+          <button data-page="overview" class="active">
+            <morph-icon class="nav-icon" data-nav-morph="overview" icon="dashboard" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>总览</span>
+          </button>
+          <button data-page="orders">
+            <morph-icon class="nav-icon" data-nav-morph="orders" icon="orders" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>订单</span>
+          </button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-title">履约与异常</div>
+          <button data-page="timeliness">
+            <morph-icon class="nav-icon" data-nav-morph="timeliness" icon="delivery" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>发货与配送时效</span>
+          </button>
+          <button data-page="risk">
+            <morph-icon class="nav-icon" data-nav-morph="risk" icon="risk" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>订单取消分析</span>
+          </button>
+          <button data-page="returns">
+            <morph-icon class="nav-icon" data-nav-morph="returns" icon="returns" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>异常订单明细</span>
+          </button>
+          <button data-page="complaintPlaceholder">
+            <morph-icon class="nav-icon" data-nav-morph="complaintPlaceholder" icon="messageSquareAlert" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>异常订单投诉</span>
+          </button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-title">供应链与数据</div>
+          <button data-page="stock">
+            <morph-icon class="nav-icon" data-nav-morph="stock" icon="stock" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>销量与备货建议</span>
+          </button>
+          <button data-page="transfer">
+            <morph-icon class="nav-icon" data-nav-morph="transfer" icon="transfer" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>数据导入/导出</span>
+          </button>
+          <button data-page="sync">
+            <morph-icon class="nav-icon" data-nav-morph="sync" icon="sync" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>数据同步中心</span>
+          </button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-title">系统配置</div>
+          <button data-page="rules">
+            <morph-icon class="nav-icon" data-nav-morph="rules" icon="rules" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>商品匹配规则</span>
+          </button>
+          <button data-page="dingtalk">
+            <morph-icon class="nav-icon" data-nav-morph="dingtalk" icon="dingtalk" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>钉钉机器人</span>
+          </button>
+        </div>
       </nav>
-      <div class="aside-actions"><button id="themeButton" class="icon-button" type="button" aria-label="切换主题" title="切换主题"><morph-icon id="themeMorphIcon" icon="sun" size="20" spring="snappy" stroke-width="1.5"></morph-icon></button><button id="settingsButton" class="icon-button" type="button" aria-label="系统设置" title="系统设置"><morph-icon id="settingsMorphIcon" icon="settings" size="20" spring="snappy" stroke-width="1.5"></morph-icon></button></div>
+      <div class="aside-actions">
+        <div class="aside-user-info">
+          <span class="aside-status-dot"></span>
+          <span class="aside-status-text">系统正常</span>
+        </div>
+        <div class="aside-action-buttons">
+          <button id="themeButton" class="icon-button" type="button" aria-label="切换主题" title="切换主题">
+            <morph-icon id="themeMorphIcon" icon="sun" size="16" spring="snappy" stroke-width="1.8"></morph-icon>
+          </button>
+          <button id="settingsButton" class="icon-button" type="button" aria-label="系统设置" title="系统设置">
+            <morph-icon id="settingsMorphIcon" icon="settings" size="16" spring="snappy" stroke-width="1.8"></morph-icon>
+          </button>
+        </div>
+      </div>
     </aside>
     <main>
       <header>
@@ -35,8 +103,10 @@
         <div class="header-actions">
           <div class="shop-picker-wrap">
             <button id="shopPickerButton" class="shop-picker-pill" type="button" aria-expanded="false" aria-controls="shopOptions">
-              <morph-icon icon="store" size="14" stroke-width="1.8"></morph-icon>
-              <span id="shopPickerValue">两店铺合并</span>
+              <span class="shop-picker-main">
+                <morph-icon id="shopPickerIcon" icon="gitMerge" size="14" stroke-width="1.8"></morph-icon>
+                <span id="shopPickerValue">两店铺合并</span>
+              </span>
               <morph-icon id="shopPickerMorph" icon="chevronDown" size="14" spring="snappy" stroke-width="1.8"></morph-icon>
             </button>
             <div id="shopOptions" class="shop-options header-shop-options hidden" role="listbox" aria-label="当前店铺"></div>
@@ -219,11 +289,11 @@
             <table class="risk-matrix-table">
               <thead>
                 <tr>
-                  <th>商品信息</th>
-                  <th>综合概览</th>
-                  <th>FBP 渠道</th>
-                  <th>realFBS 渠道</th>
-                  <th>WHD 渠道</th>
+                  <th style="width:28%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
+                  <th style="width:18%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag neutral">综合概览</span></div></th>
+                  <th style="width:18%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag fbp">FBP 渠道</span></div></th>
+                  <th style="width:18%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag fbs">realFBS 渠道</span></div></th>
+                  <th style="width:18%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag whd">WHD 渠道</span></div></th>
                 </tr>
               </thead>
               <tbody id="riskRows"></tbody>
@@ -241,11 +311,11 @@
             <table class="risk-reason-table">
               <thead>
                 <tr>
-                  <th>固定取消原因</th>
-                  <th>综合合计</th>
-                  <th>FBP</th>
-                  <th>realFBS</th>
-                  <th>WHD</th>
+                  <th style="width:30%;"><div class="th-wrap"><morph-icon icon="alertTriangle" size="13" stroke-width="2"></morph-icon><span>固定取消原因</span></div></th>
+                  <th style="width:17.5%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag neutral">综合合计</span></div></th>
+                  <th style="width:17.5%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag fbp">FBP</span></div></th>
+                  <th style="width:17.5%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag fbs">realFBS</span></div></th>
+                  <th style="width:17.5%;" class="text-center"><div class="th-wrap center"><span class="th-channel-tag whd">WHD</span></div></th>
                 </tr>
               </thead>
               <tbody id="reasonRows"></tbody>
@@ -257,35 +327,366 @@
 
       <section id="transfer" class="page">
         <div class="transfer-grid">
-          <form id="importForm" class="panel transfer-panel import-panel">
-            <div class="panel-title"><div><h2>数据导入</h2><span class="muted">CSV 仅补充 API 缺失数据，时间按 UTC 解析</span></div></div>
-            <div class="import-steps">
-              <section><strong><span>1</span>选择店铺</strong><div class="return-select" data-import-select><select id="importShop" required aria-label="导入店铺"></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>请选择店铺</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="导入店铺"></div></div></section>
-              <section><strong><span>2</span>选择渠道</strong><div class="return-select" data-import-select><select id="importKind" required aria-label="导入渠道"><option value="">请选择渠道</option><option value="FBP">FBP</option><option value="realFBS">realFBS</option><option value="WHD">WHD</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>请选择渠道</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="导入渠道"></div></div></section>
-              <section><strong><span>3</span>选择 CSV 文件并导入</strong><div id="importFilePanel" class="import-file-panel"><input id="importFile" class="file-native-input" type="file" accept=".csv,text/csv" required><div><b id="importFileName">尚未选择文件</b><small id="importFileSize">仅支持 .csv，最大 50MB</small></div><button id="importChooseFile" type="button">选择文件</button></div></section>
+          <form id="importForm" class="panel transfer-panel import-panel" novalidate>
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="uploadCloud" size="18" stroke-width="1.8"></morph-icon> CSV 历史数据导入</h2>
+                <span class="muted">仅补充 API 缺失的历史订单数据，时间按 UTC 解析</span>
+              </div>
             </div>
-            <div class="import-actions"><button id="importSubmit" class="primary" type="submit" disabled>导入数据</button><span id="importStatus" class="muted" role="status">请选择店铺、渠道和 CSV 文件</span></div>
+            <div class="import-steps">
+              <div class="import-step-item">
+                <div class="import-step-head">
+                  <span class="import-step-num">1</span>
+                  <strong>选择目标店铺</strong>
+                </div>
+                <div class="return-select" data-import-select>
+                  <select id="importShop" required aria-label="导入店铺"></select>
+                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-label>请选择店铺</span>
+                    <morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon>
+                  </button>
+                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="导入店铺"></div>
+                </div>
+              </div>
+              <div class="import-step-item">
+                <div class="import-step-head">
+                  <span class="import-step-num">2</span>
+                  <strong>选择履约渠道</strong>
+                </div>
+                <div class="return-select" data-import-select>
+                  <select id="importKind" required aria-label="导入渠道">
+                    <option value="">请选择渠道</option>
+                    <option value="FBP">FBP (菜鸟认证仓)</option>
+                    <option value="realFBS">realFBS (第三方自发货)</option>
+                    <option value="WHD">WHD (全托管/官方退货)</option>
+                  </select>
+                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-label>请选择渠道</span>
+                    <morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon>
+                  </button>
+                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="导入渠道"></div>
+                </div>
+              </div>
+              <div class="import-step-item">
+                <div class="import-step-head">
+                  <span class="import-step-num">3</span>
+                  <strong>上传 CSV 数据文件</strong>
+                </div>
+                <div id="importFilePanel" class="import-file-panel">
+                  <input id="importFile" class="file-native-input" type="file" accept=".csv,text/csv" required>
+                  <div class="import-file-icon">
+                    <morph-icon icon="uploadCloud" size="24" stroke-width="1.8" id="importFileIcon"></morph-icon>
+                  </div>
+                  <div class="import-file-meta">
+                    <b id="importFileName">点击选择或将 CSV 文件拖拽至此处</b>
+                    <small id="importFileSize">支持标准 UTF-8 .csv 文件，单文件上限 50MB</small>
+                  </div>
+                  <button id="importChooseFile" class="import-browse-btn" type="button">
+                    <morph-icon icon="folder" size="14" stroke-width="1.8"></morph-icon>
+                    <span>选择文件</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="import-actions">
+              <button id="importSubmit" class="primary" type="submit" disabled>
+                <morph-icon icon="upload" size="14" stroke-width="2"></morph-icon>
+                <span>开始导入</span>
+              </button>
+              <div class="import-status-wrap">
+                <span id="importStatus" class="import-status-text muted" role="status">请选择店铺、渠道和 CSV 文件</span>
+              </div>
+            </div>
           </form>
-          <section class="panel transfer-panel export-panel"><div class="panel-title"><div><h2>数据导出</h2><span class="muted">每次单独导出一个模块，保留适合AI分析的结构化字段，不包含密钥、密码、母订单号或买家联系方式。</span></div></div><p id="exportScope" class="export-scope"></p><div id="exportButtons" class="export-grid"></div></section>
+
+          <section class="panel transfer-panel export-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="download" size="18" stroke-width="1.8"></morph-icon> 结构化数据导出</h2>
+                <span class="muted">保留适合 AI 深度分析的结构化字段，敏感密钥与隐私信息已自动脱敏</span>
+              </div>
+            </div>
+            <div class="export-scope-banner">
+              <div class="export-scope-info">
+                <morph-icon icon="calendar" size="15" stroke-width="1.8"></morph-icon>
+                <p id="exportScope" class="export-scope"></p>
+              </div>
+              <small class="export-scope-tip">受顶部全局店铺与时间筛选影响</small>
+            </div>
+            <div id="exportButtons" class="export-grid"></div>
+          </section>
         </div>
-        <section class="panel transfer-panel imports-panel"><div class="panel-title"><div><h2>最近导入</h2><span class="muted">仅保留最近 10 次 CSV 导入记录，不受导出时间范围影响</span></div></div><div class="table-wrap import-table-wrap"><table class="import-table"><thead><tr><th>文件</th><th>店铺／渠道</th><th>导入行数</th><th>导入时间</th></tr></thead><tbody id="importRows"></tbody></table></div></section>
+
+        <section class="panel transfer-panel imports-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 最近导入记录</h2>
+              <span class="muted">保留最近 10 次 CSV 导入记录，不受时间范围影响</span>
+            </div>
+          </div>
+          <div class="table-wrap import-table-wrap">
+            <table class="import-table">
+              <thead>
+                <tr>
+                  <th style="width:34%;"><div class="th-wrap"><morph-icon icon="fileText" size="13" stroke-width="2"></morph-icon><span>文件名称</span></div></th>
+                  <th style="width:26%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>所属店铺／渠道</span></div></th>
+                  <th style="width:18%;" class="text-right"><div class="th-wrap end"><morph-icon icon="hash" size="13" stroke-width="2"></morph-icon><span>导入行数</span></div></th>
+                  <th style="width:22%;" class="text-right"><div class="th-wrap end"><morph-icon icon="clock" size="13" stroke-width="2"></morph-icon><span>导入时间 (北京时间)</span></div></th>
+                </tr>
+              </thead>
+              <tbody id="importRows"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section id="sync" class="page">
-        <section class="panel sync-manual-panel" aria-labelledby="syncManualTitle"><div class="panel-title"><div><h2 id="syncManualTitle">手动拉取</h2><p>当前店铺：<strong id="syncManualShop">请选择具体店铺</strong></p></div></div><div id="syncButtons" class="sync-manual-grid"></div><article class="exchange-rate-card"><div class="exchange-rate-head"><div><strong>Ozon 汇率</strong><p>全局拉取 USD/RUB 与 CNY/RUB 基础汇率，不需要选择店铺</p></div><div id="exchangeRateDateRange"></div><button id="exchangeRateButton" class="primary" type="button">拉取汇率</button></div><dl id="exchangeRateStatus" class="exchange-rate-status"><div><dt>最后成功同步</dt><dd>暂无</dd></div><div><dt>数据截止</dt><dd>暂无</dd></div><div><dt>USD/RUB 基础汇率</dt><dd>暂无</dd></div><div><dt>CNY/RUB 基础汇率</dt><dd>暂无</dd></div></dl></article></section>
-        <section id="autoSyncForm" class="panel auto-sync-panel"><div class="panel-title"><div><h2>自动拉取设置</h2><p class="muted">两个店铺的三个模块独立设置，启用后按北京时间每隔N小时执行。</p></div></div><div id="autoSyncCards" class="auto-sync-shop-grid"></div></section>
-        <section class="panel sync-record-panel" aria-labelledby="syncRecordTitle"><div class="panel-title"><div><h2 id="syncRecordTitle">拉取记录</h2><p class="muted">最近 10 条任务及实时进度</p></div></div><div class="table-wrap sync-record-wrap"><table class="sync-record-table"><thead><tr><th>店铺</th><th>模块</th><th>状态</th><th>开始时间</th><th>错误</th></tr></thead><tbody id="syncRows"><tr><td colspan="5" class="sync-message">拉取记录加载中…</td></tr></tbody></table></div></section>
+        <div id="syncSummary" class="sync-summary analysis-summary-grid"></div>
+
+        <div class="sync-dual-grid">
+          <section class="panel sync-manual-panel" aria-labelledby="syncManualTitle">
+            <div class="panel-title">
+              <div>
+                <h2 id="syncManualTitle"><morph-icon icon="refreshCw" size="18" stroke-width="1.8"></morph-icon> 手动数据拉取</h2>
+                <span class="muted">长时段按自然月自动分段执行；库存只拉取一次当前快照</span>
+              </div>
+              <div class="sync-shop-badge">
+                <morph-icon icon="store" size="14" stroke-width="1.8"></morph-icon>
+                <span>当前店铺：</span>
+                <strong id="syncManualShop">请选择具体店铺</strong>
+              </div>
+            </div>
+            <div id="syncButtons" class="sync-manual-grid"></div>
+          </section>
+
+          <section class="panel exchange-rate-panel" aria-labelledby="exchangeRateTitle">
+            <div class="panel-title">
+              <div>
+                <h2 id="exchangeRateTitle"><morph-icon icon="trendingUp" size="18" stroke-width="1.8"></morph-icon> Ozon 官方基础汇率</h2>
+                <span class="muted">全局拉取 USD/RUB 与 CNY/RUB 官方汇率，无需选择店铺</span>
+              </div>
+              <div class="exchange-rate-actions">
+                <div id="exchangeRateDateRange"></div>
+                <button id="exchangeRateButton" class="primary" type="button">
+                  <morph-icon icon="download" size="13" stroke-width="2"></morph-icon>
+                  <span>拉取汇率</span>
+                </button>
+              </div>
+            </div>
+            <dl id="exchangeRateStatus" class="exchange-rate-status">
+              <div><dt>最后成功同步</dt><dd>暂无</dd></div>
+              <div><dt>数据截止</dt><dd>暂无</dd></div>
+              <div><dt>USD/RUB 基础汇率</dt><dd>暂无</dd></div>
+              <div><dt>CNY/RUB 基础汇率</dt><dd>暂无</dd></div>
+            </dl>
+          </section>
+        </div>
+
+        <section id="autoSyncForm" class="panel auto-sync-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 自动拉取设置</h2>
+              <span class="muted">两个店铺的三个模块独立设置，启用后按北京时间每隔 N 小时自动调度</span>
+            </div>
+          </div>
+          <div id="autoSyncCards" class="auto-sync-shop-grid"></div>
+        </section>
+
+        <section class="panel sync-record-panel" aria-labelledby="syncRecordTitle">
+          <div class="panel-title">
+            <div>
+              <h2 id="syncRecordTitle"><morph-icon icon="activity" size="18" stroke-width="1.8"></morph-icon> 拉取记录与实时进度</h2>
+              <span class="muted">最近 10 条任务及实时分段断点续传进度</span>
+            </div>
+          </div>
+          <div class="table-wrap sync-record-wrap">
+            <table class="sync-record-table">
+              <thead>
+                <tr>
+                  <th style="width:16%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>所属店铺</span></div></th>
+                  <th style="width:20%;"><div class="th-wrap"><morph-icon icon="layers" size="13" stroke-width="2"></morph-icon><span>同步模块与来源</span></div></th>
+                  <th style="width:28%;"><div class="th-wrap"><morph-icon icon="activity" size="13" stroke-width="2"></morph-icon><span>状态与分段进度</span></div></th>
+                  <th style="width:18%;" class="text-right"><div class="th-wrap end"><morph-icon icon="clock" size="13" stroke-width="2"></morph-icon><span>开始时间 (北京时间)</span></div></th>
+                  <th style="width:18%;"><div class="th-wrap"><morph-icon icon="alertTriangle" size="13" stroke-width="2"></morph-icon><span>执行详情 / 错误</span></div></th>
+                </tr>
+              </thead>
+              <tbody id="syncRows">
+                <tr><td colspan="5" class="sync-message"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>拉取记录加载中…</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
-      <section id="settings" class="page"><div class="settings-grid"><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="sun" size="20" spring="snappy"></morph-icon></span><div><h2>显示偏好</h2><p>控制当前浏览器的界面外观主题</p></div></div><div class="settings-fields settings-fields-single"><label>外观模式<div id="themeSegmented" class="macaron-segmented-control" role="radiogroup" aria-label="界面外观主题"><button type="button" role="radio" data-theme-mode="system" aria-checked="true" class="active"><morph-icon icon="settings" size="14" stroke-width="1.8"></morph-icon><span>跟随系统</span></button><button type="button" role="radio" data-theme-mode="light" aria-checked="false"><morph-icon icon="sun" size="14" stroke-width="1.8"></morph-icon><span>浅色模式</span></button><button type="button" role="radio" data-theme-mode="dark" aria-checked="false"><morph-icon icon="moon" size="14" stroke-width="1.8"></morph-icon><span>深色模式</span></button></div></label></div></article><article class="settings-card"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="settings" size="20" spring="snappy"></morph-icon></span><div><h2>店铺名称</h2><p>仅修改展示名称，输入后自动即时保存</p></div></div><form id="shopForm" class="settings-fields"><label>店铺1<input id="shop1" placeholder="如：1店" required></label><label>店铺2<input id="shop2" placeholder="如：4店" required></label></form></article></div><section class="settings-card settings-api"><div class="settings-card-head"><span class="settings-icon"><morph-icon icon="sync" size="20" spring="snappy"></morph-icon></span><div><h2>API连接与权限</h2><p>只检测凭据、店铺身份与模块权限，不同步业务数据</p></div><button id="probeAllButton" class="macaron-icon-btn" type="button" aria-label="检测 API 连接与权限" title="检测 API 连接与权限"><morph-icon icon="sync" size="16" stroke-width="1.8" spring="snappy"></morph-icon></button></div><div id="probeShops" class="settings-shop-grid"></div></section></section>
+      <section id="settings" class="page">
+        <div class="settings-grid">
+          <section class="panel settings-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="sun" size="18" stroke-width="1.8"></morph-icon> 界面与显示偏好</h2>
+                <span class="muted">控制当前浏览器的界面外观主题与色彩渲染模式</span>
+              </div>
+            </div>
+            <div class="settings-body">
+              <div class="settings-field-group">
+                <label class="settings-label" id="themeSegmentedLabel">外观模式</label>
+                <div id="themeSegmented" class="macaron-segmented-control" role="radiogroup" aria-labelledby="themeSegmentedLabel">
+                  <button type="button" role="radio" data-theme-mode="system" aria-checked="true" class="active">
+                    <morph-icon icon="settings" size="14" stroke-width="1.8"></morph-icon>
+                    <span>跟随系统</span>
+                  </button>
+                  <button type="button" role="radio" data-theme-mode="light" aria-checked="false">
+                    <morph-icon icon="sun" size="14" stroke-width="1.8"></morph-icon>
+                    <span>浅色模式</span>
+                  </button>
+                  <button type="button" role="radio" data-theme-mode="dark" aria-checked="false">
+                    <morph-icon icon="moon" size="14" stroke-width="1.8"></morph-icon>
+                    <span>深色模式</span>
+                  </button>
+                </div>
+              </div>
+              <div class="settings-hint-box">
+                <morph-icon icon="sparkles" size="15" stroke-width="1.8"></morph-icon>
+                <span>采用 Open Macaron 低饱和粉彩与高对比度文字排版，全局支持 Apple HIG 减淡微边框与平滑回弹。</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel settings-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="store" size="18" stroke-width="1.8"></morph-icon> 店铺展示名称</h2>
+                <span class="muted">自定义各店铺在数据总览与各模块中的别名</span>
+              </div>
+            </div>
+            <form id="shopForm" class="settings-body">
+              <div class="settings-shop-inputs">
+                <label class="settings-input-group" for="shop1">
+                  <span class="settings-input-tag">
+                    <morph-icon icon="tag" size="12" stroke-width="2"></morph-icon>
+                    <span>店铺 1</span>
+                  </span>
+                  <input id="shop1" placeholder="例如：1店 / 莫斯科自营店" required>
+                </label>
+                <label class="settings-input-group" for="shop2">
+                  <span class="settings-input-tag">
+                    <morph-icon icon="tag" size="12" stroke-width="2"></morph-icon>
+                    <span>店铺 2</span>
+                  </span>
+                  <input id="shop2" placeholder="例如：4店 / 圣彼得堡旗舰店" required>
+                </label>
+              </div>
+              <div class="settings-hint-box">
+                <morph-icon icon="checkCircle" size="15" stroke-width="1.8"></morph-icon>
+                <span>修改店铺名称后，失焦或回车即可自动即时保存并全局同步更新。</span>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <section class="panel settings-api-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="shieldCheck" size="18" stroke-width="1.8"></morph-icon> API 连接与权限诊断</h2>
+              <span class="muted">实时检测 Client-Id / Api-Key 凭据、主体身份与各模块接口权限，不同步任何业务数据</span>
+            </div>
+            <button id="probeAllButton" class="primary probe-all-btn" type="button" aria-label="检测所有店铺 API 连接与权限" title="检测所有店铺 API 连接与权限">
+              <morph-icon icon="sync" size="14" stroke-width="2" spring="snappy"></morph-icon>
+              <span>一键检测所有店铺</span>
+            </button>
+          </div>
+          <div class="settings-system-banner">
+            <morph-icon icon="shieldCheck" size="16" stroke-width="1.8"></morph-icon>
+            <span>店铺 API 凭据统一配置于服务器 <code>.env</code> 环境变量；诊断仅执行只读轻量探测，保障凭据安全与零业务干扰。</span>
+          </div>
+          <div id="probeShops" class="settings-shop-grid"></div>
+        </section>
+      </section>
 
       <section id="dingtalk" class="page">
-        <div class="ding-status" aria-label="钉钉机器人状态"><article><span>机器人</span><strong id="dingtalkConfigured">读取中…</strong></article><article><span>每日汇总</span><strong id="dingEnabledStatus">读取中…</strong></article><article><span>下一次预计推送</span><strong id="dingNext">—</strong></article><article><span>最近一次推送</span><strong id="dingLastStatus">暂无记录</strong></article></div>
-        <p class="ding-system-note">同步失败告警为不可编辑的系统风险通知，不受每日汇总设置影响。Webhook 与 Secret 仅从服务器 .env 读取。</p>
-        <div class="ding-grid">
-          <form id="dingtalkForm" class="panel ding-panel"><div class="panel-title"><div><h2>推送计划</h2></div></div><label class="ding-toggle-row"><span><strong>启用昨日取消与退货订单汇总</strong><small>定时按北京时间执行</small></span><span class="settings-switch"><input id="dingEnabled" type="checkbox" aria-label="启用昨日取消与退货订单汇总"><span aria-hidden="true"></span></span></label><label class="ding-time-field" for="dingTime">推送时间<span class="auto-time-wrap"><morph-icon icon="clock" size="16"></morph-icon><input id="dingTime" type="time" step="60" required></span></label><fieldset class="ding-week-field"><legend>推送星期</legend><div id="dingWeekdays" class="ding-weekdays"><label><input type="checkbox" value="1"><span>一</span></label><label><input type="checkbox" value="2"><span>二</span></label><label><input type="checkbox" value="3"><span>三</span></label><label><input type="checkbox" value="4"><span>四</span></label><label><input type="checkbox" value="5"><span>五</span></label><label><input type="checkbox" value="6"><span>六</span></label><label><input type="checkbox" value="7"><span>日</span></label></div></fieldset><div class="ding-actions"><button class="primary" type="submit">保存设置</button></div></form>
+        <div id="dingtalkSummary" class="summary-grid ding-summary"></div>
+        <div class="ding-dual-grid">
+          <section class="panel ding-plan-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 推送计划与调度</h2>
+                <span class="muted">定时按北京时间汇总昨日取消与退货订单并推送到钉钉群</span>
+              </div>
+            </div>
+            <div class="ding-system-banner">
+              <morph-icon icon="shieldCheck" size="16" stroke-width="1.8"></morph-icon>
+              <span>同步失败告警为系统级风险通知，不受每日汇总开关影响；Webhook 与 Secret 凭据由服务器 <code>.env</code> 统一管理。</span>
+            </div>
+            <form id="dingtalkForm" class="ding-form">
+              <label class="ding-toggle-row">
+                <span class="ding-toggle-label">
+                  <strong>启用昨日取消与退货订单汇总</strong>
+                  <small>定时汇总昨日 00:00 - 24:00 (北京时间) 的已发货取消与退货明细</small>
+                </span>
+                <span class="settings-switch">
+                  <input id="dingEnabled" type="checkbox" aria-label="启用昨日取消与退货订单汇总">
+                  <span aria-hidden="true"></span>
+                </span>
+              </label>
+              <div class="ding-schedule-fields">
+                <div class="ding-field-row">
+                  <label class="ding-time-field" for="dingTime">
+                    <span class="ding-field-label">推送时间 (北京时间)</span>
+                    <span class="auto-time-wrap">
+                      <morph-icon icon="clock" size="16"></morph-icon>
+                      <input id="dingTime" type="time" step="60" required>
+                    </span>
+                  </label>
+                </div>
+                <fieldset class="ding-week-field">
+                  <legend>推送星期</legend>
+                  <div id="dingWeekdays" class="ding-weekdays" role="group" aria-label="推送星期选择">
+                    <label class="ding-weekday-chip"><input type="checkbox" value="1"><span>周一</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="2"><span>周二</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="3"><span>周三</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="4"><span>周四</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="5"><span>周五</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="6"><span>周六</span></label>
+                    <label class="ding-weekday-chip"><input type="checkbox" value="7"><span>周日</span></label>
+                  </div>
+                </fieldset>
+              </div>
+              <div class="ding-actions">
+                <button class="primary" type="submit">
+                  <morph-icon icon="check" size="14" stroke-width="2"></morph-icon>
+                  <span>保存设置</span>
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel ding-recent-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="rotateCcw" size="18" stroke-width="1.8"></morph-icon> 最近一次汇总投递</h2>
+                <span class="muted">展示最近一次正式定时推送的执行记录与投递结果</span>
+              </div>
+            </div>
+            <dl id="dingtalkLast" class="ding-last-grid">
+              <div class="ding-fact-item"><dt>统计业务日期</dt><dd>—</dd></div>
+              <div class="ding-fact-item"><dt>投递执行状态</dt><dd>暂无记录</dd></div>
+              <div class="ding-fact-item"><dt>实际发送时间</dt><dd>—</dd></div>
+              <div class="ding-fact-item"><dt>失败原因 / 详情</dt><dd>—</dd></div>
+            </dl>
+            <div class="ding-spec-card">
+              <div class="ding-spec-head">
+                <morph-icon icon="layers" size="14" stroke-width="1.8"></morph-icon>
+                <strong>推送规范与数据口径</strong>
+              </div>
+              <ul class="ding-spec-list">
+                <li><b>统计范围</b>：仅统计昨日已发货取消件与各类退货记录，按北京时间自然日归组。</li>
+                <li><b>店铺隔离</b>：独立输出各店铺不同履约渠道 (FBP / realFBS / WHD) 的订单量与明细。</li>
+                <li><b>隐私保护</b>：敏感买家留言与客户个人信息已被过滤脱敏，聚合展示官方原因。</li>
+              </ul>
+            </div>
+          </section>
         </div>
-        <section class="panel ding-recent"><div class="panel-title"><div><h2>最近一次汇总</h2><p class="muted">只显示最近一次正式定时推送</p></div></div><dl id="dingtalkLast" class="ding-last"><div><dt>统计日期</dt><dd>—</dd></div><div><dt>推送状态</dt><dd>暂无记录</dd></div><div><dt>实际发送时间</dt><dd>—</dd></div><div><dt>失败原因</dt><dd>—</dd></div></dl></section>
       </section>
 
       <section id="timeliness" class="page">
@@ -294,17 +695,17 @@
           <div class="panel-title">
             <div>
               <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 店铺与渠道时效矩阵</h2>
-              <span class="muted">统计发货耗时与在途配送耗时的中位数(P50)及尾部时效(P90)</span>
+              <span class="muted">统计发货出库与在途配送耗时的中位数(P50)及尾部时效(P90)</span>
             </div>
           </div>
           <div class="table-wrap timeliness-matrix-wrap">
-            <table class="timeliness-matrix">
+            <table class="timeliness-matrix-table">
               <thead>
                 <tr>
-                  <th>店铺／渠道</th>
-                  <th>订单与数据完整率</th>
-                  <th>发货时效分析</th>
-                  <th>配送时效分析</th>
+                  <th style="width:22%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺与履约渠道</span></div></th>
+                  <th style="width:24%;"><div class="th-wrap"><morph-icon icon="fileText" size="13" stroke-width="2"></morph-icon><span>订单量与完整率</span></div></th>
+                  <th style="width:27%;"><div class="th-wrap"><morph-icon icon="clock" size="13" stroke-width="2"></morph-icon><span>发货出库时效 (创建 → 发货)</span></div></th>
+                  <th style="width:27%;"><div class="th-wrap"><morph-icon icon="truck" size="13" stroke-width="2"></morph-icon><span>在途配送时效 (发货 → 签收)</span></div></th>
                 </tr>
               </thead>
               <tbody id="timelinessGroupRows"></tbody>
@@ -333,11 +734,11 @@
             <table class="timeliness-detail-table">
               <thead>
                 <tr>
-                  <th>店铺／渠道</th>
-                  <th>订单号</th>
-                  <th>创建时间</th>
-                  <th>发货时间／发货耗时</th>
-                  <th>签收时间／配送耗时</th>
+                  <th style="width:15%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺／渠道</span></div></th>
+                  <th style="width:20%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>订单号</span></div></th>
+                  <th style="width:18%;"><div class="th-wrap"><morph-icon icon="clock" size="13" stroke-width="2"></morph-icon><span>订购时间</span></div></th>
+                  <th style="width:23.5%;"><div class="th-wrap"><morph-icon icon="box" size="13" stroke-width="2"></morph-icon><span>实际发货／出库耗时</span></div></th>
+                  <th style="width:23.5%;"><div class="th-wrap"><morph-icon icon="truck" size="13" stroke-width="2"></morph-icon><span>实际签收／在途耗时</span></div></th>
                 </tr>
               </thead>
               <tbody id="timelinessRows"></tbody>
@@ -356,12 +757,12 @@
           <button id="returnTabCancel" class="active" type="button" role="tab" aria-selected="true" aria-controls="returns-cancel" tabindex="0" data-return-tab="cancel">
             <morph-icon icon="xCircle" size="14" stroke-width="2"></morph-icon>
             <span>取消明细</span>
-            <span id="returnsCount">0</span>
+            <span id="returnsCount" class="tab-count-badge">0</span>
           </button>
           <button id="returnTabRfbs" type="button" role="tab" aria-selected="false" aria-controls="returns-rfbs" tabindex="-1" data-return-tab="rfbs">
             <morph-icon icon="rotateCcw" size="14" stroke-width="2"></morph-icon>
             <span>退货明细</span>
-            <span id="rfbsReturnsCount">0</span>
+            <span id="rfbsReturnsCount" class="tab-count-badge">0</span>
           </button>
         </div>
 
@@ -389,11 +790,11 @@
               <table class="return-table cancel-table">
                 <thead>
                   <tr>
-                    <th>店铺／时间</th>
-                    <th>订单号</th>
-                    <th>商品信息</th>
-                    <th>取消件数</th>
-                    <th>取消原因／状态</th>
+                    <th style="width:22%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺与取消时间</span></div></th>
+                    <th style="width:20%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>订单号</span></div></th>
+                    <th style="width:28%;"><div class="th-wrap"><morph-icon icon="box" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
+                    <th style="width:12%;" class="text-right"><div class="th-wrap right"><morph-icon icon="hash" size="13" stroke-width="2"></morph-icon><span>取消件数</span></div></th>
+                    <th style="width:18%;"><div class="th-wrap"><morph-icon icon="alertCircle" size="13" stroke-width="2"></morph-icon><span>取消原因与状态</span></div></th>
                   </tr>
                 </thead>
                 <tbody id="returnsRows"></tbody>
@@ -431,12 +832,12 @@
               <table class="return-table rfbs-table">
                 <thead>
                   <tr>
-                    <th>店铺／申请时间</th>
-                    <th>申请编号／订单号</th>
-                    <th>商品信息</th>
-                    <th>状态／赔偿</th>
-                    <th>数量／金额</th>
-                    <th>原因／退回信息</th>
+                    <th style="width:17%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺与申请时间</span></div></th>
+                    <th style="width:18%;"><div class="th-wrap"><morph-icon icon="fileText" size="13" stroke-width="2"></morph-icon><span>申请编号与订单号</span></div></th>
+                    <th style="width:23%;"><div class="th-wrap"><morph-icon icon="box" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
+                    <th style="width:16%;"><div class="th-wrap"><morph-icon icon="shieldAlert" size="13" stroke-width="2"></morph-icon><span>状态与赔偿</span></div></th>
+                    <th style="width:11%;" class="text-right"><div class="th-wrap right"><morph-icon icon="coins" size="13" stroke-width="2"></morph-icon><span>件数与金额</span></div></th>
+                    <th style="width:15%;"><div class="th-wrap"><morph-icon icon="truck" size="13" stroke-width="2"></morph-icon><span>原因与退件跟踪</span></div></th>
                   </tr>
                 </thead>
                 <tbody id="rfbsReturnsRows"></tbody>
@@ -454,61 +855,460 @@
 
       <section id="complaintPlaceholder" class="page">
         <div id="exceptionComplaintTabs" class="subtabs return-subtabs exception-tabs" role="tablist" aria-label="异常订单投诉子板块">
-          <button id="exceptionTabShipping" class="active" type="button" role="tab" aria-selected="true" aria-controls="exception-shipping" tabindex="0" data-exception-tab="shipping">发货未收货投诉 <span id="shippingComplaintCount">0</span></button>
-          <button id="exceptionTabReceived" type="button" role="tab" aria-selected="false" aria-controls="exception-received" tabindex="-1" data-exception-tab="received">已收货纠纷 <span id="receivedDisputeCount">0</span></button>
+          <button id="exceptionTabShipping" class="active" type="button" role="tab" aria-selected="true" aria-controls="exception-shipping" tabindex="0" data-exception-tab="shipping">
+            <morph-icon icon="truck" size="14" stroke-width="2"></morph-icon>
+            <span>发货未收货投诉</span>
+            <span id="shippingComplaintCount" class="tab-count-badge">0</span>
+          </button>
+          <button id="exceptionTabReceived" type="button" role="tab" aria-selected="false" aria-controls="exception-received" tabindex="-1" data-exception-tab="received">
+            <morph-icon icon="messageSquareAlert" size="14" stroke-width="2"></morph-icon>
+            <span>已收货纠纷</span>
+            <span id="receivedDisputeCount" class="tab-count-badge">0</span>
+          </button>
         </div>
 
         <section id="exception-shipping" class="exception-tab active" role="tabpanel" aria-labelledby="exceptionTabShipping">
-          <div class="panel exception-panel shipping-exception-panel">
-            <div class="panel-title"><div><h2>发货未收货投诉</h2><span class="muted">仅展示发货后取消或存在数据异常的候选订单</span></div></div>
-            <form id="shippingComplaintFilter" class="return-filter" role="search">
-              <input id="shippingComplaintQuery" type="search" placeholder="搜索订单号、物流单号、SKU、货号或投诉编号…" aria-label="搜索发货未收货投诉">
-              <div class="return-select filter-select" data-return-select><select id="shippingComplaintStatus" aria-label="投诉状态筛选"><option value="">全部状态</option><option value="unfiled">未创建投诉</option><option value="open">处理中</option><option value="closed">已完结</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>全部状态</span><morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="投诉状态筛选"></div></div>
-              <button class="primary" type="submit">查询</button><button id="shippingComplaintClear" type="button">清除</button>
-            </form>
-            <div class="table-wrap exception-table-wrap"><table class="return-table exception-table shipping-table"><thead><tr><th>店铺／订单</th><th>物流／时间</th><th>商品信息</th><th>金额／原因</th><th>投诉记录／操作</th></tr></thead><tbody id="shippingComplaintRows"></tbody></table></div>
-            <div class="pager"><button id="shippingComplaintsPrev">上一页</button><span id="shippingComplaintsInfo"></span><button id="shippingComplaintsNext">下一页</button></div>
+          <div class="panel return-panel exception-panel shipping-exception-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="truck" size="18" stroke-width="1.8"></morph-icon> 发货未收货投诉</h2>
+                <span class="muted">仅展示发货后取消或存在数据异常的候选订单</span>
+              </div>
+              <form id="shippingComplaintFilter" class="return-filter" role="search">
+                <div class="return-search-wrap">
+                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                  <input id="shippingComplaintQuery" type="search" placeholder="搜索订单号、物流单号、SKU、货号或投诉编号…" aria-label="搜索发货未收货投诉">
+                </div>
+                <div class="return-select filter-select" data-return-select>
+                  <select id="shippingComplaintStatus" aria-label="投诉状态筛选">
+                    <option value="">全部状态</option>
+                    <option value="unfiled">未创建投诉</option>
+                    <option value="open">处理中</option>
+                    <option value="closed">已完结</option>
+                  </select>
+                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-label>全部状态</span>
+                    <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                  </button>
+                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="投诉状态筛选"></div>
+                </div>
+                <button class="primary" type="submit">
+                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                  <span>查询</span>
+                </button>
+                <button id="shippingComplaintClear" type="button">清除</button>
+              </form>
+            </div>
+            <div class="table-wrap return-table-wrap">
+              <table class="return-table shipping-table">
+                <thead>
+                  <tr>
+                    <th style="width:20%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺与订单</span></div></th>
+                    <th style="width:22%;"><div class="th-wrap"><morph-icon icon="clock" size="13" stroke-width="2"></morph-icon><span>物流与时效</span></div></th>
+                    <th style="width:26%;"><div class="th-wrap"><morph-icon icon="box" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
+                    <th style="width:16%;" class="text-right"><div class="th-wrap right"><morph-icon icon="coins" size="13" stroke-width="2"></morph-icon><span>金额与取消原因</span></div></th>
+                    <th style="width:16%;" class="text-right"><div class="th-wrap right"><morph-icon icon="shieldAlert" size="13" stroke-width="2"></morph-icon><span>投诉记录与操作</span></div></th>
+                  </tr>
+                </thead>
+                <tbody id="shippingComplaintRows"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button id="shippingComplaintsPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+              <span id="shippingComplaintsInfo"></span>
+              <button id="shippingComplaintsNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+            </div>
           </div>
-          <dialog id="shippingComplaintEditor" class="complaint-modal" aria-labelledby="shippingComplaintEditorTitle"><div class="complaint-modal-card"><header><div><strong id="shippingComplaintEditorTitle">新建投诉</strong><small>投诉编号、投诉时间和投诉渠道为必填</small></div></header>
-            <form id="shippingComplaintForm"><input id="shippingComplaintShop" type="hidden"><input id="shippingComplaintPosting" type="hidden">
-              <div class="exception-form-grid">
-                <label class="return-field">投诉编号<input id="shippingComplaintNumber" required></label><label class="return-field">投诉时间<input id="shippingComplaintAt" type="datetime-local" required></label><label class="return-field">投诉渠道<input id="shippingComplaintChannel" required></label><div class="return-field">固定投诉截止日期<output id="shippingComplaintDeadline" class="deadline-readonly">—</output></div>
-                <label class="return-field">所在仓库<input id="shippingWarehouse"></label><label class="return-field">订单处理状态<input id="shippingOrderProcessStatus"></label><label class="return-field">投诉状态<input id="shippingComplaintState"></label><label class="return-field">赔付状态<input id="shippingCompensationStatus"></label>
-                <fieldset class="compensation-group"><legend>Ozon平台赔偿</legend><label class="return-field">平台赔偿金额（RUB）<input id="shippingPlatformCompensation" type="number" min="0.01" step="0.01"></label><label class="return-field">平台赔偿北京时间<input id="shippingPlatformAt" type="datetime-local"></label><div id="shippingPlatformConversion" class="compensation-result" aria-live="polite">折算金额：—</div></fieldset>
-                <fieldset class="compensation-group"><legend>物流商赔偿</legend><label class="return-field">物流商赔偿金额（CNY）<input id="shippingLogisticsCompensation" type="number" min="0.01" step="0.01"></label><label class="return-field">物流商赔偿北京时间<input id="shippingLogisticsAt" type="datetime-local"></label><div id="shippingLogisticsConversion" class="compensation-result" aria-live="polite">折算金额：—</div></fieldset>
-                <label class="return-field">未收到退件<div class="return-select" data-return-select><select id="shippingNotReceived"><option value="">未填写</option><option value="true">是</option><option value="false">否</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="未收到退件"></div></div></label>
-                <label class="return-field">是否完结<div class="return-select" data-return-select><select id="shippingResolved"><option value="">未填写</option><option value="true">是</option><option value="false">否</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否完结"></div></div></label>
-                <label class="return-field exception-notes">备注<textarea id="shippingComplaintNotes" rows="3"></textarea></label>
-              </div><div class="complaint-form-actions"><button class="primary" type="submit">保存</button><button id="shippingComplaintCancel" type="button">取消</button></div>
-            </form>
-          </div></dialog>
+          <dialog id="shippingComplaintEditor" class="complaint-modal" aria-labelledby="shippingComplaintEditorTitle">
+            <div class="complaint-modal-card">
+              <header>
+                <div>
+                  <strong id="shippingComplaintEditorTitle">新建投诉</strong>
+                  <small>投诉编号、投诉时间和投诉渠道为必填项</small>
+                </div>
+              </header>
+              <form id="shippingComplaintForm">
+                <input id="shippingComplaintShop" type="hidden">
+                <input id="shippingComplaintPosting" type="hidden">
+                <div class="exception-form-grid">
+                  <label class="return-field">投诉编号<input id="shippingComplaintNumber" required placeholder="如：COMP-1001"></label>
+                  <label class="return-field">投诉时间<input id="shippingComplaintAt" type="datetime-local" required></label>
+                  <label class="return-field">投诉渠道<input id="shippingComplaintChannel" required placeholder="如：Ozon Support / 官方工单"></label>
+                  <div class="return-field">固定投诉截止日期<output id="shippingComplaintDeadline" class="deadline-readonly">—</output></div>
+                  <label class="return-field">所在仓库<input id="shippingWarehouse" placeholder="如：中国前置仓 / 本地仓"></label>
+                  <label class="return-field">订单处理状态<input id="shippingOrderProcessStatus" placeholder="如：已核实 / 待处理"></label>
+                  <label class="return-field">投诉状态<input id="shippingComplaintState" placeholder="如：已受理 / 平台审核中"></label>
+                  <label class="return-field">赔付状态<input id="shippingCompensationStatus" placeholder="如：已批准 / 待打款"></label>
+                  <fieldset class="compensation-group">
+                    <legend>Ozon 平台赔偿</legend>
+                    <label class="return-field">平台赔偿金额（RUB）<input id="shippingPlatformCompensation" type="number" min="0.01" step="0.01" placeholder="0.00"></label>
+                    <label class="return-field">平台赔偿北京时间<input id="shippingPlatformAt" type="datetime-local"></label>
+                    <div id="shippingPlatformConversion" class="compensation-result" aria-live="polite">折算金额：—</div>
+                  </fieldset>
+                  <fieldset class="compensation-group">
+                    <legend>物流商赔偿</legend>
+                    <label class="return-field">物流商赔偿金额（CNY）<input id="shippingLogisticsCompensation" type="number" min="0.01" step="0.01" placeholder="0.00"></label>
+                    <label class="return-field">物流商赔偿北京时间<input id="shippingLogisticsAt" type="datetime-local"></label>
+                    <div id="shippingLogisticsConversion" class="compensation-result" aria-live="polite">折算金额：—</div>
+                  </fieldset>
+                  <label class="return-field">未收到退件
+                    <div class="return-select" data-return-select>
+                      <select id="shippingNotReceived">
+                        <option value="">未填写</option>
+                        <option value="true">是</option>
+                        <option value="false">否</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="未收到退件"></div>
+                    </div>
+                  </label>
+                  <label class="return-field">是否完结
+                    <div class="return-select" data-return-select>
+                      <select id="shippingResolved">
+                        <option value="">未填写</option>
+                        <option value="true">是</option>
+                        <option value="false">否</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否完结"></div>
+                    </div>
+                  </label>
+                  <label class="return-field exception-notes">备注<textarea id="shippingComplaintNotes" rows="3" placeholder="填写处理备注…"></textarea></label>
+                </div>
+                <div class="complaint-form-actions">
+                  <button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon><span>保存</span></button>
+                  <button id="shippingComplaintCancel" type="button">取消</button>
+                </div>
+              </form>
+            </div>
+          </dialog>
         </section>
 
         <section id="exception-received" class="exception-tab" role="tabpanel" aria-labelledby="exceptionTabReceived" hidden>
-          <div class="panel exception-panel received-exception-panel">
-            <div class="panel-title"><div><h2>已收货纠纷</h2><span class="muted">按店铺与退货申请编号独立保存人工处理信息</span></div></div>
-            <form id="receivedDisputeFilter" class="return-filter" role="search"><input id="receivedDisputeQuery" type="search" placeholder="搜索SKU、货号、订单号或退货申请编号…" aria-label="搜索已收货纠纷"><div class="return-select filter-select" data-return-select><select id="receivedDisputeStatus" aria-label="处理状态筛选"><option value="">全部状态</option><option value="unfiled">未记录</option><option value="open">处理中</option><option value="closed">已结束</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>全部状态</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="处理状态筛选"></div></div><button class="primary" type="submit">查询</button><button id="receivedDisputeClear" type="button">清除</button></form>
-            <div class="table-wrap exception-table-wrap"><table class="return-table exception-table received-table"><thead><tr><th>店铺／申请</th><th>订单／商品</th><th>金额／原因</th><th>退款／退货</th><th>处理／操作</th></tr></thead><tbody id="receivedDisputeRows"></tbody></table></div>
-            <div class="pager"><button id="receivedDisputesPrev">上一页</button><span id="receivedDisputesInfo"></span><button id="receivedDisputesNext">下一页</button></div>
+          <div class="panel return-panel exception-panel received-exception-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="messageSquareAlert" size="18" stroke-width="1.8"></morph-icon> 已收货纠纷</h2>
+                <span class="muted">按店铺与退货申请编号独立保存人工处理信息</span>
+              </div>
+              <form id="receivedDisputeFilter" class="return-filter" role="search">
+                <div class="return-search-wrap">
+                  <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                  <input id="receivedDisputeQuery" type="search" placeholder="搜索SKU、货号、订单号或退货申请编号…" aria-label="搜索已收货纠纷">
+                </div>
+                <div class="return-select filter-select" data-return-select>
+                  <select id="receivedDisputeStatus" aria-label="处理状态筛选">
+                    <option value="">全部状态</option>
+                    <option value="unfiled">未记录</option>
+                    <option value="open">处理中</option>
+                    <option value="closed">已结束</option>
+                  </select>
+                  <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                    <span data-select-label>全部状态</span>
+                    <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                  </button>
+                  <div class="return-select-options hidden" data-select-options role="listbox" aria-label="处理状态筛选"></div>
+                </div>
+                <button class="primary" type="submit">
+                  <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                  <span>查询</span>
+                </button>
+                <button id="receivedDisputeClear" type="button">清除</button>
+              </form>
+            </div>
+            <div class="table-wrap return-table-wrap">
+              <table class="return-table received-table">
+                <thead>
+                  <tr>
+                    <th style="width:18%;"><div class="th-wrap"><morph-icon icon="store" size="13" stroke-width="2"></morph-icon><span>店铺与退货申请</span></div></th>
+                    <th style="width:22%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>订单与商品</span></div></th>
+                    <th style="width:20%;"><div class="th-wrap"><morph-icon icon="coins" size="13" stroke-width="2"></morph-icon><span>金额与纠纷原因</span></div></th>
+                    <th style="width:24%;"><div class="th-wrap"><morph-icon icon="wallet" size="13" stroke-width="2"></morph-icon><span>退款与赔偿</span></div></th>
+                    <th style="width:16%;" class="text-right"><div class="th-wrap right"><morph-icon icon="checkCircle" size="13" stroke-width="2"></morph-icon><span>处理状态与操作</span></div></th>
+                  </tr>
+                </thead>
+                <tbody id="receivedDisputeRows"></tbody>
+              </table>
+            </div>
+            <div class="pager">
+              <button id="receivedDisputesPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+              <span id="receivedDisputesInfo"></span>
+              <button id="receivedDisputesNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+            </div>
           </div>
-          <dialog id="receivedDisputeEditor" class="complaint-modal" aria-labelledby="receivedDisputeHeading"><div class="complaint-modal-card"><header><div><strong id="receivedDisputeHeading">编辑已收货纠纷</strong><small id="receivedDisputeEditorTitle">请选择一条退货申请</small></div></header>
-            <form id="receivedDisputeForm"><input id="receivedDisputeShop" type="hidden"><input id="receivedDisputeNumber" type="hidden"><div class="exception-form-grid">
-              <div class="return-field">固定投诉截止日期<output id="receivedComplaintDeadline" class="deadline-readonly">—</output></div><label class="return-field">是否退款<div class="return-select" data-return-select><select id="receivedRefundType"><option value="">未填写</option><option>部分退款</option><option>全额退款</option><option>多次纠纷</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否退款"></div></div></label><label class="return-field">退款金额<input id="receivedRefundAmount" type="number" min="0" step="0.01"></label><label class="return-field">退款币种<input id="receivedRefundCurrency" readonly></label>
-              <fieldset class="compensation-group"><legend>Ozon平台赔偿</legend><label class="return-field">平台赔偿金额（RUB）<input id="receivedPlatformCompensation" type="number" min="0.01" step="0.01"></label><label class="return-field">平台赔偿北京时间<input id="receivedPlatformAt" type="datetime-local"></label><div id="receivedPlatformConversion" class="compensation-result" aria-live="polite">折算金额：—</div></fieldset>
-              <fieldset class="compensation-group"><legend>物流商赔偿</legend><label class="return-field">物流商赔偿金额（CNY）<input id="receivedLogisticsCompensation" type="number" min="0.01" step="0.01"></label><label class="return-field">物流商赔偿北京时间<input id="receivedLogisticsAt" type="datetime-local"></label><div id="receivedLogisticsConversion" class="compensation-result" aria-live="polite">折算金额：—</div></fieldset>
-              <label class="return-field">处理状态<input id="receivedProcessStatus"></label><label class="return-field">退货方式<div class="return-select" data-return-select><select id="receivedReturnMethod"><option value="">未填写</option><option>未退货</option><option>IML</option><option>FBO二次销售</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="退货方式"></div></div></label><label class="return-field">IML退货单号<input id="receivedImlNumber"></label><label class="return-field">IML系统SN<input id="receivedImlSn"></label><label class="return-field">买家邮寄追踪号<input id="receivedBuyerTracking"></label>
-              <label class="return-field">处理方式<div class="return-select" data-return-select><select id="receivedHandlingMethod"><option value="">未填写</option><option>退回</option><option>销毁</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="处理方式"></div></div></label><label class="return-field">是否拍视频<div class="return-select" data-return-select><select id="receivedVideo"><option value="">未填写</option><option value="true">是</option><option value="false">否</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否拍视频"></div></div></label><label class="return-field">出库订单编号<input id="receivedOutboundOrder"></label><label class="return-field">退件结果<div class="return-select" data-return-select><select id="receivedReturnResult"><option value="">未填写</option><option>退回国内中</option><option>已签收</option><option>已销毁</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>未填写</span><morph-icon icon="chevronDown" size="16"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="退件结果"></div></div></label><label class="return-field exception-notes">备注<textarea id="receivedDisputeNotes" rows="3"></textarea></label>
-            </div><div class="complaint-form-actions"><button class="primary" type="submit">保存</button><button id="receivedDisputeCancel" type="button">取消</button></div></form>
-          </div></dialog>
+          <dialog id="receivedDisputeEditor" class="complaint-modal" aria-labelledby="receivedDisputeHeading">
+            <div class="complaint-modal-card">
+              <header>
+                <div>
+                  <strong id="receivedDisputeHeading">编辑已收货纠纷</strong>
+                  <small id="receivedDisputeEditorTitle">请选择一条退货申请</small>
+                </div>
+              </header>
+              <form id="receivedDisputeForm">
+                <input id="receivedDisputeShop" type="hidden">
+                <input id="receivedDisputeNumber" type="hidden">
+                <div class="exception-form-grid">
+                  <div class="return-field">固定投诉截止日期<output id="receivedComplaintDeadline" class="deadline-readonly">—</output></div>
+                  <label class="return-field">是否退款
+                    <div class="return-select" data-return-select>
+                      <select id="receivedRefundType">
+                        <option value="">未填写</option>
+                        <option>部分退款</option>
+                        <option>全额退款</option>
+                        <option>多次纠纷</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否退款"></div>
+                    </div>
+                  </label>
+                  <label class="return-field">退款金额<input id="receivedRefundAmount" type="number" min="0" step="0.01" placeholder="0.00"></label>
+                  <label class="return-field">退款币种<input id="receivedRefundCurrency" readonly></label>
+                  <fieldset class="compensation-group">
+                    <legend>Ozon 平台赔偿</legend>
+                    <label class="return-field">平台赔偿金额（RUB）<input id="receivedPlatformCompensation" type="number" min="0.01" step="0.01" placeholder="0.00"></label>
+                    <label class="return-field">平台赔偿北京时间<input id="receivedPlatformAt" type="datetime-local"></label>
+                    <div id="receivedPlatformConversion" class="compensation-result" aria-live="polite">折算金额：—</div>
+                  </fieldset>
+                  <fieldset class="compensation-group">
+                    <legend>物流商赔偿</legend>
+                    <label class="return-field">物流商赔偿金额（CNY）<input id="receivedLogisticsCompensation" type="number" min="0.01" step="0.01" placeholder="0.00"></label>
+                    <label class="return-field">物流商赔偿北京时间<input id="receivedLogisticsAt" type="datetime-local"></label>
+                    <div id="receivedLogisticsConversion" class="compensation-result" aria-live="polite">折算金额：—</div>
+                  </fieldset>
+                  <label class="return-field">处理状态<input id="receivedProcessStatus" placeholder="如：处理中 / 待核实 / 已完结"></label>
+                  <label class="return-field">退货方式
+                    <div class="return-select" data-return-select>
+                      <select id="receivedReturnMethod">
+                        <option value="">未填写</option>
+                        <option>未退货</option>
+                        <option>IML</option>
+                        <option>FBO二次销售</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="退货方式"></div>
+                    </div>
+                  </label>
+                  <label class="return-field">IML退货单号<input id="receivedImlNumber" placeholder="IML 单号"></label>
+                  <label class="return-field">IML系统SN<input id="receivedImlSn" placeholder="IML 系统序列号"></label>
+                  <label class="return-field">买家邮寄追踪号<input id="receivedBuyerTracking" placeholder="买家寄出物流单号"></label>
+                  <label class="return-field">处理方式
+                    <div class="return-select" data-return-select>
+                      <select id="receivedHandlingMethod">
+                        <option value="">未填写</option>
+                        <option>退回</option>
+                        <option>销毁</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="处理方式"></div>
+                    </div>
+                  </label>
+                  <label class="return-field">是否拍视频
+                    <div class="return-select" data-return-select>
+                      <select id="receivedVideo">
+                        <option value="">未填写</option>
+                        <option value="true">是</option>
+                        <option value="false">否</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="是否拍视频"></div>
+                    </div>
+                  </label>
+                  <label class="return-field">出库订单编号<input id="receivedOutboundOrder" placeholder="关联出库单号"></label>
+                  <label class="return-field">退件结果
+                    <div class="return-select" data-return-select>
+                      <select id="receivedReturnResult">
+                        <option value="">未填写</option>
+                        <option>退回国内中</option>
+                        <option>已签收</option>
+                        <option>已销毁</option>
+                      </select>
+                      <button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false">
+                        <span data-select-label>未填写</span>
+                        <morph-icon icon="chevronDown" size="16" stroke-width="1.6"></morph-icon>
+                      </button>
+                      <div class="return-select-options hidden" data-select-options role="listbox" aria-label="退件结果"></div>
+                    </div>
+                  </label>
+                  <label class="return-field exception-notes">备注<textarea id="receivedDisputeNotes" rows="3" placeholder="填写纠纷备注…"></textarea></label>
+                </div>
+                <div class="complaint-form-actions">
+                  <button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon><span>保存</span></button>
+                  <button id="receivedDisputeCancel" type="button">取消</button>
+                </div>
+              </form>
+            </div>
+          </dialog>
         </section>
       </section>
 
-      <section id="stock" class="page"><div id="stockSummary" class="summary-grid"></div><div class="panel stock-panel"><div class="panel-title"><div><h2>库存决策表</h2><span class="muted">销量参考：FBP＋realFBS｜库存基准：FBP</span></div><span class="muted" id="stockUpdated"></span></div><form id="stockFilterForm" class="stock-filter"><input id="stockSku" type="search" placeholder="SKU" aria-label="筛选SKU"><input id="stockOffer" type="search" placeholder="货号" aria-label="筛选货号"><input id="stockProduct" type="search" placeholder="产品名称" aria-label="筛选产品名称"><button class="primary" type="submit">查询</button><button id="stockClear" type="button">重置</button></form><div class="table-wrap stock-table-wrap"><table class="stock-table"><thead><tr><th>商品信息</th><th data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp">FBP <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs">realFBS <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd">WHD <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th>有效销量</th><th data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast">综合预测 <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th data-stock-sort-column="replenishment"><button type="button" class="stock-sort" data-stock-sort="replenishment">FBP备货决策 <morph-icon icon="sortUpDown" size="14" spring="snappy" stroke-width="1.5"></morph-icon></button></th><th>数据更新</th></tr></thead><tbody id="stockRows"></tbody></table></div><div class="pager"><button id="stockPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button><span id="stockInfo"></span><button id="stockNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button></div></div></section>
+      <section id="stock" class="page">
+        <div id="stockSummary" class="stock-summary analysis-summary-grid"></div>
+        <div class="panel stock-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="stock" size="18" stroke-width="1.8"></morph-icon> 销量与备货决策矩阵</h2>
+              <span class="muted">销量参考：FBP＋realFBS｜库存基准：FBP现货｜全局应用主货号合并</span>
+            </div>
+            <span class="muted" id="stockUpdated"></span>
+          </div>
+          <form id="stockFilterForm" class="stock-filter">
+            <div class="stock-search-wrap">
+              <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+              <input id="stockSku" type="search" placeholder="搜索 SKU…" aria-label="筛选SKU">
+            </div>
+            <div class="stock-search-wrap">
+              <morph-icon icon="tag" size="15" stroke-width="1.8"></morph-icon>
+              <input id="stockOffer" type="search" placeholder="搜索货号…" aria-label="筛选货号">
+            </div>
+            <div class="stock-search-wrap stock-search-wide">
+              <morph-icon icon="package" size="15" stroke-width="1.8"></morph-icon>
+              <input id="stockProduct" type="search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称">
+            </div>
+            <div class="stock-filter-actions">
+              <button class="primary" type="submit"><morph-icon icon="search" size="13" stroke-width="2"></morph-icon><span>查询</span></button>
+              <button id="stockClear" type="button"><morph-icon icon="rotateCcw" size="13" stroke-width="2"></morph-icon><span>重置</span></button>
+            </div>
+          </form>
+          <div class="table-wrap stock-table-wrap">
+            <table class="stock-table">
+              <thead>
+                <tr>
+                  <th style="width:26%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
+                  <th style="width:11%;" class="text-right" data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp"><span class="th-channel-tag fbp">FBP 现货</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:10%;" class="text-right" data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs"><span class="th-channel-tag fbs">realFBS</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:10%;" class="text-right" data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd"><span class="th-channel-tag whd">WHD</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:14%;" class="text-right"><div class="th-wrap end"><morph-icon icon="trendingUp" size="13" stroke-width="2"></morph-icon><span>近期有效销量</span></div></th>
+                  <th style="width:12%;" class="text-right" data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast"><span>综合预测</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:17%;" class="text-center" data-stock-sort-column="replenishment"><button type="button" class="stock-sort center" data-stock-sort="replenishment"><span>FBP 备货决策</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                </tr>
+              </thead>
+              <tbody id="stockRows"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button id="stockPrev"><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" spring="snappy"></morph-icon>上一页</button>
+            <span id="stockInfo"></span>
+            <button id="stockNext">下一页<morph-icon icon="chevronRight" size="14" stroke-width="1.8" spring="snappy"></morph-icon></button>
+          </div>
+        </div>
+      </section>
 
-      <section id="rules" class="page"><div id="ruleSummary" class="summary-grid rule-summary"></div><div class="rules-grid">
-        <section class="panel rule-panel short-rule-panel"><div class="panel-title"><div><h2><morph-icon icon="tag" size="18" stroke-width="1.8"></morph-icon> 中文短名称</h2><p class="muted">仅按 SKU 匹配</p></div><span id="ruleFixedRule" class="rule-fixed"></span></div><form id="shortNameForm" class="rule-form" novalidate><div class="rule-field"><label for="shortSku">SKU</label><input id="shortSku" placeholder="输入 SKU" autocomplete="off" required></div><div class="rule-field"><label for="shortName">中文短名称</label><input id="shortName" placeholder="如：Xiaomi Tag" autocomplete="off" required></div><div class="rule-form-actions"><button class="primary" type="submit"><morph-icon icon="plus" size="14" stroke-width="2"></morph-icon>保存</button><button id="shortReset" type="button">重置</button></div></form><form id="shortSearchForm" class="rule-search"><div class="rule-search-wrap"><morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon><input id="shortSearch" type="search" placeholder="搜索 SKU 或中文短名称…" aria-label="搜索短名称规则"></div><button class="primary" type="submit">查询</button><button id="shortSearchClear" type="button">清除</button></form><div class="table-wrap"><table class="rule-table"><thead><tr><th>SKU</th><th>中文短名称</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="shortRuleRows"></tbody></table></div></section>
-        <section class="panel rule-panel merge-rule-panel"><div class="panel-title"><div><h2><morph-icon icon="gitMerge" size="18" stroke-width="1.8"></morph-icon> SKU/货号全局合并</h2><p class="muted">主货号作为唯一分析身份</p></div></div><form id="mergeForm" class="merge-form" novalidate><input id="mergeId" type="hidden"><div class="merge-fields-row"><div class="rule-field"><label for="primaryOffer">主货号</label><input id="primaryOffer" placeholder="输入主货号" autocomplete="off" required></div><div class="rule-field"><label for="primarySku">名称解析 SKU</label><input id="primarySku" placeholder="仅主货号对应多 SKU 时必填" autocomplete="off"></div></div><div class="merge-members-head"><strong>合并成员列表</strong><button id="addMergeMember" type="button" class="subtle-btn"><morph-icon icon="plus" size="13" stroke-width="2.2"></morph-icon>增加成员</button></div><div id="mergeMembers" class="merge-members"></div><div class="rule-actions"><button class="primary" type="submit"><morph-icon icon="check" size="14" stroke-width="2"></morph-icon>保存合并</button><button id="mergeReset" type="button">重置</button></div></form><div id="mergeRuleList" class="merge-rule-list"></div></section>
-      </div><section id="ruleConflicts" class="panel rule-conflicts hidden"></section></section>
+      <section id="rules" class="page">
+        <div id="ruleSummary" class="summary-grid rule-summary"></div>
+        <div class="rules-grid">
+          <section class="panel rule-panel short-rule-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="tag" size="18" stroke-width="1.8"></morph-icon> 中文短名称规则</h2>
+                <span class="muted">按 SKU 精准匹配并在全系统报表中展示</span>
+              </div>
+              <span id="ruleFixedRule" class="rule-fixed-badge"><morph-icon icon="layers" size="12" stroke-width="2"></morph-icon><span id="ruleFixedRuleText"></span></span>
+            </div>
+            <form id="shortNameForm" class="rule-form" novalidate>
+              <div class="rule-fields-grid">
+                <div class="rule-field">
+                  <label for="shortSku">商品 SKU</label>
+                  <input id="shortSku" placeholder="输入完整 SKU 编码" autocomplete="off" required>
+                </div>
+                <div class="rule-field">
+                  <label for="shortName">中文短名称</label>
+                  <input id="shortName" placeholder="如：Xiaomi Tag 智能追踪器" autocomplete="off" required>
+                </div>
+              </div>
+              <div class="rule-form-actions">
+                <button class="primary" type="submit">
+                  <morph-icon icon="plus" size="14" stroke-width="2"></morph-icon>
+                  <span>保存规则</span>
+                </button>
+                <button id="shortReset" type="button">重置</button>
+              </div>
+            </form>
+            <form id="shortSearchForm" class="rule-search">
+              <div class="rule-search-wrap">
+                <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+                <input id="shortSearch" type="search" placeholder="搜索 SKU 或中文短名称…" aria-label="搜索短名称规则">
+              </div>
+              <button class="primary" type="submit">
+                <morph-icon icon="search" size="14" stroke-width="2"></morph-icon>
+                <span>查询</span>
+              </button>
+              <button id="shortSearchClear" type="button">清除</button>
+            </form>
+            <div class="table-wrap">
+              <table class="rule-table">
+                <thead>
+                  <tr>
+                    <th>SKU</th>
+                    <th>中文短名称</th>
+                    <th class="text-right">更新时间</th>
+                    <th class="text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="shortRuleRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel rule-panel merge-rule-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="gitMerge" size="18" stroke-width="1.8"></morph-icon> SKU / 货号全局合并</h2>
+                <span class="muted">主货号作为全局聚合的唯一分析身份</span>
+              </div>
+            </div>
+            <form id="mergeForm" class="merge-form" novalidate>
+              <input id="mergeId" type="hidden">
+              <div class="merge-fields-row">
+                <div class="rule-field">
+                  <label for="primaryOffer">主货号 (Primary Offer ID)</label>
+                  <input id="primaryOffer" placeholder="输入主货号" autocomplete="off" required>
+                </div>
+                <div class="rule-field">
+                  <label for="primarySku">名称解析 SKU (可选)</label>
+                  <input id="primarySku" placeholder="仅主货号对应多 SKU 时需填写" autocomplete="off">
+                </div>
+              </div>
+              <div class="merge-members-section">
+                <div class="merge-members-head">
+                  <strong>关联成员列表</strong>
+                  <button id="addMergeMember" type="button" class="subtle-btn">
+                    <morph-icon icon="plus" size="13" stroke-width="2.2"></morph-icon>
+                    <span>增加成员</span>
+                  </button>
+                </div>
+                <div id="mergeMembers" class="merge-members"></div>
+              </div>
+              <div class="rule-actions">
+                <button class="primary" type="submit">
+                  <morph-icon icon="check" size="14" stroke-width="2"></morph-icon>
+                  <span>保存合并关系</span>
+                </button>
+                <button id="mergeReset" type="button">重置</button>
+              </div>
+            </form>
+            <div id="mergeRuleList" class="merge-rule-list"></div>
+          </section>
+        </div>
+        <section id="ruleConflicts" class="panel rule-conflicts hidden"></section>
+      </section>
     </main>
   </div>
   <dialog id="confirmModal" class="confirm-modal" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
@@ -528,6 +1328,6 @@
       </div>
     </div>
   </dialog>
-  <script src="/static/morphicons.js?v=20260825-20"></script>
-  <script src="/static/app.js?v=20260825-20"></script>
+  <script src="/static/morphicons.js?v=20260825-36"></script>
+  <script src="/static/app.js?v=20260825-36"></script>
 </body></html>

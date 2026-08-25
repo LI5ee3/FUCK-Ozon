@@ -158,3 +158,21 @@ iconography:
 ### 4. Tactile Physical Motion
 - Touch feedback via immediate `scale(0.95)` press physics.
 - Seamless state morphing via `<morph-icon>` powered by Apple spring kinematics.
+
+### 5. Unified Metric Card Component Anatomy & Grid Standards
+All dashboard summary cards must strictly adhere to the single standard `.metric` archetype:
+- **Card Container (`.metric`)**: `18px` border-radius, 1px subtle matching border, soft `color-mix` pastel background tint.
+- **Card Head (`.metric-head`)**:
+  - Left: Title label (`span` / `.metric-title`) + optional rate badge (`.analysis-rate-badge`).
+  - Top-Right: Solid pastel icon badge (`.metric-icon-badge`, `32x32px`, `8px` radius).
+- **Metric Value (`strong`)**: `28px`, weight 750, letter-spacing `-0.025em`, `tabular-nums`.
+- **Metric Note (`small`)**: `12px`, muted secondary text.
+- **Macaron 4-Tone Palette**:
+  - `blue`: Core operational metrics (GMV, orders, inventory).
+  - `peach`: Danger, cancellation, high-risk items.
+  - `mint`: Safe, fulfillment, successful items.
+  - `lavender`: Time, pending, dispute, and rate metrics.
+- **Grid Layout Standards**:
+  - **5-Column Grid (`repeat(5, 1fr)`)**: Overview (`.cards.overview-cards`), Stock & Replenishment (`.stock-summary`).
+  - **4-Column Grid (`repeat(4, 1fr)`)**: Cancellation Analysis (`.risk-summary`), Timeliness (`.timeliness-summary`), Rules (`.rule-summary`).
+  - **2-Column Grid (`repeat(2, 1fr)`)**: Returns & Disputes (`.return-summary`).

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 import hashlib
 import hmac
 import json
@@ -55,12 +56,8 @@ def _trim_sync_runs(db, keep=10, scheduled_slot=None, today=None):
       AND NOT (run_source='auto' AND substr(COALESCE(scheduled_slot,''),1,10)=?)""", (keep, today))
 
 
-app = FastAPI(title="oPanel", docs_url=None, redoc_url=None)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
-
-
-@app.on_event("startup")
-def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     migrate_env_password(ROOT / ".env")
     init_db()
     with transaction() as db:
@@ -69,12 +66,13 @@ def startup():
         _trim_sync_runs(db)
     start_scheduler()
     _start_auto_sync_scheduler()
-
-
-@app.on_event("shutdown")
-def shutdown():
+    yield
     stop_scheduler()
     _stop_auto_sync_scheduler()
+
+
+app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def _secret():
@@ -862,37 +860,6 @@ def timeliness(shop_id: int = 0, page: int = 1, size: int = 30, q: str = "",
             "groups": groups, "data_through": through}
 
 
-@app.get("/api/complaints")
-def complaints(shop_id: int = 0, q: str = "", status: str = "", page: int = 1, size: int = 50,
-               date_from: Annotated[str | None, Query(alias="from")] = None,
-               date_to: Annotated[str | None, Query(alias="to")] = None):
-    if shop_id not in (0, 1, 2):
-        raise HTTPException(400, "未知店铺")
-    if status not in {"", "open", "closed", "unset"}:
-        raise HTTPException(400, "完结状态无效")
-    _, _, utc_start, utc_end = _overview_range(date_from, date_to)
-    where, args = ["c.complaint_at>=?", "c.complaint_at<?"], [utc_start, utc_end]
-    if shop_id in (1, 2): where.append("c.shop_id=?"); args.append(shop_id)
-    if q.strip():
-        where.append("(c.posting_number LIKE ? OR c.complaint_number LIKE ?)")
-        args += [f"%{q.strip()}%", f"%{q.strip()}%"]
-    if status in {"open", "closed", "unset"}:
-        where.append("c.resolved IS " + {"open": "0", "closed": "1", "unset": "NULL"}[status])
-    page, size = _paging(page, size)
-    sql = " AND ".join(where)
-    with connect() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM complaints c WHERE {sql}", args).fetchone()[0]
-        items = [dict(row) for row in db.execute(f"""SELECT c.*,s.name shop_name,s.settlement_currency
-          FROM complaints c JOIN shops s ON s.id=c.shop_id WHERE {sql}
-          ORDER BY c.complaint_at DESC LIMIT ? OFFSET ?""", args + [size, (page-1)*size])]
-        items = [_with_compensation_conversion(db, row) for row in items]
-        through = db.execute(f"SELECT MAX(c.complaint_at) FROM complaints c WHERE {sql}", args).fetchone()[0]
-    return {"items": items, "total": total, "page": page, "size": size,
-            "data_through": through}
-
-
-@app.post("/api/complaints")
-@app.put("/api/complaints")
 @app.post("/api/exception-complaints/shipping")
 @app.put("/api/exception-complaints/shipping")
 async def save_complaint(request: Request):
@@ -1525,18 +1492,6 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             "formula": "预计可售天数=当前可售库存÷(近30天有效货件数÷30)；无销量时无法估算"}
 
 
-@app.get("/api/stock/history")
-def stock_history(shop_id: int = 0, page: int = 1, size: int = 50):
-    where, args = _record_clause(shop_id, "h")
-    where += " AND h.source IN ('api','API快照')" if where else " WHERE h.source IN ('api','API快照')"
-    page, size = _paging(page, size)
-    with connect() as db:
-        total = db.execute(f"SELECT COUNT(*) FROM stock_history h{where}", args).fetchone()[0]
-        items = [dict(row) for row in db.execute(f"""SELECT h.shop_id,s.name shop_name,h.source,
-          h.warehouse_id,h.sku,h.present,h.reserved,h.occurred_at FROM stock_history h
-          JOIN shops s ON s.id=h.shop_id{where} ORDER BY h.occurred_at DESC LIMIT ? OFFSET ?""",
-          args + [size, (page-1)*size])]
-    return {"items": items, "total": total, "page": page, "size": size}
 
 
 @app.post("/api/import/{kind}")

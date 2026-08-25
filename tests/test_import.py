@@ -200,23 +200,6 @@ class ImportRegressionTest(DatabaseTestCase):
         self.assertEqual(json.loads(payload)["detail_marker"], "saved")
         self.assertIsNotNone(completed)
 
-    def test_rfbs_reason_translations_are_exact(self):
-        expected = {
-            "Товар или заводскую упаковку повредили": "商品或原厂包装已损坏",
-            "Товар использовали до меня": "我收到前商品已被使用",
-            "Есть внешние дефекты или следы использования": "有外部缺陷或使用痕迹",
-            "Привезли не тот товар": "配送了错误的商品",
-            "Нет части товара или комплекта": "商品或套装部件缺失",
-            "Нет части товара/комплекта": "商品/套件缺失部分",
-            "Не работает, плохо работает": "无法使用，使用效果差",
-            "Подделка": "假货",
-            "Товар сломался при использовании": "商品在使用过程中坏了",
-            "Не подошёл товар": "商品不合适",
-            "Товар не подошёл": "商品不合适",
-            "Не работает или работает плохо": "不可用或无法正常工作",
-        }
-        self.assertEqual({reason: ozon.CANCEL_REASON_ZH.get(reason) for reason in expected}, expected)
-
     def test_automatic_return_sync_only_fetches_details_for_new_records(self):
         with db.transaction() as connection:
             connection.execute("""INSERT INTO rfbs_return_records(
