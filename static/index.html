@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/static/macaron.css?v=20260825-01">
+  <title>FUCK Ozon</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+  <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
+  <link rel="stylesheet" href="/static/macaron.css?v=20260825-20">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -54,7 +56,12 @@
       </header>
 
       <section id="overview" class="page active">
-        <div class="cards">
+        <div class="cards overview-cards">
+          <article class="metric azure">
+            <div class="metric-head"><span>成交金额 (GMV)</span><div class="metric-icon-badge"><morph-icon icon="shoppingBag" size="18" stroke-width="1.8"></morph-icon></div></div>
+            <strong id="totalGmv">¥0</strong>
+            <small id="gmvSub">有效订单总成交额</small>
+          </article>
           <article class="metric peach">
             <div class="metric-head"><span>有效订单数</span><div class="metric-icon-badge"><morph-icon icon="orders" size="18" stroke-width="1.8"></morph-icon></div></div>
             <strong id="totalOrders">0</strong>
@@ -68,12 +75,12 @@
           <article class="metric lavender">
             <div class="metric-head"><span>发货后取消订单</span><div class="metric-icon-badge"><morph-icon icon="alertTriangle" size="18" stroke-width="1.8"></morph-icon></div></div>
             <strong id="cancelOrders">0</strong>
-            <small>按订单数</small>
+            <small>产生物流成本后取消</small>
           </article>
           <article class="metric blue">
             <div class="metric-head"><span>发货后取消率</span><div class="metric-icon-badge"><morph-icon icon="percent" size="18" stroke-width="1.8"></morph-icon></div></div>
             <strong id="cancelRate">0%</strong>
-            <small>按有效货件数</small>
+            <small>按有效货件数折算</small>
           </article>
         </div>
         <div class="overview-dual-grid">
@@ -102,10 +109,11 @@
               </div>
             </div>
             <div id="channelGrid" class="channel-grid"></div>
+            <div id="channelInsights" class="trend-insights"></div>
           </div>
         </div>
         <div class="overview-analysis-grid">
-          <div class="panel">
+          <div class="panel timeliness-panel">
             <div class="panel-title">
               <div>
                 <h2><morph-icon icon="delivery" size="18" stroke-width="1.8"></morph-icon> 时效概览</h2>
@@ -113,8 +121,9 @@
               </div>
             </div>
             <div id="overviewTimeliness" class="overview-timing"></div>
+            <div id="timelinessInsights" class="trend-insights"></div>
           </div>
-          <div class="panel">
+          <div class="panel top-products-panel">
             <div class="panel-title">
               <div>
                 <h2><morph-icon icon="flame" size="18" stroke-width="1.8"></morph-icon> 热销商品 Top 5</h2>
@@ -122,6 +131,7 @@
               </div>
             </div>
             <div id="overviewTopProducts" class="overview-products"></div>
+            <div id="topProductsInsights" class="trend-insights"></div>
           </div>
         </div>
       </section>
@@ -140,10 +150,10 @@
                 <morph-icon id="channelPickerMorph" icon="chevronDown" size="16" spring="snappy" stroke-width="1.5"></morph-icon>
               </button>
               <div id="channelOptions" class="shop-options channel-options hidden" role="listbox" aria-label="渠道">
-                <button type="button" role="option" data-channel="" aria-selected="true">全部渠道</button>
-                <button type="button" role="option" data-channel="FBP" aria-selected="false">FBP</button>
-                <button type="button" role="option" data-channel="realFBS" aria-selected="false">realFBS</button>
-                <button type="button" role="option" data-channel="WHD" aria-selected="false">WHD</button>
+                <button type="button" role="option" data-channel="" aria-selected="true"><span class="option-main"><morph-icon icon="layers" size="14" stroke-width="1.8"></morph-icon><span class="option-label">全部渠道</span></span><morph-icon icon="check" size="13" stroke-width="2.2" class="option-check"></morph-icon></button>
+                <button type="button" role="option" data-channel="FBP" aria-selected="false"><span class="option-main"><morph-icon icon="box" size="14" stroke-width="1.8"></morph-icon><span class="option-label">FBP</span></span><morph-icon icon="check" size="13" stroke-width="2.2" class="option-check"></morph-icon></button>
+                <button type="button" role="option" data-channel="realFBS" aria-selected="false"><span class="option-main"><morph-icon icon="truck" size="14" stroke-width="1.8"></morph-icon><span class="option-label">realFBS</span></span><morph-icon icon="check" size="13" stroke-width="2.2" class="option-check"></morph-icon></button>
+                <button type="button" role="option" data-channel="WHD" aria-selected="false"><span class="option-main"><morph-icon icon="store" size="14" stroke-width="1.8"></morph-icon><span class="option-label">WHD</span></span><morph-icon icon="check" size="13" stroke-width="2.2" class="option-check"></morph-icon></button>
               </div>
             </div>
             <button id="searchButton" class="primary" type="submit">
@@ -518,6 +528,6 @@
       </div>
     </div>
   </dialog>
-  <script src="/static/morphicons.js?v=20260825-01"></script>
-  <script src="/static/app.js?v=20260825-01"></script>
+  <script src="/static/morphicons.js?v=20260825-20"></script>
+  <script src="/static/app.js?v=20260825-20"></script>
 </body></html>

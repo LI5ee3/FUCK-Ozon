@@ -26,7 +26,7 @@ function createReturnSelect(id){
   const select=$(`#${id}`),root=select.closest("[data-return-select],[data-import-select]"),button=root.querySelector("[data-select-button]"),label=root.querySelector("[data-select-label]"),options=root.querySelector("[data-select-options]"),morph=button.querySelector("morph-icon");
   options.id=`${id}Options`;button.setAttribute("aria-controls",options.id);
   const close=()=>{options.classList.add("hidden");button.setAttribute("aria-expanded","false");morph?.morphTo("chevronDown")};
-  const render=()=>{const selected=select.options[select.selectedIndex];label.textContent=selected?.textContent||"请选择";options.innerHTML=[...select.options].map(option=>`<button type="button" role="option" tabindex="-1" data-select-value="${esc(option.value)}" aria-selected="${option.selected}">${esc(option.textContent)}</button>`).join("")};
+  const render=()=>{const selected=select.options[select.selectedIndex];label.textContent=selected?.textContent||"请选择";options.innerHTML=[...select.options].map(option=>`<button type="button" role="option" tabindex="-1" data-select-value="${esc(option.value)}" aria-selected="${option.selected}"><span class="option-label">${esc(option.textContent)}</span><morph-icon icon="check" size="12" stroke-width="2.2" class="option-check"></morph-icon></button>`).join("")};
   const set=value=>{select.value=value==null?"":String(value);render()};
   const open=()=>{options.classList.remove("hidden");button.setAttribute("aria-expanded","true");morph?.morphTo("chevronUp")};
   button.onclick=()=>{options.classList.contains("hidden")?open():close()};
@@ -37,23 +37,26 @@ function createReturnSelect(id){
   render();return {root,close,render,set};
 }
 const setReturnSelect=(id,value)=>returnSelects[id]?.set(value);
-const gmvText = (gmv) => gmv.missing_rate_orders
-  ? `可折算GMV：¥${num(gmv.amount)}｜缺少汇率：${num(gmv.missing_rate_orders,0)}单`
-  : `GMV：${gmv.currency==="CNY"?"¥":gmv.currency==="USD"?"$":""}${num(gmv.amount)} ${gmv.currency}`;
+const gmvText = (gmv) => {
+  if (!gmv) return "GMV：—";
+  if (gmv.missing_rate_orders) return `可折算GMV：¥${num(gmv.amount)}｜缺少汇率：${num(gmv.missing_rate_orders,0)}单`;
+  const sym = gmv.currency === "CNY" ? "¥" : gmv.currency === "USD" ? "$" : "";
+  return `GMV：${sym ? `${sym}${num(gmv.amount)}` : `${num(gmv.amount)} ${gmv.currency}`}`;
+};
 function trendTip(bucket){
   const isOngoing = bucket.orders === 0 && bucket.from === isoDate(new Date());
   const dateBase = bucket.from === bucket.to ? bucket.from : `${bucket.from} 至 ${bucket.to}`;
   const dateStr = esc(dateBase) + (isOngoing ? ` <span class="ozon-tip-badge">进行中</span>` : ``);
   const channels=[
-    {key:"FBP",name:"FBP",color:"#005BFF"},
-    {key:"realFBS",name:"realFBS",color:"#00BA68"},
-    {key:"WHD",name:"WHD",color:"#FF9F0A"}
+    {key:"FBP",name:"FBP",color:"#0066CC"},
+    {key:"realFBS",name:"realFBS",color:"#1B8255"},
+    {key:"WHD",name:"WHD",color:"#B86614"}
   ];
   return `
     <div class="ozon-tip-head">${dateStr}</div>
     <div class="ozon-tip-main">
       <div class="ozon-tip-main-row">
-        <span class="ozon-tip-dot" style="background:#005BFF"></span>
+        <span class="ozon-tip-dot" style="background:var(--primary,#0066CC)"></span>
         <span class="ozon-tip-main-title">已订购 (有效订单)</span>
         <span class="ozon-tip-main-num"><b>${num(bucket.orders,0)}</b> 单</span>
       </div>
@@ -200,7 +203,7 @@ function renderOrderTrend(data){
     const scale=svgRect.width/width;
     const clientX=svgRect.left+pt.x*scale;
     const cursorX=clientX-stage.left;
-    const tipWidth=240;
+    const tipWidth=252;
 
     let targetLeft;
     if(cursorX<=stage.width*0.55){
@@ -300,24 +303,200 @@ function renderOrderTrend(data){
 }
 function renderOverviewPanels(data){
   const totalOrders=Math.max(1,data.totals.orders||1);
+  const totalPieces=data.totals.pieces||0;
   const channels=data.channels||[];
+
   $("#channelGrid").innerHTML=channels.map(r=>{
     const percent=Math.min(100,Math.round((r.orders/totalOrders)*100));
     const channelClass=r.channel==="FBP"?"channel-fbp":r.channel==="realFBS"?"channel-fbs":"channel-whd";
-    return `<div class="channel-card"><div class="channel-card-top"><div class="channel-card-brand">${channelTag(r.channel)}<span class="channel-share-pct">订单占比 <b>${percent}</b>%</span></div><div class="channel-track-bar"><div class="channel-track-fill ${channelClass}" style="width:${percent}%"></div></div></div><div class="channel-card-metrics"><div class="channel-metric-cell"><span class="cell-label">有效订单</span><strong class="cell-val">${num(r.orders,0)}<small>单</small></strong></div><div class="channel-metric-cell"><span class="cell-label">有效货件</span><strong class="cell-val">${num(r.pieces,0)}<small>件</small></strong></div><div class="channel-metric-cell risk"><span class="cell-label">发货后取消</span><strong class="cell-val ${r.cancelled_pieces>0?'has-risk':''}">${num(r.cancelled_pieces||0,0)}<small>件</small></strong></div></div></div>`;
-  }).join("")||'<div class="overview-empty">暂无渠道数据</div>';
+    const channelCancelRate=r.pieces>0?(r.cancelled_pieces||0)/r.pieces:0;
+    return `
+      <div class="channel-card">
+        <div class="channel-card-top">
+          <div class="channel-card-brand">
+            ${channelTag(r.channel)}
+            <span class="channel-share-pct">订单占比 <b>${percent}</b>%</span>
+          </div>
+          <div class="channel-track-bar">
+            <div class="channel-track-fill ${channelClass}" style="width:${percent}%"></div>
+          </div>
+        </div>
+        <div class="channel-card-metrics">
+          <div class="channel-metric-cell">
+            <span class="cell-label">有效订单</span>
+            <strong class="cell-val">${num(r.orders,0)}<small>单</small></strong>
+          </div>
+          <div class="channel-metric-cell">
+            <span class="cell-label">有效货件</span>
+            <strong class="cell-val">${num(r.pieces,0)}<small>件</small></strong>
+          </div>
+          <div class="channel-metric-cell risk">
+            <span class="cell-label">发货后取消</span>
+            <strong class="cell-val ${r.cancelled_pieces>0?'has-risk':''}">${num(r.cancelled_pieces||0,0)}<small>件</small></strong>
+          </div>
+          <div class="channel-metric-cell risk">
+            <span class="cell-label">发货取消率</span>
+            <strong class="cell-val ${channelCancelRate>0.05?'has-risk':''}">${pct(channelCancelRate)}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("")||'<div class="overview-empty"><morph-icon icon="box" size="20" stroke-width="1.8"></morph-icon><span>暂无渠道数据</span></div>';
+
+  const channelInsightsEl=$("#channelInsights");
+  if(channelInsightsEl){
+    const topChannel=[...channels].sort((a,b)=>(b.orders||0)-(a.orders||0))[0]||{channel:"—",orders:0,pieces:0};
+    const topPercent=Math.min(100,Math.round(((topChannel.orders||0)/totalOrders)*100));
+    const itemRatio=data.totals.orders>0?(totalPieces/data.totals.orders).toFixed(2):"1.00";
+    const activeChannels=channels.filter(c=>(c.orders||0)>0);
+    const bestChannel=activeChannels.length>0
+      ?[...activeChannels].sort((a,b)=>((a.cancelled_pieces||0)/(a.pieces||1))-((b.cancelled_pieces||0)/(b.pieces||1)))[0]
+      :null;
+    const bestCancelRate=bestChannel&&bestChannel.pieces>0?(bestChannel.cancelled_pieces||0)/bestChannel.pieces:0;
+
+    channelInsightsEl.innerHTML=`
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="award" size="14" stroke-width="1.8"></morph-icon>
+          <span>主力履约渠道</span>
+        </div>
+        <strong>${esc(topChannel.channel)}<small>占比 ${topPercent}%</small></strong>
+        <span class="trend-insight-foot">${num(topChannel.orders,0)}单 · ${num(topChannel.pieces,0)}件</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="package" size="14" stroke-width="1.8"></morph-icon>
+          <span>综合货单比</span>
+        </div>
+        <strong>${itemRatio}<small>件/单</small></strong>
+        <span class="trend-insight-foot">共 ${num(totalPieces,0)}件 · ${num(data.totals.orders,0)}单</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="shieldCheck" size="14" stroke-width="1.8"></morph-icon>
+          <span>最优履约质量</span>
+        </div>
+        <strong>${bestChannel?esc(bestChannel.channel):"—"}<small>取消 ${pct(bestCancelRate)}</small></strong>
+        <span class="trend-insight-foot ${bestCancelRate===0?'trend-up':''}">发货后取消 ${num(bestChannel?bestChannel.cancelled_pieces:0,0)}件</span>
+      </div>
+    `;
+  }
 
   $("#overviewTimeliness").innerHTML=data.timeliness.map(row=>{
-    const ship=row.ship_sample_insufficient?"数据不足":hours(row.p50_ship_hours);
-    const delivery=row.delivery_sample_insufficient?"数据不足":hours(row.p50_delivery_hours);
-    const p90=row.delivery_sample_insufficient?"数据不足":hours(row.p90_delivery_hours);
-    return `<div class="overview-timing-card"><div class="timing-card-header">${channelTag(row.channel)}</div><div class="timing-chips"><div class="timing-chip"><span class="chip-label">发货 P50</span><strong class="chip-val">${ship}</strong></div><div class="timing-chip"><span class="chip-label">配送 P50</span><strong class="chip-val">${delivery}</strong></div><div class="timing-chip"><span class="chip-label">配送 P90</span><strong class="chip-val">${p90}</strong></div></div></div>`;
-  }).join("")||'<div class="overview-empty">暂无时效数据</div>';
+    const ship=row.ship_sample_insufficient
+      ? '<span class="cell-insufficient">数据不足</span>'
+      : `${num(row.p50_ship_hours,1)}<small>小时 / ${(row.p50_ship_hours/24).toFixed(1)}天</small>`;
+    const delivery=row.delivery_sample_insufficient
+      ? '<span class="cell-insufficient">数据不足</span>'
+      : `${num(row.p50_delivery_hours,1)}<small>小时 / ${(row.p50_delivery_hours/24).toFixed(1)}天</small>`;
+    const p90=row.delivery_sample_insufficient
+      ? '<span class="cell-insufficient">数据不足</span>'
+      : `${num(row.p90_delivery_hours,1)}<small>小时 / ${(row.p90_delivery_hours/24).toFixed(1)}天</small>`;
 
-  $("#overviewTopProducts").innerHTML=data.top_products.map((row,index)=>{
+    return `
+      <div class="overview-timing-card">
+        <div class="timing-card-top">
+          <div class="timing-card-brand">
+            ${channelTag(row.channel)}
+            <span class="timing-sample-note">出库样本 <b>${num(row.ship_samples,0)}</b> 单 · 交付 <b>${num(row.delivery_samples,0)}</b> 单</span>
+          </div>
+        </div>
+        <div class="timing-card-metrics">
+          <div class="channel-metric-cell">
+            <span class="cell-label">发货 P50</span>
+            <strong class="cell-val">${ship}</strong>
+          </div>
+          <div class="channel-metric-cell">
+            <span class="cell-label">配送 P50</span>
+            <strong class="cell-val">${delivery}</strong>
+          </div>
+          <div class="channel-metric-cell">
+            <span class="cell-label">配送 P90</span>
+            <strong class="cell-val">${p90}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("")||'<div class="overview-empty"><morph-icon icon="clock" size="20" stroke-width="1.8"></morph-icon><span>暂无时效数据</span></div>';
+
+  const timelinessInsightsEl=$("#timelinessInsights");
+  if(timelinessInsightsEl){
+    const validShip=(data.timeliness||[]).filter(r=>!r.ship_sample_insufficient&&r.p50_ship_hours!==null);
+    const fastestShip=[...validShip].sort((a,b)=>a.p50_ship_hours-b.p50_ship_hours)[0];
+    const totalShipSamples=(data.timeliness||[]).reduce((sum,r)=>sum+(r.ship_samples||0),0);
+    const totalDeliverySamples=(data.timeliness||[]).reduce((sum,r)=>sum+(r.delivery_samples||0),0);
+
+    timelinessInsightsEl.innerHTML=`
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="bolt" size="14" stroke-width="1.8"></morph-icon>
+          <span>发货最快渠道</span>
+        </div>
+        <strong>${fastestShip?esc(fastestShip.channel):"—"}<small>${fastestShip?hours(fastestShip.p50_ship_hours):"样本积累中"}</small></strong>
+        <span class="trend-insight-foot">${fastestShip?`约 ${(fastestShip.p50_ship_hours/24).toFixed(1)} 天内完成出库`:"各渠道正在积累发货数据"}</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="clock" size="14" stroke-width="1.8"></morph-icon>
+          <span>配送时效追踪</span>
+        </div>
+        <strong>${totalDeliverySamples>0?`${num(totalDeliverySamples,0)}单`:"P50 / P90"}<small>${totalDeliverySamples>0?"已交付样本":"时效监控"}</small></strong>
+        <span class="trend-insight-foot">${totalDeliverySamples>0?"持续监控末端签收周期":"监控全链路最后一公里交付"}</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="checkCircle" size="14" stroke-width="1.8"></morph-icon>
+          <span>履约时效样本</span>
+        </div>
+        <strong>${num(totalShipSamples,0)}<small>单有效样本</small></strong>
+        <span class="trend-insight-foot">已纳入 P50 / P90 建模</span>
+      </div>
+    `;
+  }
+
+  const topProducts=data.top_products||[];
+  const maxPieces=Math.max(1,...topProducts.map(p=>p.pieces||0));
+  $("#overviewTopProducts").innerHTML=topProducts.map((row,index)=>{
     const rankClass=index===0?"rank-gold":index===1?"rank-silver":index===2?"rank-bronze":"rank-normal";
-    return `<div class="overview-product-item"><span class="overview-rank ${rankClass}">${index+1}</span><div class="product-info"><strong class="product-name" title="${esc(row.name)}">${esc(row.name)}</strong></div><div class="product-stats"><span class="stat-badge pieces"><b>${num(row.pieces,0)}</b>件</span><span class="stat-badge orders">${num(row.orders,0)}单</span><span class="stat-badge cancel ${row.cancel_rate>0.05?'is-warning':''}">取消 ${pct(row.cancel_rate)}</span></div></div>`;
-  }).join("")||'<div class="overview-empty">所选范围暂无商品数据</div>';
+    const barWidth=Math.max(4,Math.round((row.pieces/maxPieces)*100));
+    return `<div class="overview-product-item"><div class="product-item-left"><span class="overview-rank ${rankClass}">${index+1}</span><div class="product-info"><strong class="product-name" title="${esc(row.name)}">${esc(row.name)}</strong><div class="product-progress-track"><div class="product-progress-fill" style="width:${barWidth}%"></div></div></div></div><div class="product-stats"><span class="stat-badge pieces"><b>${num(row.pieces,0)}</b>件</span><span class="stat-badge orders">${num(row.orders,0)}单</span><span class="stat-badge cancel ${row.cancel_rate>0.05?'is-warning':''}">取消 ${pct(row.cancel_rate)}</span></div></div>`;
+  }).join("")||'<div class="overview-empty"><morph-icon icon="tag" size="20" stroke-width="1.8"></morph-icon><span>所选范围暂无商品数据</span></div>';
+
+  const topProductsInsightsEl=$("#topProductsInsights");
+  if(topProductsInsightsEl){
+    const top5Pieces=topProducts.reduce((sum,p)=>sum+(p.pieces||0),0);
+    const top1=topProducts[0]||{name:"—",pieces:0,orders:0};
+    const top5Share=totalPieces>0?Math.min(100,Math.round((top5Pieces/totalPieces)*100)):0;
+    const top5CancelPieces=topProducts.reduce((sum,p)=>sum+Math.round((p.pieces||0)*(p.cancel_rate||0)),0);
+    const top5CancelRate=top5Pieces>0?top5CancelPieces/top5Pieces:0;
+
+    topProductsInsightsEl.innerHTML=`
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="flame" size="14" stroke-width="1.8"></morph-icon>
+          <span>Top 5 销量集中度</span>
+        </div>
+        <strong>${num(top5Pieces,0)}件<small>占比 ${top5Share}%</small></strong>
+        <span class="trend-insight-foot">前 5 款核心爆品合计销量</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="award" size="14" stroke-width="1.8"></morph-icon>
+          <span>榜首爆品销量</span>
+        </div>
+        <strong>${num(top1.pieces,0)}件<small>${num(top1.orders,0)}单</small></strong>
+        <span class="trend-insight-foot">领跑全店单品销售表现</span>
+      </div>
+      <div class="trend-insight-card">
+        <div class="trend-insight-head">
+          <morph-icon icon="shieldCheck" size="14" stroke-width="1.8"></morph-icon>
+          <span>Top 5 综合取消率</span>
+        </div>
+        <strong>${pct(top5CancelRate)}<small>${top5CancelRate<=0.05?"履约健康":"需关注"}</small></strong>
+        <span class="trend-insight-foot ${top5CancelRate<=0.05?'trend-up':'trend-down'}">${top5CancelRate<=0.05?'爆品退订率处于健康水平':'部分爆品取消率偏高'}</span>
+      </div>
+    `;
+  }
 }
 
 function summary(id, cards) {
@@ -399,7 +578,7 @@ async function loadShops() {
   const options = state.shops.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("");
   const importShop=$("#importShop").value;
   const shops=[{id:0,name:"两店铺合并"},...state.shops];
-  $("#shopOptions").innerHTML=shops.map(s=>`<button type="button" role="option" data-shop="${s.id}" aria-selected="${s.id===state.shop}">${esc(s.name)}</button>`).join("");
+  $("#shopOptions").innerHTML=shops.map(s=>`<button type="button" role="option" data-shop="${s.id}" data-name="${esc(s.name)}" aria-selected="${s.id===state.shop}"><span class="option-main"><morph-icon icon="${s.id===0?'gitMerge':'store'}" size="13" stroke-width="1.8"></morph-icon><span class="option-label">${esc(s.name)}</span></span><morph-icon icon="check" size="12" stroke-width="2.2" class="option-check"></morph-icon></button>`).join("");
   $("#shopPickerValue").textContent=shops.find(s=>s.id===state.shop)?.name||"两店铺合并";
   $("#importShop").innerHTML = `<option value="">请选择</option>${options}`;
   $("#importShop").value = importShop;
@@ -419,8 +598,26 @@ async function loadOverview() {
   const data = await api(`/api/summary?${query}`);
   if (reqId !== overviewReqId) return;
   const t = data.totals;
-  $("#totalOrders").textContent=t.orders; $("#totalPieces").textContent=t.pieces;
-  $("#cancelOrders").textContent=t.cancelled_orders; $("#cancelRate").textContent=pct(t.cancel_rate);
+  const gmv = data.gmv;
+  const gmvEl = $("#totalGmv");
+  if (gmvEl && gmv) {
+    const symbol = gmv.currency === "CNY" ? "¥" : gmv.currency === "USD" ? "$" : "";
+    gmvEl.textContent = symbol ? `${symbol}${num(gmv.amount)}` : `${num(gmv.amount)} ${gmv.currency}`;
+    const gmvSub = $("#gmvSub");
+    if (gmvSub) {
+      gmvSub.textContent = gmv.missing_rate_orders
+        ? `可折算GMV · 缺汇率 ${num(gmv.missing_rate_orders, 0)} 单`
+        : "有效订单总成交额";
+    }
+  }
+  $("#totalOrders").textContent=num(t.orders,0);
+  $("#totalPieces").textContent=num(t.pieces,0);
+  $("#cancelOrders").textContent=num(t.cancelled_orders,0);
+  const cancelRateEl = $("#cancelRate");
+  if (cancelRateEl) {
+    cancelRateEl.textContent=pct(t.cancel_rate);
+    cancelRateEl.classList.toggle("is-warning", t.cancel_rate > 0.05);
+  }
   renderDataThrough(data.data_through);
   renderOverviewPanels(data);
 }
@@ -553,7 +750,7 @@ async function loadOrders() {
                   <span>实际签收时间</span>
                 </div>
                 <strong>${bj(o.delivered_at)}</strong>
-                <small class="milestone-note">${deliveryDur ? `配送耗时 ${hours(deliveryDur)}` : (o.delivered_at ? "已签收" : o.status_raw === "已取消" ? "订单已取消" : "配送中")}</small>
+                <small class="milestone-note">${deliveryDur ? `配送耗时 ${hours(deliveryDur)}` : (o.delivered_at ? "已签收" : o.status_raw === "已取消" ? "订单已取消" : o.shipped_at ? "配送中" : "待发货")}</small>
               </div>
             </div>
 
@@ -609,6 +806,7 @@ async function loadOrders() {
   }
 }
 async function loadRisk() {
+  currentExpandedReason = null;
   const query = new URLSearchParams({shop_id: state.shop, from: riskRange.start, to: riskRange.end});
   $("#riskRows").innerHTML = '<tr><td colspan="5" class="risk-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>风险数据加载中…</span></td></tr>';
   $("#reasonRows").innerHTML = '<tr><td colspan="5" class="risk-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>取消原因加载中…</span></td></tr>';
@@ -671,7 +869,7 @@ async function loadRisk() {
         ${reasonStatCell("realFBS", r.channels.realFBS)}
         ${reasonStatCell("WHD", r.channels.WHD)}
       </tr>
-    `).join("") || '<tr><td colspan="5" class="risk-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前范围内暂无发货后取消原因。</span></td></tr>';
+    `).join("") || '<tr><td colspan="5" class="risk-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前范围内暂无发货后取消原因</span></td></tr>';
   } catch (error) {
     $("#riskSummary").innerHTML = "";
     $("#riskRows").innerHTML = `<tr><td colspan="5" class="risk-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>${esc(error.message)}</span></td></tr>`;
@@ -846,7 +1044,7 @@ async function loadTimeliness() {
         ${timelinessStatCell("发货时效", r.ship_samples, r.ship_sample_insufficient, r.p50_ship_hours, r.avg_ship_hours, r.p90_ship_hours)}
         ${timelinessStatCell("配送时效", r.delivery_samples, r.delivery_sample_insufficient, r.p50_delivery_hours, r.avg_delivery_hours, r.p90_delivery_hours)}
       </tr>
-    `).join("") || '<tr><td colspan="4" class="timeliness-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前范围内暂无有效订单。</span></td></tr>';
+    `).join("") || '<tr><td colspan="4" class="timeliness-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前范围内暂无有效订单</span></td></tr>';
 
     $("#timelinessRows").innerHTML = data.items.map(r => `
       <tr>
@@ -866,7 +1064,7 @@ async function loadTimeliness() {
         ${timelinessDetailCell("发货时间／发货耗时", r.shipped_at, r.ship_hours, r.ship_anomaly, "ship")}
         ${timelinessDetailCell("签收时间／配送耗时", r.delivered_at, r.delivery_hours, r.delivery_anomaly, "delivery")}
       </tr>
-    `).join("") || '<tr><td colspan="5" class="timeliness-empty"><morph-icon icon="truck" size="20" stroke-width="1.5"></morph-icon><span>没有匹配的订单时效明细。</span></td></tr>';
+    `).join("") || '<tr><td colspan="5" class="timeliness-empty"><morph-icon icon="truck" size="20" stroke-width="1.5"></morph-icon><span>没有匹配的订单时效明细</span></td></tr>';
 
     pager("timeliness", data, loadTimeliness);
   } catch (error) {
@@ -1037,7 +1235,7 @@ async function loadReturns() {
           </div>
         </td>
       </tr>
-    `).join("") || '<tr><td colspan="5" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有取消记录。</span></td></tr>';
+    `).join("") || '<tr><td colspan="5" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有取消记录</span></td></tr>';
 
     pager("returns", data, loadReturns);
   } catch (error) {
@@ -1144,7 +1342,7 @@ async function loadRfbsReturns() {
           </div>
         </td>
       </tr>
-    `).join("") || '<tr><td colspan="6" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有退货申请。</span></td></tr>';
+    `).join("") || '<tr><td colspan="6" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有退货申请</span></td></tr>';
 
     pager("rfbsReturns", data, loadRfbsReturns);
   } catch (error) {
@@ -1174,7 +1372,7 @@ function activateExceptionTab(name,focus=false){
   document.querySelectorAll(".exception-tab").forEach(panel=>{const active=panel.id===`exception-${name}`;panel.classList.toggle("active",active);panel.hidden=!active});
 }
 async function loadShippingComplaints(){
-  $("#shippingComplaintRows").innerHTML='<tr><td colspan="5" class="return-empty">发货未收货投诉加载中…</td></tr>';
+  $("#shippingComplaintRows").innerHTML='<tr><td colspan="5" class="return-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>发货未收货投诉加载中…</span></td></tr>';
   const query=new URLSearchParams({shop_id:state.shop,page:state.pages.shippingComplaints,q:$("#shippingComplaintQuery").value,status:$("#shippingComplaintStatus").value,from:complaintRange.start,to:complaintRange.end});
   const data=await api(`/api/exception-complaints/shipping?${query}`);shippingComplaintItems=data.items;$("#shippingComplaintCount").textContent=num(data.total,0);
   $("#shippingComplaintRows").innerHTML=data.items.map((row,index)=>{const first=row.items[0]||{},quantity=row.items.reduce((sum,item)=>sum+Number(item.quantity||0),0),complaints=row.complaints||[];return `<tr>
@@ -1183,11 +1381,11 @@ async function loadShippingComplaints(){
     <td data-label="商品信息"><strong title="${esc(first.product_name)}">${esc(first.product_name||'产品名称暂无')}</strong><small>SKU ${esc(first.sku||'—')} · 货号 ${esc(first.offer_id||'—')}</small><small>${num(quantity,0)} 件${row.items.length>1?` · 另有 ${row.items.length-1} 种`:""}</small></td>
     <td data-label="金额／原因"><strong>${row.amount_original==null?'—':money(row.amount_original,row.amount_currency)}</strong><small title="${esc(row.cancel_reason_raw)}">${esc(row.cancel_reason||row.cancel_reason_raw||'原因暂缺')}</small></td>
     <td data-label="投诉记录／操作"><div class="exception-record-list">${complaints.map((c,i)=>`<button type="button" data-edit-shipping="${index}:${i}"><strong>${esc(c.complaint_number)}</strong><small>${c.resolved===1?'已完结':'处理中'} · ${bj(c.complaint_at)}</small></button>`).join("")||'<span>尚未创建投诉</span>'}</div><button type="button" class="rule-act-btn" data-new-shipping="${index}">新建投诉</button></td>
-  </tr>`}).join("")||'<tr><td colspan="5" class="return-empty">当前筛选范围内没有候选订单。</td></tr>';
+  </tr>`}).join("")||'<tr><td colspan="5" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有候选订单</span></td></tr>';
   pager("shippingComplaints",data,loadShippingComplaints);
 }
 async function loadReceivedDisputes(){
-  $("#receivedDisputeRows").innerHTML='<tr><td colspan="5" class="return-empty">已收货纠纷加载中…</td></tr>';
+  $("#receivedDisputeRows").innerHTML='<tr><td colspan="5" class="return-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>已收货纠纷加载中…</span></td></tr>';
   const query=new URLSearchParams({shop_id:state.shop,page:state.pages.receivedDisputes,q:$("#receivedDisputeQuery").value,status:$("#receivedDisputeStatus").value,from:complaintRange.start,to:complaintRange.end});
   const data=await api(`/api/exception-complaints/received?${query}`);receivedDisputeItems=data.items;$("#receivedDisputeCount").textContent=num(data.total,0);
   $("#receivedDisputeRows").innerHTML=data.items.map((row,index)=>`<tr>
@@ -1196,19 +1394,19 @@ async function loadReceivedDisputes(){
     <td data-label="金额／原因"><strong>${row.product_amount==null?'—':money(row.product_amount,row.product_currency)}</strong><small title="${esc(row.reason_raw)}">${esc(row.reason_name||row.reason_raw||'平台未提供原因')}</small>${row.buyer_comment_raw?`<details><summary>买家原文</summary><p lang="ru">${esc(row.buyer_comment_raw)}</p></details>`:""}</td>
     <td data-label="退款／退货"><strong>${esc(row.refund_type||'—')}</strong><small>退款金额 ${row.refund_amount==null?'—':money(row.refund_amount,row.refund_currency)}</small><small>${compensationLine(row,'platform_compensation','平台赔偿','RUB')}</small><small>${compensationLine(row,'logistics_compensation','物流商赔偿','CNY')}</small><small>退货方式 ${esc(row.return_method||'—')}</small></td>
     <td data-label="处理／操作"><strong>${esc(row.process_status||'—')}</strong><small>处理方式 ${esc(row.handling_method||'—')}</small><small>退件结果 ${esc(row.return_result||'—')}</small><button type="button" class="rule-act-btn" data-edit-received="${index}">编辑</button></td>
-  </tr>`).join("")||'<tr><td colspan="5" class="return-empty">当前筛选范围内没有退货申请。</td></tr>';
+  </tr>`).join("")||'<tr><td colspan="5" class="return-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内没有退货申请</span></td></tr>';
   pager("receivedDisputes",data,loadReceivedDisputes);
 }
 const loadExceptionComplaints=()=>Promise.all([loadShippingComplaints(),loadReceivedDisputes()]);
 async function loadStock() {
-  $("#stockRows").innerHTML='<tr><td colspan="8" class="stock-empty">库存数据加载中…</td></tr>';
+  $("#stockRows").innerHTML='<tr><td colspan="8" class="stock-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>库存数据加载中…</span></td></tr>';
   try {const query=new URLSearchParams({shop_id:state.shop,page:state.pages.stock,sku:$("#stockSku").value,offer_id:$("#stockOffer").value,product_name:$("#stockProduct").value,sort_by:state.stockSort.key,sort_order:state.stockSort.order}),data=await api(`/api/stock?${query}`);
   document.querySelectorAll("[data-stock-sort-column]").forEach(th=>{const active=th.dataset.stockSortColumn===state.stockSort.key;th.setAttribute("aria-sort",active?(state.stockSort.order==="asc"?"ascending":"descending"):"none");const morph=th.querySelector("morph-icon");if(morph)morph.morphTo(active?(state.stockSort.order==="asc"?"arrowUp":"arrowDown"):"sortUpDown","snappy")});
   summary("stock",[["在售 SKU",num(data.summary.active_skus,0)],["FBP可售库存",num(data.summary.fbp_present,0)],["FBP预留库存",num(data.summary.fbp_reserved,0)],["建议FBP备货SKU",num(data.summary.replenishment_skus,0),`预计到货前缺货 ${num(data.summary.shortage_skus,0)} 个`]]);
   $("#stockUpdated").textContent=`库存更新至 ${bj(data.data_through)}｜销量更新至 ${bj(data.sales_through)}`;
   const inventory=c=>`<strong>可售 ${num(c.present,0)}</strong><small>预留 ${num(c.reserved,0)}</small>`;
-  $("#stockRows").innerHTML=data.items.map(r=>{const risk=r.daily_sales<=0?"no-sales":r.days_available<30?"danger":r.days_available<90?"warning":"safe";return `<tr><td class="stock-product" data-label="商品信息"><strong title="${esc(r.display_name)}">${esc(r.display_name)}</strong>${r.short_name&&r.product_name_raw?`<small title="${esc(r.product_name_raw)}">原名 ${esc(r.product_name_raw)}</small>`:""}<small>${esc(r.shop_name)}</small><small>SKU <span class="copyable" data-copy="${esc(r.sku)}" title="点击复制 SKU">${esc(r.sku)}</span></small><small>货号 <span class="copyable" data-copy="${esc(r.offer_id)}" title="点击复制货号">${esc(r.offer_id||"暂无")}</span></small></td><td class="stock-channel-cell channel-fbp-bg" data-label="FBP">${inventory(r.channels[0])}</td><td class="stock-channel-cell channel-fbs-bg" data-label="realFBS">${inventory(r.channels[1])}</td><td class="stock-channel-cell channel-whd-bg" data-label="WHD">${inventory(r.channels[2])}</td><td class="stock-sales" data-label="有效销量"><span>7天 <b>${num(r.sales_7,0)}</b> 件</span><span>15天 <b>${num(r.sales_15,0)}</b> 件</span><span>30天 <b>${num(r.sales_30,0)}</b> 件</span></td><td class="stock-forecast" data-label="综合预测"><strong>${r.daily_sales?`${num(r.daily_sales,2)} 件/天`:"无法估算"}</strong><small>FBP可售 ${r.days_available==null?"—":`${num(r.days_available,1)} 天`}</small></td><td class="stock-decision ${risk}" data-label="FBP备货决策"><strong>${esc(r.risk_status)}</strong><small>建议备货 ${r.replenishment==null?"—":`${num(r.replenishment,0)} 件`}</small></td><td class="stock-times" data-label="数据更新"><span>库存 ${bj(r.observed_at)}</span><span>销量 ${bj(data.sales_through)}</span></td></tr>`}).join("") || '<tr><td colspan="8" class="stock-empty">当前筛选条件下没有库存或近期有效销量记录。</td></tr>';
-  pager("stock",data,loadStock)}catch(error){$("#stockRows").innerHTML=`<tr><td colspan="8" class="stock-empty error">${esc(error.message)}</td></tr>`;throw error}
+  $("#stockRows").innerHTML=data.items.map(r=>{const risk=r.daily_sales<=0?"no-sales":r.days_available<30?"danger":r.days_available<90?"warning":"safe";return `<tr><td class="stock-product" data-label="商品信息"><strong title="${esc(r.display_name)}">${esc(r.display_name)}</strong>${r.short_name&&r.product_name_raw?`<small title="${esc(r.product_name_raw)}">原名 ${esc(r.product_name_raw)}</small>`:""}<small>${esc(r.shop_name)}</small><small>SKU <span class="copyable" data-copy="${esc(r.sku)}" title="点击复制 SKU">${esc(r.sku)}</span></small><small>货号 <span class="copyable" data-copy="${esc(r.offer_id)}" title="点击复制货号">${esc(r.offer_id||"暂无")}</span></small></td><td class="stock-channel-cell channel-fbp-bg" data-label="FBP">${inventory(r.channels[0])}</td><td class="stock-channel-cell channel-fbs-bg" data-label="realFBS">${inventory(r.channels[1])}</td><td class="stock-channel-cell channel-whd-bg" data-label="WHD">${inventory(r.channels[2])}</td><td class="stock-sales" data-label="有效销量"><span>7天 <b>${num(r.sales_7,0)}</b> 件</span><span>15天 <b>${num(r.sales_15,0)}</b> 件</span><span>30天 <b>${num(r.sales_30,0)}</b> 件</span></td><td class="stock-forecast" data-label="综合预测"><strong>${r.daily_sales?`${num(r.daily_sales,2)} 件/天`:"无法估算"}</strong><small>FBP可售 ${r.days_available==null?"—":`${num(r.days_available,1)} 天`}</small></td><td class="stock-decision ${risk}" data-label="FBP备货决策"><strong>${esc(r.risk_status)}</strong><small>建议备货 ${r.replenishment==null?"—":`${num(r.replenishment,0)} 件`}</small></td><td class="stock-times" data-label="数据更新"><span>库存 ${bj(r.observed_at)}</span><span>销量 ${bj(data.sales_through)}</span></td></tr>`}).join("") || '<tr><td colspan="8" class="stock-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选条件下没有库存或近期有效销量记录</span></td></tr>';
+  pager("stock",data,loadStock)}catch(error){$("#stockRows").innerHTML=`<tr><td colspan="8" class="stock-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>${esc(error.message)}</span></td></tr>`;throw error}
 }
 async function loadImports(isPolling = false) {
   updateExportScope();
@@ -1219,7 +1417,7 @@ async function loadImports(isPolling = false) {
   }
   try {
     const rows = await api("/api/imports");
-    tbody.innerHTML = rows.map(r => `<tr><td class="import-filename" data-label="文件"><strong title="${esc(r.filename)}">${esc(r.filename)}</strong></td><td data-label="店铺／渠道"><strong>${esc(r.shop_name)}</strong>${channelTag(r.kind)}</td><td class="num" data-label="导入行数">${num(r.row_count, 0)} 行</td><td data-label="导入时间">${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="4" class="transfer-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>暂无导入记录。</span></td></tr>';
+    tbody.innerHTML = rows.map(r => `<tr><td class="import-filename" data-label="文件"><strong title="${esc(r.filename)}">${esc(r.filename)}</strong></td><td data-label="店铺／渠道"><strong>${esc(r.shop_name)}</strong>${channelTag(r.kind)}</td><td class="num" data-label="导入行数">${num(r.row_count, 0)} 行</td><td data-label="导入时间">${bj(r.imported_at)}</td></tr>`).join("") || '<tr><td colspan="4" class="transfer-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>暂无导入记录</span></td></tr>';
   } catch (error) {
     if (!isPolling) {
       tbody.innerHTML = `<tr><td colspan="4" class="transfer-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>导入记录加载失败：${esc(error.message)}</span></td></tr>`;
@@ -1246,7 +1444,7 @@ async function loadSync(isPolling = false) {
             source = r.run_source === 'auto' ? '自动' : '手动',
             module = syncNames[r.module] || r.module;
       return `<tr data-run-id="${r.id}"><td data-label="店铺"><strong>${esc(r.shop_name)}</strong></td><td data-label="模块"><strong>${esc(module)}</strong><span class="sync-source ${r.run_source === 'auto' ? 'auto' : 'manual'}">${source}</span></td><td data-label="状态"><span class="sync-state ${esc(r.status)}"><morph-icon icon="${statusIcon}" size="12" stroke-width="2.2"></morph-icon>${status}</span>${r.status === 'running' ? `<div class="sync-progress-meta"><span>${done}/${total} 段 · ${percent}%</span><span>${num(r.records, 0)} 条</span></div><div class="sync-progress" role="progressbar" aria-label="${esc(module)}拉取进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>${r.current_from ? `<small class="sync-current">当前：${esc(r.current_from.slice(0, 10))} — ${esc(r.current_to.slice(0, 10))}</small>` : ''}` : ''}</td><td data-label="开始时间">${bj(r.started_at)}</td><td data-label="错误" class="${r.error ? 'error' : 'muted'}">${esc(r.error || '—')}</td></tr>`;
-    }).join("") || '<tr><td colspan="5" class="sync-message"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>暂无拉取记录。</span></td></tr>';
+    }).join("") || '<tr><td colspan="5" class="sync-message"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>暂无拉取记录</span></td></tr>';
     tbody.innerHTML = newHtml;
     return rows;
   } catch (error) {
@@ -1275,7 +1473,7 @@ async function loadDingtalk() {
 }
 function addMergeMember(member={key_type:"sku",key_value:""}){const id=`mergeMemberType${++mergeMemberIndex}`,row=document.createElement("div");row.className="merge-member";row.innerHTML=`<div class="return-select" data-return-select><select id="${id}" aria-label="成员类型"><option value="sku">SKU</option><option value="offer_id">货号</option></select><button type="button" data-select-button aria-haspopup="listbox" aria-expanded="false"><span data-select-label>SKU</span><morph-icon icon="chevronDown" size="18" spring="snappy" stroke-width="1.5"></morph-icon></button><div class="return-select-options hidden" data-select-options role="listbox" aria-label="成员类型"></div></div><input class="merge-member-value" value="${esc(member.key_value)}" placeholder="输入关联 SKU 或货号" aria-label="成员值" autocomplete="off" required><button type="button" class="member-remove-btn" data-remove-member aria-label="删除成员" title="删除成员"><morph-icon icon="x" size="14" stroke-width="2"></morph-icon></button>`;$("#mergeMembers").append(row);returnSelects[id]=createReturnSelect(id);setReturnSelect(id,member.key_type);return row}
 function resetMergeForm(){$("#mergeForm").reset();$("#mergeId").value="";$("#mergeMembers").replaceChildren();addMergeMember()}
-async function loadRules(){const query=new URLSearchParams({q:$("#shortSearch").value.trim()}),data=await api(`/api/product-rules?${query}`);ruleData=data;$("#ruleSummary").innerHTML=`<div class="summary-card"><div class="summary-card-icon"><morph-icon icon="tag" size="24" stroke-width="1.8"></morph-icon></div><div><span>中文短名称规则</span><strong>${num(data.summary.short_names,0)}</strong></div></div><div class="summary-card"><div class="summary-card-icon"><morph-icon icon="gitMerge" size="24" stroke-width="1.8"></morph-icon></div><div><span>全局合并关系</span><strong>${num(data.summary.merges,0)}</strong></div></div>`;$("#ruleFixedRule").textContent=data.fixed_rule;$("#shortRuleRows").innerHTML=data.short_names.map(row=>`<tr><td class="copyable" data-copy="${esc(row.sku)}"><strong>${esc(row.sku)}</strong></td><td><span class="rule-short-name">${esc(row.short_name)}</span></td><td>${bj(row.updated_at)}</td><td><div class="table-actions"><button type="button" class="rule-act-btn" data-edit-short="${esc(row.sku)}"><morph-icon icon="edit" size="12" stroke-width="2"></morph-icon>编辑</button><button type="button" class="rule-act-btn is-danger" data-delete-short="${esc(row.sku)}"><morph-icon icon="trash" size="12" stroke-width="2"></morph-icon>删除</button></div></td></tr>`).join("")||'<tr><td colspan="4" class="rule-empty-cell"><div class="rule-empty-state"><morph-icon icon="tag" size="28" stroke-width="1.4"></morph-icon><span>暂无短名称规则</span></div></td></tr>';$("#mergeRuleList").innerHTML=data.groups.map(group=>`<article class="merge-rule-card ${group.status!=="active"?"is-pending":""}"><div class="merge-rule-head"><div><span>主货号</span><strong>${esc(group.primary_offer_id||"待设置")}</strong></div><small>${esc(group.product_name)}</small></div><div class="merge-tags">${group.members.map(member=>`<span>${member.key_type==="sku"?"SKU":"货号"} · ${esc(member.key_value)}</span>`).join("")}</div><div class="merge-rule-foot"><small>${group.note?esc(group.note):`更新于 ${bj(group.updated_at)}`}</small><div class="table-actions"><button type="button" class="rule-act-btn" data-edit-merge="${group.id}"><morph-icon icon="edit" size="12" stroke-width="2"></morph-icon>编辑</button><button type="button" class="rule-act-btn is-danger" data-dissolve="${group.id}"><morph-icon icon="trash" size="12" stroke-width="2"></morph-icon>解散</button></div></div></article>`).join("")||'<div class="rule-empty-card"><morph-icon icon="gitMerge" size="32" stroke-width="1.4"></morph-icon><span>暂无全局合并关系</span><small>在上方添加主货号与关联成员即可建立全局合并分析身份</small></div>';$("#ruleConflicts").classList.toggle("hidden",!data.conflicts.length);$("#ruleConflicts").innerHTML=data.conflicts.length?`<h2>待处理的旧规则冲突</h2>${data.conflicts.map(row=>`<p><strong>${esc(row.key_value)}</strong><span>${esc(row.note)}</span></p>`).join("")}`:""}
+async function loadRules(){const query=new URLSearchParams({q:$("#shortSearch").value.trim()}),data=await api(`/api/product-rules?${query}`);ruleData=data;$("#ruleSummary").innerHTML=`<div class="summary-card"><div class="summary-card-icon"><morph-icon icon="tag" size="24" stroke-width="1.8"></morph-icon></div><div><span>中文短名称规则</span><strong>${num(data.summary.short_names,0)}</strong></div></div><div class="summary-card"><div class="summary-card-icon"><morph-icon icon="gitMerge" size="24" stroke-width="1.8"></morph-icon></div><div><span>全局合并关系</span><strong>${num(data.summary.merges,0)}</strong></div></div>`;$("#ruleFixedRule").textContent=data.fixed_rule;$("#shortRuleRows").innerHTML=data.short_names.map(row=>`<tr><td class="copyable" data-copy="${esc(row.sku)}"><strong>${esc(row.sku)}</strong></td><td><span class="rule-short-name">${esc(row.short_name)}</span></td><td>${bj(row.updated_at)}</td><td><div class="table-actions"><button type="button" class="rule-act-btn" data-edit-short="${esc(row.sku)}"><morph-icon icon="edit" size="12" stroke-width="2"></morph-icon>编辑</button><button type="button" class="rule-act-btn is-danger" data-delete-short="${esc(row.sku)}"><morph-icon icon="trash" size="12" stroke-width="2"></morph-icon>删除</button></div></td></tr>`).join("")||'<tr><td colspan="4" class="rule-empty-cell"><div class="rule-empty-state"><morph-icon icon="tag" size="20" stroke-width="1.8"></morph-icon><span>暂无短名称规则</span></div></td></tr>';$("#mergeRuleList").innerHTML=data.groups.map(group=>`<article class="merge-rule-card ${group.status!=="active"?"is-pending":""}"><div class="merge-rule-head"><div><span>主货号</span><strong>${esc(group.primary_offer_id||"待设置")}</strong></div><small>${esc(group.product_name)}</small></div><div class="merge-tags">${group.members.map(member=>`<span>${member.key_type==="sku"?"SKU":"货号"} · ${esc(member.key_value)}</span>`).join("")}</div><div class="merge-rule-foot"><small>${group.note?esc(group.note):`更新于 ${bj(group.updated_at)}`}</small><div class="table-actions"><button type="button" class="rule-act-btn" data-edit-merge="${group.id}"><morph-icon icon="edit" size="12" stroke-width="2"></morph-icon>编辑</button><button type="button" class="rule-act-btn is-danger" data-dissolve="${group.id}"><morph-icon icon="trash" size="12" stroke-width="2"></morph-icon>解散</button></div></div></article>`).join("")||'<div class="rule-empty-card"><div class="rule-empty-state"><morph-icon icon="gitMerge" size="20" stroke-width="1.8"></morph-icon><span>暂无全局合并关系</span></div><small>在上方添加主货号与关联成员即可建立全局合并分析身份</small></div>';$("#ruleConflicts").classList.toggle("hidden",!data.conflicts.length);$("#ruleConflicts").innerHTML=data.conflicts.length?`<h2>待处理的旧规则冲突</h2>${data.conflicts.map(row=>`<p><strong>${esc(row.key_value)}</strong><span>${esc(row.note)}</span></p>`).join("")}`:""}
 async function loadSettings(){$("#probeShops").innerHTML=state.shops.map(s=>`<article class="settings-shop-card"><div class="settings-shop-head"><div><span>店铺 ${s.id}</span><strong>${esc(s.name)}</strong></div></div><div id="probeResult${s.id}" class="settings-probe-result">${probeResult({status:"idle"})}</div></article>`).join("")}
 function probeResult(result={}){const status=result.status||(result.valid===true?"success":result.valid===false?"error":"idle"),isIdle=status==="idle",isLoading=status==="loading",isOk=status==="success",isError=status==="error";let badge="";if(isIdle)badge=`<span class="probe-state is-idle"><morph-icon icon="clock" size="12" stroke-width="1.8"></morph-icon>未检测</span>`;else if(isLoading)badge=`<span class="probe-state is-running"><morph-icon icon="sync" size="12" stroke-width="2.2"></morph-icon>正在检测…</span>`;else if(isOk)badge=`<span class="probe-state is-ok"><morph-icon icon="check" size="12" stroke-width="2.2"></morph-icon>凭据有效</span>`;else badge=`<span class="probe-state is-error"><morph-icon icon="alertCircle" size="12" stroke-width="2.2"></morph-icon>连接失败</span>`;const identity=result.identity||{},company=identity.company||{},name=isOk?(company.name||identity.name||"店铺身份已确认"):"—",seller=isOk?(identity.seller_id||identity.client_id||"未返回"):"—",inn=isOk?(company.inn||identity.inn||"未返回"):"—",roles=isOk?((result.roles||[]).join("、")||"未返回"):"—",errorNote=isError?`<p class="probe-error-note">${esc(result.error||"凭据或网络异常")}</p>`:"";const perms=["orders","returns","stock"].map(k=>{const title=syncNames[k]||k;if(isIdle||isLoading)return `<span class="is-idle"><strong>${esc(title)}</strong>待检测</span>`;const val=result.permissions?.[k]||(isOk?"可用":"未返回"),ok=val==="可用";return `<span class="${ok?'is-ok':'is-missing'}"><strong><morph-icon icon="${ok?'check':'x'}" size="12" stroke-width="2.2"></morph-icon>${esc(title)}</strong>${esc(val)}</span>`}).join("");return `${badge}${errorNote}<dl class="probe-facts"><div><dt>店铺身份</dt><dd>${esc(name)}</dd></div><div><dt>Seller ID</dt><dd>${esc(seller)}</dd></div><div><dt>税号 INN</dt><dd>${esc(inn)}</dd></div><div><dt>角色</dt><dd>${esc(roles)}</dd></div></dl><div class="probe-permissions">${perms}</div>`}
 async function loadPage(page) {
@@ -1314,9 +1512,9 @@ function activateReturnTab(name,focus=false){
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await Promise.all([loadOverview(),loadTrend()])}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{const button=e.target.closest("[data-page]");if(button)openPage(button.dataset.page)});
 $("#shopPickerButton").onclick=()=>{const hidden=$("#shopOptions").classList.toggle("hidden");$("#shopPickerButton").setAttribute("aria-expanded",String(!hidden));$("#shopPickerMorph")?.morphTo(!hidden?"chevronUp":"chevronDown","snappy")};
-$("#shopOptions").onclick=e=>{const option=e.target.closest("[data-shop]");if(!option)return;state.shop=Number(option.dataset.shop);state.page=1;Object.keys(state.pages).forEach(k=>state.pages[k]=1);$("#shopPickerValue").textContent=option.textContent;document.querySelectorAll("#shopOptions [data-shop]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy");const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))};
+$("#shopOptions").onclick=e=>{const option=e.target.closest("[data-shop]");if(!option)return;state.shop=Number(option.dataset.shop);state.page=1;Object.keys(state.pages).forEach(k=>state.pages[k]=1);const shopObj=state.shops.find(s=>s.id===state.shop);$("#shopPickerValue").textContent=shopObj?shopObj.name:"两店铺合并";document.querySelectorAll("#shopOptions [data-shop]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy");const page=$(".page.active").id;loadPage(page).catch(err=>toast(err.message,true))};
 $("#channelPickerButton").onclick=()=>{const hidden=$("#channelOptions").classList.toggle("hidden");$("#channelPickerButton").setAttribute("aria-expanded",String(!hidden));$("#channelPickerMorph")?.morphTo(!hidden?"chevronUp":"chevronDown","snappy")};
-$("#channelOptions").onclick=e=>{const option=e.target.closest("[data-channel]");if(!option)return;$("#channelFilter").value=option.dataset.channel;$("#channelPickerValue").textContent=option.textContent;document.querySelectorAll("#channelOptions [data-channel]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy");$("#channelFilter").dispatchEvent(new Event("change"))};
+$("#channelOptions").onclick=e=>{const option=e.target.closest("[data-channel]");if(!option)return;$("#channelFilter").value=option.dataset.channel;$("#channelPickerValue").textContent=option.querySelector(".option-label")?.textContent||option.textContent;document.querySelectorAll("#channelOptions [data-channel]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy");$("#channelFilter").dispatchEvent(new Event("change"))};
 $("#orderFilterForm").addEventListener("submit",e=>{e.preventDefault();state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#orderStatusChips")?.addEventListener("click",e=>{const chip=e.target.closest("[data-order-status]");if(!chip)return;document.querySelectorAll("#orderStatusChips .status-chip").forEach(c=>{const isTarget=c===chip;c.classList.toggle("active",isTarget);c.setAttribute("aria-selected",String(isTarget))});state.orderStatus=chip.dataset.orderStatus;state.page=1;loadOrders().catch(err=>toast(err.message,true))});
 $("#orderSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("#orderFilterForm").requestSubmit()}});
@@ -1364,7 +1562,66 @@ $("#receivedDisputeRows").onclick=e=>{const index=e.target.closest("[data-edit-r
 $("#receivedDisputeForm").onsubmit=async e=>{e.preventDefault();const body={shop_id:Number($("#receivedDisputeShop").value),return_number:$("#receivedDisputeNumber").value,refund_type:$("#receivedRefundType").value,refund_amount:$("#receivedRefundAmount").value,refund_currency:$("#receivedRefundCurrency").value.trim(),platform_compensation_rub:$("#receivedPlatformCompensation").value,platform_compensated_at:$("#receivedPlatformAt").value,logistics_compensation_cny:$("#receivedLogisticsCompensation").value,logistics_compensated_at:$("#receivedLogisticsAt").value,process_status:$("#receivedProcessStatus").value.trim(),return_method:$("#receivedReturnMethod").value,iml_return_number:$("#receivedImlNumber").value.trim(),iml_system_sn:$("#receivedImlSn").value.trim(),buyer_tracking_number:$("#receivedBuyerTracking").value.trim(),handling_method:$("#receivedHandlingMethod").value,video_recorded:nullableBool($("#receivedVideo").value),outbound_order_number:$("#receivedOutboundOrder").value.trim(),return_result:$("#receivedReturnResult").value,notes:$("#receivedDisputeNotes").value};await api("/api/exception-complaints/received",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});toast("已收货纠纷已保存");$("#receivedDisputeEditor").close();await loadReceivedDisputes()};
 $("#receivedDisputeCancel").onclick=()=>$("#receivedDisputeEditor").close();
 $("#receivedDisputeEditor").onclick=e=>{if(e.target===e.currentTarget)e.currentTarget.close()};
-$("#reasonRows").onclick=async e=>{const reasonBtn=e.target.closest("[data-reason]");if(!reasonBtn)return;const reason=reasonBtn.dataset.reason,target=$("#reasonDetails"),query=new URLSearchParams({shop_id:state.shop,reason,from:riskRange.start,to:riskRange.end});target.classList.remove("hidden");target.innerHTML='<div class="reason-detail-loading"><morph-icon icon="sync" size="16" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>原因对应订单加载中…</span></div>';try{const data=await api(`/api/risk/reasons?${query}`);target.innerHTML=`<div class="reason-detail-header"><div class="reason-detail-title"><morph-icon icon="alertTriangle" size="15" stroke-width="2"></morph-icon><h3>${esc(reasonBtn.textContent.trim())} · 关联订单明细</h3></div><span class="reason-detail-total">共 ${num(data.details.length,0)} 个异常订单</span></div><div class="reason-detail-grid">${data.details.map(r=>`<div class="reason-detail-card"><div class="reason-card-head"><strong class="copyable" data-copy="${esc(r.posting_number)}" title="点击复制订单号"><morph-icon icon="copy" size="12" stroke-width="2"></morph-icon>${esc(r.posting_number)}</strong></div><div class="reason-card-foot"><span class="shop-tag">${esc(r.shop_name)}</span>${channelTag(r.channel)}<span class="pieces-count">× ${num(r.pieces,0)} 件</span></div></div>`).join("")||'<span class="muted">当前时间范围内没有对应订单。</span>'}</div>`;target.scrollIntoView({behavior:"smooth",block:"nearest"})}catch(error){target.innerHTML=`<span class="error">${esc(error.message)}</span>`}};
+let currentExpandedReason = null;
+$("#reasonRows").onclick = async e => {
+  const reasonBtn = e.target.closest("[data-reason]");
+  if (!reasonBtn) return;
+  const reason = reasonBtn.dataset.reason;
+  const target = $("#reasonDetails");
+  if (currentExpandedReason === reason && !target.classList.contains("hidden")) {
+    target.classList.add("hidden");
+    currentExpandedReason = null;
+    document.querySelectorAll("#reasonRows .reason-link-btn").forEach(btn => btn.classList.remove("is-active"));
+    return;
+  }
+  currentExpandedReason = reason;
+  document.querySelectorAll("#reasonRows .reason-link-btn").forEach(btn => {
+    btn.classList.toggle("is-active", btn.dataset.reason === reason);
+  });
+  const query = new URLSearchParams({shop_id: state.shop, reason, from: riskRange.start, to: riskRange.end});
+  target.classList.remove("hidden");
+  target.innerHTML = '<div class="reason-detail-loading"><morph-icon icon="sync" size="16" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>原因对应订单加载中…</span></div>';
+  try {
+    const data = await api(`/api/risk/reasons?${query}`);
+    target.innerHTML = `
+      <div class="reason-detail-header">
+        <div class="reason-detail-title">
+          <morph-icon icon="alertTriangle" size="15" stroke-width="2"></morph-icon>
+          <h3>${esc(reasonBtn.querySelector("span")?.textContent || reasonBtn.textContent.trim())} · 关联订单明细</h3>
+        </div>
+        <div class="reason-detail-actions">
+          <span class="reason-detail-total">共 <b>${num(data.details.length, 0)}</b> 个异常订单</span>
+          <button type="button" class="icon-button close-reason-details" aria-label="关闭明细" title="关闭明细"><morph-icon icon="x" size="14" stroke-width="2"></morph-icon></button>
+        </div>
+      </div>
+      <div class="reason-detail-grid">
+        ${data.details.map(r => `
+          <div class="reason-detail-card">
+            <div class="reason-card-head">
+              <strong class="copyable" data-copy="${esc(r.posting_number)}" title="点击复制订单号">
+                <morph-icon icon="copy" size="12" stroke-width="2"></morph-icon>
+                ${esc(r.posting_number)}
+              </strong>
+            </div>
+            <div class="reason-card-foot">
+              <span class="shop-tag">${esc(r.shop_name)}</span>
+              ${channelTag(r.channel)}
+              <span class="pieces-count">× <b>${num(r.pieces, 0)}</b> 件</span>
+            </div>
+          </div>
+        `).join("") || '<span class="muted">当前时间范围内没有对应订单。</span>'}
+      </div>
+    `;
+    target.querySelector(".close-reason-details")?.addEventListener("click", () => {
+      target.classList.add("hidden");
+      currentExpandedReason = null;
+      document.querySelectorAll("#reasonRows .reason-link-btn").forEach(btn => btn.classList.remove("is-active"));
+    });
+    target.scrollIntoView({behavior: "smooth", block: "nearest"});
+  } catch (error) {
+    target.innerHTML = `<span class="error">${esc(error.message)}</span>`;
+  }
+};
 $("#prevPage").onclick=()=>{state.page--;loadOrders()}; $("#nextPage").onclick=()=>{state.page++;loadOrders()};
 async function saveShopNames(){const s1=$("#shop1")?.value?.trim()||"",s2=$("#shop2")?.value?.trim()||"";if(!s1||!s2)return;const curr1=state.shops.find(s=>s.id===1)?.name,curr2=state.shops.find(s=>s.id===2)?.name;if(s1===curr1&&s2===curr2)return;try{await api("/api/shops",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({1:s1,2:s2})});await loadShops();toast("店铺名称已自动保存")}catch(err){toast(err.message,true)}}
 $("#shopForm").addEventListener("submit",e=>{e.preventDefault();saveShopNames()});
