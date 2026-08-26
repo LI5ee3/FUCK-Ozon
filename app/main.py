@@ -32,6 +32,8 @@ from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
                    notification_set, probe_shop, process_webhook_event, push_type_list,
                    product_queries, product_query_details, sync_module,
                    webhook_validation_error)
+from .performance import (PerformanceConfigurationError, list_campaigns,
+                           sync_performance_campaigns)
 from .products import clean_product_name, load_product_rules, resolve_product
 from .security import (clear_login_failures, login_limited, migrate_env_password,
                        password_matches, record_login_failure)
@@ -48,6 +50,7 @@ BUYER_UNCLAIMED_REASONS = (
 )
 RISK_REASON_ZH = CANCEL_REASON_ZH
 SYNC_MODULES = {"orders", "returns", "stock"}
+PERFORMANCE_SYNC_MODULE = "ad_campaigns"
 AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
@@ -271,6 +274,15 @@ def _admin_shop(body):
     if shop_id not in (1, 2):
         raise HTTPException(400, "未知店铺")
     return shop_id
+
+
+def _performance_shop_id(value):
+    text = str(value or "").strip().lower()
+    if text in ("1", "shop_1"):
+        return 1
+    if text in ("2", "shop_2"):
+        return 2
+    raise HTTPException(400, "请选择有效店铺")
 
 
 async def _ozon_management_call(function, *args):
@@ -1869,6 +1881,70 @@ def sync_run(run_id: int):
     if not row:
         raise HTTPException(404, "拉取任务不存在")
     return dict(row)
+
+
+def _run_performance_campaign_sync(shop_id):
+    started_at = _utc_text(datetime.now(timezone.utc))
+    with transaction() as db:
+        run_id = db.execute("""INSERT INTO sync_runs(
+          shop_id,module,status,progress_total,run_source,started_at)
+          VALUES(?,?, 'running',1,'manual',?)""",
+                            (shop_id, PERFORMANCE_SYNC_MODULE, started_at)).lastrowid
+    try:
+        result = sync_performance_campaigns(shop_id)
+    except Exception as error:
+        with transaction() as db:
+            db.execute("""UPDATE sync_runs SET finished_at=?,status='failed',error=?
+              WHERE id=?""", (_utc_text(datetime.now(timezone.utc)), str(error)[:500], run_id))
+            _trim_sync_runs(db)
+        raise
+    records = int(result.get("inserted_or_updated") or 0)
+    finished_at = _utc_text(datetime.now(timezone.utc))
+    with transaction() as db:
+        db.execute("""UPDATE sync_runs SET finished_at=?,status='success',progress_done=1,
+          records=?,data_through=? WHERE id=?""", (finished_at, records, finished_at, run_id))
+        _trim_sync_runs(db)
+    result = dict(result)
+    result["run_id"] = run_id
+    return result
+
+
+@app.post("/api/performance/test")
+async def performance_test(request: Request):
+    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
+    try:
+        campaigns = await run_in_threadpool(list_campaigns, shop_id)
+    except PerformanceConfigurationError as error:
+        raise HTTPException(400, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+    return {"success": True, "shop_id": shop_id, "campaign_count": len(campaigns)}
+
+
+@app.post("/api/performance/campaigns/sync")
+async def performance_campaign_sync(request: Request):
+    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
+    try:
+        return await run_in_threadpool(_run_performance_campaign_sync, shop_id)
+    except PerformanceConfigurationError as error:
+        raise HTTPException(400, str(error)) from error
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.get("/api/performance/campaigns")
+def performance_campaigns(shop_id: str = "0"):
+    value = str(shop_id or "0").strip().lower()
+    selected = 0 if value in ("0", "all") else _performance_shop_id(value)
+    with connect() as db:
+        if selected:
+            rows = db.execute("""SELECT a.*,s.name shop_name FROM ad_campaigns a
+              JOIN shops s ON s.id=a.shop_id WHERE a.shop_id=?
+              ORDER BY a.campaign_id""", (selected,)).fetchall()
+        else:
+            rows = db.execute("""SELECT a.*,s.name shop_name FROM ad_campaigns a
+              JOIN shops s ON s.id=a.shop_id ORDER BY a.shop_id,a.campaign_id""").fetchall()
+    return [dict(row) for row in rows]
 
 
 @app.get("/api/auto-sync-settings")

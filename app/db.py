@@ -5,7 +5,7 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 
 {{店铺明细}}"""
@@ -65,9 +65,26 @@ def _create_webhook_events(db):
     """)
 
 
+def _create_ad_campaigns(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS ad_campaigns (
+      shop_id INTEGER NOT NULL REFERENCES shops(id), campaign_id TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '',
+      payment_type TEXT, adv_object_type TEXT, placement TEXT,
+      weekly_budget REAL, created_at TEXT, updated_at TEXT,
+      synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      PRIMARY KEY(shop_id,campaign_id));
+    """)
+
+
 def _migrate_v1_to_v2(db):
     _create_webhook_events(db)
     db.execute("PRAGMA user_version=2")
+
+
+def _migrate_v2_to_v3(db):
+    _create_ad_campaigns(db)
+    db.execute("PRAGMA user_version=3")
 
 
 def init_db():
@@ -76,9 +93,13 @@ def init_db():
         populated = db.execute("""SELECT 1 FROM sqlite_master
           WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%' LIMIT 1""").fetchone()
         if populated:
-            if version == 1 and SCHEMA_VERSION == 2:
+            if version == 1:
                 _migrate_v1_to_v2(db)
-            elif version != SCHEMA_VERSION:
+                version = 2
+            if version == 2:
+                _migrate_v2_to_v3(db)
+                version = 3
+            if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
         if version not in (0, SCHEMA_VERSION):
@@ -211,6 +232,13 @@ def init_db():
           message_type TEXT NOT NULL, posting_number TEXT, order_number TEXT,
           occurred_at TEXT, payload_json TEXT NOT NULL, received_at TEXT NOT NULL,
           applied_at TEXT, error TEXT, PRIMARY KEY(shop_id,event_key));
+        CREATE TABLE ad_campaigns (
+          shop_id INTEGER NOT NULL REFERENCES shops(id), campaign_id TEXT NOT NULL,
+          name TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '',
+          payment_type TEXT, adv_object_type TEXT, placement TEXT,
+          weekly_budget REAL, created_at TEXT, updated_at TEXT,
+          synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+          PRIMARY KEY(shop_id,campaign_id));
         CREATE INDEX idx_orders_created ON orders(shop_id,created_at);
         CREATE INDEX idx_orders_cancelled ON orders(shop_id,status_raw,shipped,created_at);
         CREATE INDEX idx_items_sku ON order_items(shop_id,sku);

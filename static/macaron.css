@@ -4797,6 +4797,7 @@ th.text-right .stock-sort {
 .sync-manual-card.tone-blue .sync-icon-badge { background: var(--azure); color: var(--azure-text); }
 .sync-manual-card.tone-peach .sync-icon-badge { background: var(--peach); color: var(--peach-text); }
 .sync-manual-card.tone-mint .sync-icon-badge { background: var(--mint); color: var(--mint-text); }
+.sync-manual-card.tone-lavender .sync-icon-badge { background: var(--lavender); color: var(--lavender-text); }
 
 .sync-manual-desc {
   font-size: 11.5px;
