@@ -32,7 +32,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
         self.assertEqual(before, after)
-        self.assertEqual(after[0], 1)
+        self.assertEqual(after[0], 2)
 
     def test_nonempty_old_database_is_rejected(self):
         old_path = Path(self.temp.name) / "old.db"
@@ -46,6 +46,22 @@ class DatabaseSchemaTest(DatabaseTestCase):
         with sqlite3.connect(old_path) as connection:
             self.assertEqual(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchone()[0], "old_data")
+
+    def test_v1_database_migrates_without_rebuilding_existing_data(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO orders(
+              shop_id,posting_number,channel,status_raw,shipped,source)
+              VALUES(1,'MIGRATION-1','realFBS','运输中',1,'test')""")
+            connection.execute("DROP TABLE ozon_webhook_events")
+            connection.execute("PRAGMA user_version=1")
+
+        db.init_db()
+        with db.connect() as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(connection.execute(
+                "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
+            self.assertIsNotNone(connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='ozon_webhook_events'").fetchone())
 
 
 if __name__ == "__main__":

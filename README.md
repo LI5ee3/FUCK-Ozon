@@ -71,6 +71,11 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
+OZON_WEBHOOK_SECRET_1=店铺1Webhook随机密钥
+OZON_WEBHOOK_SECRET_2=店铺2Webhook随机密钥
+# 若 Ozon Push 的 seller_id 与 Client-Id 不同，再填写对应 Seller ID
+# SHOP_1_OZON_SELLER_ID=店铺1的Seller ID
+# SHOP_2_OZON_SELLER_ID=店铺2的Seller ID
 DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
 DINGTALK_SECRET=钉钉机器人加签Secret
 ```
@@ -155,6 +160,11 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
+OZON_WEBHOOK_SECRET_1=店铺1Webhook随机密钥
+OZON_WEBHOOK_SECRET_2=店铺2Webhook随机密钥
+# 若 Ozon Push 的 seller_id 与 Client-Id 不同，再填写对应 Seller ID
+# SHOP_1_OZON_SELLER_ID=店铺1的Seller ID
+# SHOP_2_OZON_SELLER_ID=店铺2的Seller ID
 DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
 DINGTALK_SECRET=钉钉机器人加签Secret
 ```
@@ -178,6 +188,27 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 然后访问 [http://127.0.0.1:8000](http://127.0.0.1:8000)。首次启动会在 `data/` 目录自动创建 SQLite 数据库和会话密钥。
+
+## Ozon Push Webhook
+
+将两个 `OZON_WEBHOOK_SECRET_*` 配置为不可复用的随机字符串，并让 Ozon 能通过 HTTPS 访问：
+
+```text
+https://你的域名/api/webhooks/ozon/<对应店铺的密钥>
+```
+
+该端点只对 Push Webhook 豁免登录和 CSRF；业务事件会先写入 SQLite 收件箱，再异步补全订单详情。管理员可登录后调用以下受保护接口检测、注册和查询 Ozon 订阅，不会在应用启动时自动注册：
+
+```text
+POST /api/ozon/notifications/push-types?shop_id=1
+POST /api/ozon/notifications/check
+POST /api/ozon/notifications/set
+POST /api/ozon/notifications/list
+POST /api/ozon/notifications/enable
+POST /api/ozon/notifications/delete
+```
+
+订单与库存全量同步仍保留作初始化、FBP 数据来源和 Push 纠偏；其中 FBP 库存继续使用 Ozon 的库存接口。
 
 ## 钉钉机器人
 
@@ -272,4 +303,3 @@ docker compose down
 
 - **[Tabler Icons](https://tabler.io/icons)** (by [Paweł Kuna](https://github.com/codecalm))：全站统一采用其 24×24 规范矢量图标定义，遵循 **[MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)**（见 [`static/TABLER_ICONS_LICENSE`](static/TABLER_ICONS_LICENSE)）。
 - **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：基于其 Apple Spring 弹簧物理形变与几何重采样算法，为本项目定制封装了零外部依赖、自包含内置 52 款图标的纯原生 `<morph-icon>` Web Component（见 [`static/morphicons.js`](static/morphicons.js)），遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。
-

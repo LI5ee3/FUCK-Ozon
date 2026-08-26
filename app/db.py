@@ -5,7 +5,7 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 
 {{店铺明细}}"""
@@ -51,13 +51,34 @@ def trim_import_batches(db, keep=10):
         db.execute(f"DELETE FROM import_batches WHERE id IN ({marks})", old)
 
 
+def _create_webhook_events(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS ozon_webhook_events (
+      event_key TEXT NOT NULL, shop_id INTEGER NOT NULL REFERENCES shops(id),
+      message_type TEXT NOT NULL, posting_number TEXT, order_number TEXT,
+      occurred_at TEXT, payload_json TEXT NOT NULL, received_at TEXT NOT NULL,
+      applied_at TEXT, error TEXT, PRIMARY KEY(shop_id,event_key));
+    CREATE INDEX IF NOT EXISTS idx_ozon_webhook_events_posting
+      ON ozon_webhook_events(shop_id,posting_number,occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_ozon_webhook_events_pending
+      ON ozon_webhook_events(shop_id,applied_at,occurred_at);
+    """)
+
+
+def _migrate_v1_to_v2(db):
+    _create_webhook_events(db)
+    db.execute("PRAGMA user_version=2")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
         populated = db.execute("""SELECT 1 FROM sqlite_master
           WHERE type IN ('table','index') AND name NOT LIKE 'sqlite_%' LIMIT 1""").fetchone()
         if populated:
-            if version != SCHEMA_VERSION:
+            if version == 1 and SCHEMA_VERSION == 2:
+                _migrate_v1_to_v2(db)
+            elif version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
         if version not in (0, SCHEMA_VERSION):
@@ -185,11 +206,20 @@ def init_db():
           source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
           reserved INTEGER NOT NULL, occurred_at TEXT NOT NULL, event_key TEXT, payload_json TEXT NOT NULL,
           UNIQUE(shop_id,source,event_key,warehouse_id,sku));
+        CREATE TABLE ozon_webhook_events (
+          event_key TEXT NOT NULL, shop_id INTEGER NOT NULL REFERENCES shops(id),
+          message_type TEXT NOT NULL, posting_number TEXT, order_number TEXT,
+          occurred_at TEXT, payload_json TEXT NOT NULL, received_at TEXT NOT NULL,
+          applied_at TEXT, error TEXT, PRIMARY KEY(shop_id,event_key));
         CREATE INDEX idx_orders_created ON orders(shop_id,created_at);
         CREATE INDEX idx_orders_cancelled ON orders(shop_id,status_raw,shipped,created_at);
         CREATE INDEX idx_items_sku ON order_items(shop_id,sku);
         CREATE INDEX idx_complaints_order ON complaints(shop_id,posting_number);
         CREATE INDEX idx_stock_history_time ON stock_history(shop_id,occurred_at);
+        CREATE INDEX idx_ozon_webhook_events_posting
+          ON ozon_webhook_events(shop_id,posting_number,occurred_at);
+        CREATE INDEX idx_ozon_webhook_events_pending
+          ON ozon_webhook_events(shop_id,applied_at,occurred_at);
         CREATE UNIQUE INDEX idx_auto_sync_once ON sync_runs(shop_id,module,scheduled_slot)
           WHERE run_source='auto' AND status IN ('running','success') AND scheduled_slot IS NOT NULL;
         PRAGMA user_version={SCHEMA_VERSION};

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import threading
@@ -18,6 +19,40 @@ STATUS_ZH = {
     "delivered": "已签收", "delivering": "运输中", "cancelled": "已取消",
     "awaiting_deliver": "等待发运", "awaiting_packaging": "待备货",
     "awaiting_registration": "等待登记",
+}
+PUSH_EVENT_TYPES = (
+    "TYPE_NEW_POSTING", "TYPE_POSTING_CANCELLED", "TYPE_STATE_CHANGED",
+    "TYPE_FBO_POSTING_NEW", "TYPE_FBO_POSTING_CANCELLED", "TYPE_FBO_POSTING_STATE_CHANGED",
+    "TYPE_STOCKS_CHANGED", "TYPE_FBO_STOCKS_CHANGED",
+    "TYPE_ORDER_NEW", "TYPE_ORDER_CANCELLED", "TYPE_ORDER_STATE_CHANGED",
+)
+PUSH_POSTING_TYPES = {
+    "TYPE_NEW_POSTING", "TYPE_POSTING_CANCELLED", "TYPE_STATE_CHANGED",
+    "TYPE_FBO_POSTING_NEW", "TYPE_FBO_POSTING_CANCELLED", "TYPE_FBO_POSTING_STATE_CHANGED",
+}
+PUSH_CANCEL_TYPES = {"TYPE_POSTING_CANCELLED", "TYPE_FBO_POSTING_CANCELLED"}
+PUSH_STATE_TYPES = {"TYPE_STATE_CHANGED", "TYPE_FBO_POSTING_STATE_CHANGED"}
+PUSH_STOCK_TYPES = {"TYPE_STOCKS_CHANGED", "TYPE_FBO_STOCKS_CHANGED"}
+PUSH_ORDER_TYPES = {"TYPE_ORDER_NEW", "TYPE_ORDER_CANCELLED", "TYPE_ORDER_STATE_CHANGED"}
+PUSH_STATUS_ZH = {
+    "posting_created": "待备货",
+    "posting_acceptance_in_progress": "待备货",
+    "posting_awaiting_registration": "等待登记",
+    "posting_transferring_to_delivery": "等待发运",
+    "posting_in_carriage": "运输中",
+    "posting_on_way_to_city": "运输中",
+    "posting_on_way_to_pickup_point": "运输中",
+    "posting_transferred_to_courier_service": "运输中",
+    "posting_in_courier_service": "运输中",
+    "posting_in_pickup_point": "运输中",
+    "posting_conditionally_delivered": "运输中",
+    "posting_driver_pick_up": "运输中",
+    "posting_delivered": "已签收",
+    "posting_received": "已签收",
+    "posting_canceled": "已取消",
+    "posting_cancelled": "已取消",
+    "canceled": "已取消",
+    "cancelled": "已取消",
 }
 RETURN_STATUS_ZH = {
     "На складе": "在仓库中",
@@ -162,6 +197,32 @@ def _post(shop_id, path, payload):
             raise RuntimeError(f"{path}: 网络请求失败: {error}") from error
 
 
+def analytics_data(shop_id, date_from, date_to, sku="", limit=1000, offset=0):
+    filters = [{"key": "sku", "op": "EQ", "value": str(sku)}] if sku else []
+    return _post(shop_id, "/v1/analytics/data", {
+        "date_from": date_from, "date_to": date_to, "dimension": ["sku"],
+        "metrics": ["hits_view_search", "hits_view_pdp", "hits_tocart",
+                    "session_view_pdp", "ordered_units", "revenue"],
+        "filters": filters, "sort": [{"key": "hits_view_search", "order": "DESC"}],
+        "limit": limit, "offset": offset,
+    })
+
+
+def product_queries(shop_id, date_from, date_to, skus, page=0, page_size=1000):
+    return _post(shop_id, "/v1/analytics/product-queries", {
+        "date_from": date_from, "date_to": date_to, "page": page, "page_size": page_size,
+        "skus": skus, "sort_by": "BY_SEARCHES", "sort_dir": "DESCENDING",
+    })
+
+
+def product_query_details(shop_id, date_from, date_to, skus, page=0, page_size=100):
+    return _post(shop_id, "/v1/analytics/product-queries/details", {
+        "date_from": date_from, "date_to": date_to, "limit_by_sku": 15,
+        "page": page, "page_size": page_size, "skus": skus,
+        "sort_by": "BY_SEARCHES", "sort_dir": "DESCENDING",
+    })
+
+
 def default_range():
     end = datetime.now(BEIJING)
     month = end.month - 3
@@ -221,12 +282,151 @@ def _product_price(product, fallback_currency):
     return float(price or 0), fallback_currency
 
 
+def _timestamp(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _channel_for_posting(posting, hint=None):
+    if hint in ("FBP", "realFBS", "WHD"):
+        return hint
+    flow = str(posting.get("integration_type_flow") or posting.get("tpl_integration_type") or "")
+    if flow == "FBP":
+        return "FBP"
+    if flow.lower() in ("aggregator", "realfbs", "rfbs"):
+        return "realFBS"
+    if flow.lower() in ("fbo", "whd"):
+        return "WHD"
+    raise RuntimeError(f"未知 integration_type_flow: {flow!r}")
+
+
+def _push_cancellation(db, shop_id, posting_number):
+    rows = db.execute("""SELECT message_type,payload_json FROM ozon_webhook_events
+      WHERE shop_id=? AND posting_number=? AND message_type IN
+      ('TYPE_POSTING_CANCELLED','TYPE_FBO_POSTING_CANCELLED','TYPE_STATE_CHANGED',
+       'TYPE_FBO_POSTING_STATE_CHANGED')""",
+                      (shop_id, posting_number)).fetchall()
+    cancellations = []
+    for row in rows:
+        payload = json.loads(row["payload_json"])
+        message_type = row["message_type"]
+        if message_type in PUSH_STATE_TYPES and str(payload.get("new_state") or "").lower() not in (
+                "posting_canceled", "posting_cancelled", "cancelled", "canceled"):
+            continue
+        stamp = _cancel_time(payload, message_type)
+        if stamp:
+            reason_id, reason_raw = _cancel_reason(payload)
+            cancellations.append((stamp, reason_id, reason_raw))
+    if not cancellations:
+        return None
+    cancellations.sort(key=lambda value: value[0])
+    occurred_at = cancellations[0][0]
+    reason_id = next((value[1] for value in cancellations if value[1] not in (None, "")), None)
+    reason_raw = next((value[2] for value in cancellations if value[2]), None)
+    return {"occurred_at": occurred_at, "reason_id": reason_id, "reason_raw": reason_raw}
+
+
+def _save_order(db, shop_id, posting, channel=None, source="api", updated_at=None):
+    posting = dict(posting or {})
+    number = str(posting.get("posting_number") or "").strip()
+    if not number:
+        raise ValueError("货件详情缺少 posting_number")
+    channel = _channel_for_posting(posting, channel)
+    currency = db.execute("SELECT settlement_currency FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
+    status_original = str(posting.get("status") or "")
+    status_raw = STATUS_ZH.get(status_original, PUSH_STATUS_ZH.get(status_original, status_original))
+    cancellation = posting.get("cancellation") or {}
+    if not isinstance(cancellation, dict):
+        cancellation = {}
+    cancelled_after = cancellation.get("cancelled_after_ship") if status_original in ("cancelled", "canceled") else None
+    shipped = int(bool(cancelled_after) if status_raw == "已取消" else status_raw in ("运输中", "已签收"))
+    products = posting.get("products") or []
+    prices = [_product_price(product, currency) for product in products]
+    amount = sum(price[0] * int(product.get("quantity") or 0)
+                 for product, price in zip(products, prices))
+    amount_currency = prices[0][1] if prices else currency
+    created = posting.get("in_process_at") or posting.get("created_at")
+    shipped_at = posting.get("delivering_date")
+    delivered_at = posting.get("fact_delivery_date")
+    status_changed_at = _timestamp(posting.get("status_changed_at") or posting.get("last_changed_status_date"))
+    reason_id = cancellation.get("cancel_reason_id") or posting.get("cancel_reason_id")
+    reason_raw = cancellation.get("cancel_reason") or posting.get("cancel_reason")
+    existing = db.execute("SELECT * FROM orders WHERE shop_id=? AND posting_number=?",
+                          (shop_id, number)).fetchone()
+    push_cancel = _push_cancellation(db, shop_id, number)
+    if push_cancel:
+        status_raw = "已取消"
+        status_changed_at = push_cancel["occurred_at"]
+        reason_id = push_cancel["reason_id"] or reason_id
+        reason_raw = push_cancel["reason_raw"] or reason_raw
+        if existing:
+            shipped = existing["shipped"]
+        if existing and cancelled_after is None:
+            cancelled_after = existing["cancelled_after_ship"]
+    preserve_shipped = (push_cancel or
+                        (channel == "WHD" and status_raw == "已取消" and cancelled_after is None))
+    if preserve_shipped and existing:
+        shipped = existing["shipped"]
+    fetched = updated_at or _stamp()
+    db.execute("""
+      INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,delivered_at,tracking_number,status_raw,
+        cancel_reason_raw,cancel_reason_id,shipped,cancelled_after_ship,data_anomaly,amount_original,
+        amount_currency,warehouse_id,status_changed_at,source,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
+        parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
+        channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
+        shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
+        delivered_at=CASE WHEN NULLIF(excluded.delivered_at,'') IS NOT NULL THEN excluded.delivered_at
+          WHEN excluded.channel IN ('FBP','realFBS') AND orders.delivered_at=orders.shipped_at THEN NULL
+          ELSE orders.delivered_at END,
+        tracking_number=COALESCE(NULLIF(excluded.tracking_number,''),orders.tracking_number),
+        status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
+        cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
+        cancel_reason_id=COALESCE(NULLIF(excluded.cancel_reason_id,''),orders.cancel_reason_id),
+        shipped=excluded.shipped,
+        cancelled_after_ship=COALESCE(excluded.cancelled_after_ship,orders.cancelled_after_ship),
+        amount_original=COALESCE(excluded.amount_original,orders.amount_original),
+        amount_currency=COALESCE(NULLIF(excluded.amount_currency,''),orders.amount_currency),
+        warehouse_id=COALESCE(NULLIF(excluded.warehouse_id,''),orders.warehouse_id),
+        status_changed_at=COALESCE(NULLIF(excluded.status_changed_at,''),orders.status_changed_at),
+        source=excluded.source,updated_at=excluded.updated_at
+    """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at, delivered_at,
+          posting.get("tracking_number"), status_raw, reason_raw, str(reason_id or ""), shipped,
+          cancelled_after, 0, amount, amount_currency, str(posting.get("warehouse_id") or ""),
+          status_changed_at, source, fetched))
+    db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
+               (channel, shop_id, number))
+    for product, price in zip(products, prices):
+        sku = str(product.get("sku") or "")
+        if not sku:
+            continue
+        db.execute("""
+          INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,
+            quantity,unit_price,price_currency,source)
+          VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number,sku) DO UPDATE SET
+            channel=excluded.channel,offer_id=COALESCE(NULLIF(excluded.offer_id,''),order_items.offer_id),
+            product_name_raw=COALESCE(NULLIF(excluded.product_name_raw,''),order_items.product_name_raw),
+            quantity=excluded.quantity,unit_price=COALESCE(excluded.unit_price,order_items.unit_price),
+            price_currency=COALESCE(NULLIF(excluded.price_currency,''),order_items.price_currency),source=excluded.source
+        """, (shop_id, channel, number, sku, product.get("offer_id"), product.get("name") or "",
+              int(product.get("quantity") or 1), price[0], price[1], source))
+    _apply_pending_webhook_events(db, shop_id, number)
+    return channel
+
+
 def sync_orders(shop_id, start, end):
     base = {"dir": "ASC", "filter": {"since": _utc(start), "to": _utc(end)},
             "limit": 100, "with": {"analytics_data": True, "financial_data": True}}
     fbs = _cursor_pages(shop_id, "/v4/posting/fbs/list", base, "postings")
     fbo = _cursor_pages(shop_id, "/v3/posting/fbo/list", base, "postings")
-    fetched = _stamp()
     with connect() as db:
         delivered = {row[0] for row in db.execute(
             "SELECT posting_number FROM orders WHERE shop_id=? AND NULLIF(delivered_at,'') IS NOT NULL", (shop_id,))}
@@ -237,66 +437,10 @@ def sync_orders(shop_id, start, end):
                 "posting_number": posting["posting_number"],
                 "with": {"analytics_data": False, "financial_data": False}}).get("result") or {}
             posting["fact_delivery_date"] = detail.get("fact_delivery_date")
+    fetched = _stamp()
     with transaction() as db:
-        currency = db.execute("SELECT settlement_currency FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
         for posting, channel in [(record, None) for record in fbs] + [(record, "WHD") for record in fbo]:
-            if channel is None:
-                flow = posting.get("integration_type_flow")
-                if flow not in ("FBP", "aggregator"):
-                    raise RuntimeError(f"未知 integration_type_flow: {flow!r}")
-                channel = "FBP" if flow == "FBP" else "realFBS"
-            number = posting["posting_number"]
-            status_original = posting.get("status") or ""
-            cancellation = posting.get("cancellation") or {}
-            cancelled_after = cancellation.get("cancelled_after_ship") if status_original == "cancelled" else None
-            shipped = int(bool(cancelled_after) if status_original == "cancelled" else status_original in ("delivered", "delivering"))
-            products = posting.get("products") or []
-            prices = [_product_price(product, currency) for product in products]
-            amount = sum(price[0] * int(product.get("quantity") or 0) for product, price in zip(products, prices))
-            amount_currency = prices[0][1] if prices else currency
-            created = posting.get("in_process_at") or posting.get("created_at")
-            shipped_at = posting.get("delivering_date")
-            delivered_at = posting.get("fact_delivery_date")
-            db.execute("""
-              INSERT INTO orders(shop_id,posting_number,parent_order_no,channel,created_at,shipped_at,delivered_at,tracking_number,status_raw,
-                cancel_reason_raw,shipped,cancelled_after_ship,data_anomaly,amount_original,
-                amount_currency,source,updated_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number) DO UPDATE SET
-                parent_order_no=COALESCE(NULLIF(excluded.parent_order_no,''),orders.parent_order_no),
-                channel=excluded.channel,created_at=COALESCE(NULLIF(excluded.created_at,''),orders.created_at),
-                shipped_at=COALESCE(NULLIF(excluded.shipped_at,''),orders.shipped_at),
-                delivered_at=CASE WHEN NULLIF(excluded.delivered_at,'') IS NOT NULL THEN excluded.delivered_at
-                  WHEN excluded.channel IN ('FBP','realFBS') AND orders.delivered_at=orders.shipped_at THEN NULL
-                  ELSE orders.delivered_at END,
-                tracking_number=COALESCE(NULLIF(excluded.tracking_number,''),orders.tracking_number),
-                status_raw=COALESCE(NULLIF(excluded.status_raw,''),orders.status_raw),
-                cancel_reason_raw=COALESCE(NULLIF(excluded.cancel_reason_raw,''),orders.cancel_reason_raw),
-                shipped=CASE WHEN excluded.channel='WHD' AND excluded.status_raw='已取消' AND excluded.cancelled_after_ship IS NULL
-                  THEN orders.shipped ELSE excluded.shipped END,
-                cancelled_after_ship=COALESCE(excluded.cancelled_after_ship,orders.cancelled_after_ship),
-                amount_original=COALESCE(excluded.amount_original,orders.amount_original),
-                amount_currency=COALESCE(NULLIF(excluded.amount_currency,''),orders.amount_currency),
-                source='api',updated_at=excluded.updated_at
-            """, (shop_id, number, posting.get("order_number"), channel, created, shipped_at, delivered_at,
-                  posting.get("tracking_number"),
-                  STATUS_ZH.get(status_original, status_original), cancellation.get("cancel_reason"),
-                  shipped, cancelled_after, 0, amount, amount_currency, "api", fetched))
-            db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
-                       (channel, shop_id, number))
-            for product, price in zip(products, prices):
-                sku = str(product.get("sku") or "")
-                if not sku:
-                    continue
-                db.execute("""
-                  INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,
-                    quantity,unit_price,price_currency,source)
-                  VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,posting_number,sku) DO UPDATE SET
-                    channel=excluded.channel,offer_id=COALESCE(NULLIF(excluded.offer_id,''),order_items.offer_id),
-                    product_name_raw=COALESCE(NULLIF(excluded.product_name_raw,''),order_items.product_name_raw),
-                    quantity=excluded.quantity,unit_price=COALESCE(excluded.unit_price,order_items.unit_price),
-                    price_currency=COALESCE(NULLIF(excluded.price_currency,''),order_items.price_currency),source='api'
-                """, (shop_id, channel, number, sku, product.get("offer_id"), product.get("name") or "",
-                      int(product.get("quantity") or 1), price[0], price[1], "api"))
+            _save_order(db, shop_id, posting, channel, "api", fetched)
     return {"records": len(fbs) + len(fbo), "FBP": sum(p.get("integration_type_flow") == "FBP" for p in fbs),
             "realFBS": sum(p.get("integration_type_flow") == "aggregator" for p in fbs), "WHD": len(fbo)}
 
@@ -439,6 +583,361 @@ def _sync_stock_snapshot(shop_id):
                    int(value.get("present") or 0), int(value.get("reserved") or 0), observed,
                    record_key + ":" + str(value.get("type") or ""), _json(record)))
     return {"records": len(records), "snapshot_at": observed}
+
+
+def _canonical_json(record):
+    return json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def webhook_event_key(payload):
+    value = str(payload.get("uuid") or "").strip()
+    if value:
+        return value
+    return hashlib.sha256(_canonical_json(payload).encode()).hexdigest()
+
+
+def _cancel_time(payload, message_type):
+    fields = ("cancel_date", "changed_state_date", "changed_at", "cancelled_at") \
+        if message_type in {"TYPE_FBO_POSTING_CANCELLED", "TYPE_FBO_POSTING_STATE_CHANGED"} else \
+        ("changed_state_date", "changed_at", "cancelled_at", "cancel_date")
+    for field in fields:
+        stamp = _timestamp(payload.get(field))
+        if stamp:
+            return stamp
+    return None
+
+
+def _cancel_reason(payload):
+    reason = payload.get("reason") if isinstance(payload.get("reason"), dict) else {}
+    reason_id = reason.get("id") if reason.get("id") not in (None, "") else payload.get("cancel_reason_id")
+    reason_raw = reason.get("message") or payload.get("cancel_reason")
+    return (str(reason_id) if reason_id not in (None, "") else None,
+            str(reason_raw).strip() if reason_raw not in (None, "") else None)
+
+
+def _state_time(payload):
+    for field in ("changed_state_date", "changed_at"):
+        stamp = _timestamp(payload.get(field))
+        if stamp:
+            return stamp
+    return None
+
+
+def _event_occurred_at(payload, message_type, received_at):
+    candidates = []
+    if message_type in PUSH_CANCEL_TYPES:
+        candidates.append(_cancel_time(payload, message_type))
+    elif message_type in PUSH_STATE_TYPES:
+        candidates.append(_state_time(payload))
+    elif message_type in PUSH_STOCK_TYPES:
+        candidates.extend(_timestamp(payload.get(field)) for field in ("updated_at", "time"))
+        for item in payload.get("items") or []:
+            if isinstance(item, dict):
+                candidates.append(_timestamp(item.get("updated_at")))
+                stocks = item.get("stocks")
+                if isinstance(stocks, dict):
+                    candidates.append(_timestamp(stocks.get("updated_at")))
+                elif isinstance(stocks, list):
+                    candidates.extend(_timestamp(stock.get("updated_at")) for stock in stocks
+                                      if isinstance(stock, dict))
+        stocks = payload.get("stocks")
+        if isinstance(stocks, dict):
+            candidates.append(_timestamp(stocks.get("updated_at")))
+    else:
+        candidates.extend(_timestamp(payload.get(field)) for field in (
+            "in_process_at", "created_at", "changed_at", "updated_at", "time"))
+    candidates = [value for value in candidates if value]
+    if candidates:
+        return max(candidates, key=lambda value: datetime.fromisoformat(value.replace("Z", "+00:00")))
+    return received_at
+
+
+def _posting_number(payload):
+    return str(payload.get("posting_number") or "").strip() or None
+
+
+def _order_number(payload):
+    value = payload.get("order_number") or payload.get("order_id")
+    return str(value).strip() if value not in (None, "") else None
+
+
+def _stock_entries(payload, message_type):
+    if message_type == "TYPE_FBO_STOCKS_CHANGED" and isinstance(payload.get("stocks"), dict):
+        return [(payload, payload.get("stocks"))]
+    if message_type == "TYPE_STOCKS_CHANGED" and any(
+            payload.get(field) is not None for field in ("present", "reserved", "warehouse_id")):
+        return [(payload, payload)]
+    entries = []
+    for item in payload.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        stocks = item.get("stocks")
+        if isinstance(stocks, dict):
+            stocks = [stocks]
+        elif not isinstance(stocks, list) and any(
+                item.get(field) is not None for field in ("present", "reserved", "warehouse_id")):
+            stocks = [item]
+        for stock in stocks or []:
+            if isinstance(stock, dict):
+                entries.append((item, stock))
+    return entries
+
+
+def webhook_validation_error(payload):
+    if not isinstance(payload, dict):
+        return "Webhook JSON必须是对象"
+    message_type = str(payload.get("message_type") or "").strip()
+    if not message_type:
+        return "缺少 message_type"
+    if message_type in PUSH_POSTING_TYPES and not _posting_number(payload):
+        return "缺少 posting_number"
+    if message_type in PUSH_ORDER_TYPES and not (_posting_number(payload) or _order_number(payload)):
+        return "缺少 order_number 或 posting_number"
+    if message_type in PUSH_CANCEL_TYPES and not _cancel_time(payload, message_type):
+        return "取消事件缺少有效官方时间"
+    if message_type in PUSH_STATE_TYPES:
+        if not str(payload.get("new_state") or "").strip():
+            return "状态事件缺少 new_state"
+        if not _state_time(payload):
+            return "状态事件缺少有效官方时间"
+    if message_type == "TYPE_STOCKS_CHANGED":
+        entries = _stock_entries(payload, message_type)
+        if not entries:
+            return "库存事件缺少 items/stocks"
+        for item, stock in entries:
+            if not str(item.get("sku") or item.get("product_id") or "").strip():
+                return "库存事件缺少 sku"
+            if item.get("warehouse_id") in (None, "") and stock.get("warehouse_id") in (None, ""):
+                return "库存事件缺少 warehouse_id"
+            if not (_timestamp(item.get("updated_at")) or _timestamp(payload.get("updated_at"))):
+                return "库存事件缺少有效 updated_at"
+            if stock.get("present") is None or stock.get("reserved") is None:
+                return "库存事件缺少 present/reserved"
+    if message_type == "TYPE_FBO_STOCKS_CHANGED":
+        entries = _stock_entries(payload, message_type)
+        if not entries:
+            return "FBO库存事件缺少 sku/stocks"
+        for item, stock in entries:
+            if not str(item.get("sku") or item.get("product_id") or "").strip():
+                return "FBO库存事件缺少 sku"
+            if not (_timestamp(item.get("updated_at")) or _timestamp(payload.get("updated_at"))
+                    or _timestamp(stock.get("updated_at"))):
+                return "FBO库存事件缺少有效 updated_at"
+            if ((stock.get("new_present") if "new_present" in stock else stock.get("present")) is None
+                    or (stock.get("new_reserved") if "new_reserved" in stock else stock.get("reserved")) is None):
+                return "FBO库存事件缺少 new_present/new_reserved"
+    return None
+
+
+def persist_webhook_event(shop_id, payload, received_at=None):
+    received_at = _timestamp(received_at) or _stamp()
+    message_type = str(payload.get("message_type") or "").strip()
+    event_key = webhook_event_key(payload)
+    payload_json = _canonical_json(payload)
+    occurred_at = _event_occurred_at(payload, message_type, received_at)
+    with transaction() as db:
+        cursor = db.execute("""INSERT OR IGNORE INTO ozon_webhook_events(
+          event_key,shop_id,message_type,posting_number,order_number,occurred_at,payload_json,received_at)
+          VALUES(?,?,?,?,?,?,?,?)""",
+          (event_key, shop_id, message_type, _posting_number(payload), _order_number(payload),
+           occurred_at, payload_json, received_at))
+        row = db.execute("""SELECT event_key,shop_id,message_type,posting_number,order_number,
+          occurred_at,payload_json,received_at,applied_at,error FROM ozon_webhook_events
+          WHERE shop_id=? AND event_key=?""", (shop_id, event_key)).fetchone()
+    result = dict(row)
+    result["new"] = cursor.rowcount == 1
+    return result
+
+
+def _mark_webhook_event(db, row, error=None):
+    db.execute("""UPDATE ozon_webhook_events SET applied_at=COALESCE(applied_at,?),error=?
+      WHERE shop_id=? AND event_key=?""", (_stamp(), error, row["shop_id"], row["event_key"]))
+
+
+def _apply_cancellation(db, row):
+    order = db.execute("SELECT * FROM orders WHERE shop_id=? AND posting_number=?",
+                       (row["shop_id"], row["posting_number"])).fetchone()
+    if not order:
+        return False
+    payload = json.loads(row["payload_json"])
+    cancellation = _push_cancellation(db, row["shop_id"], row["posting_number"])
+    if not cancellation:
+        cancellation = {"occurred_at": _cancel_time(payload, row["message_type"]),
+                        "reason_id": None, "reason_raw": None}
+    reason_id, reason_raw = _cancel_reason(payload)
+    db.execute("""UPDATE orders SET status_raw='已取消',status_changed_at=?,
+      cancel_reason_id=COALESCE(?,cancel_reason_id),cancel_reason_raw=COALESCE(?,cancel_reason_raw),
+      updated_at=? WHERE shop_id=? AND posting_number=?""",
+      (cancellation["occurred_at"], cancellation["reason_id"] or reason_id,
+       cancellation["reason_raw"] or reason_raw, _stamp(), row["shop_id"], row["posting_number"]))
+    return True
+
+
+def _apply_state_change(db, row):
+    order = db.execute("SELECT * FROM orders WHERE shop_id=? AND posting_number=?",
+                       (row["shop_id"], row["posting_number"])).fetchone()
+    if not order:
+        return False
+    payload = json.loads(row["payload_json"])
+    new_state = str(payload.get("new_state") or "").strip().lower()
+    status_raw = PUSH_STATUS_ZH.get(new_state)
+    if not status_raw and new_state.startswith("posting_on_way_"):
+        status_raw = "运输中"
+    if not status_raw:
+        return True
+    if status_raw == "已取消":
+        return _apply_cancellation(db, row)
+    if order["status_raw"] == "已取消":
+        return True
+    changed_at = _state_time(payload)
+    current_at = _timestamp(order["status_changed_at"])
+    if current_at and datetime.fromisoformat(changed_at.replace("Z", "+00:00")) <= datetime.fromisoformat(current_at.replace("Z", "+00:00")):
+        return True
+    shipped = int(status_raw in ("运输中", "已签收"))
+    delivered_at = changed_at if status_raw == "已签收" and not order["delivered_at"] else order["delivered_at"]
+    db.execute("""UPDATE orders SET status_raw=?,status_changed_at=?,shipped=?,delivered_at=?,updated_at=?
+      WHERE shop_id=? AND posting_number=?""",
+      (status_raw, changed_at, shipped, delivered_at, _stamp(), row["shop_id"], row["posting_number"]))
+    return True
+
+
+def _apply_stock_change(db, row):
+    payload = json.loads(row["payload_json"])
+    message_type = row["message_type"]
+    for item, stock in _stock_entries(payload, message_type):
+        sku = str(item.get("sku") or item.get("product_id") or "").strip()
+        warehouse_id = item.get("warehouse_id")
+        if warehouse_id in (None, ""):
+            warehouse_id = stock.get("warehouse_id") or payload.get("warehouse_id") or ""
+        present = stock.get("new_present") if message_type == "TYPE_FBO_STOCKS_CHANGED" else stock.get("present")
+        reserved = stock.get("new_reserved") if message_type == "TYPE_FBO_STOCKS_CHANGED" else stock.get("reserved")
+        if present is None:
+            present = stock.get("present")
+        if reserved is None:
+            reserved = stock.get("reserved")
+        stamp = (_timestamp(item.get("updated_at")) or _timestamp(stock.get("updated_at"))
+                 or _timestamp(payload.get("updated_at")) or row["occurred_at"])
+        db.execute("""INSERT INTO stock_history(
+          shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
+          VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(shop_id,source,event_key,warehouse_id,sku) DO UPDATE SET
+            present=excluded.present,reserved=excluded.reserved,occurred_at=excluded.occurred_at,
+            payload_json=excluded.payload_json""",
+          (row["shop_id"], "push_fbo" if message_type == "TYPE_FBO_STOCKS_CHANGED" else "push_rfbs",
+           str(warehouse_id), sku, int(present), int(reserved), stamp, row["event_key"], row["payload_json"]))
+    return True
+
+
+def _apply_webhook_event(db, row):
+    message_type = row["message_type"]
+    if message_type in PUSH_CANCEL_TYPES:
+        return _apply_cancellation(db, row)
+    if message_type in PUSH_STATE_TYPES:
+        return _apply_state_change(db, row)
+    if message_type in PUSH_STOCK_TYPES:
+        return _apply_stock_change(db, row)
+    return True
+
+
+def _apply_pending_webhook_events(db, shop_id, posting_number):
+    rows = db.execute("""SELECT * FROM ozon_webhook_events
+      WHERE shop_id=? AND posting_number=? AND applied_at IS NULL
+      ORDER BY occurred_at IS NULL,occurred_at,received_at,event_key""",
+                      (shop_id, posting_number)).fetchall()
+    for row in rows:
+        try:
+            if _apply_webhook_event(db, row):
+                _mark_webhook_event(db, row)
+        except Exception as error:
+            db.execute("UPDATE ozon_webhook_events SET error=? WHERE shop_id=? AND event_key=?",
+                       (str(error)[:500], shop_id, row["event_key"]))
+
+
+def _channel_hint(payload):
+    flow = str(payload.get("integration_type_flow") or payload.get("tpl_integration_type") or "")
+    if flow == "FBP":
+        return "FBP"
+    if flow.lower() in ("aggregator", "realfbs", "rfbs"):
+        return "realFBS"
+    return None
+
+
+def complete_webhook_posting(shop_id, event_key):
+    with connect() as db:
+        row = db.execute("SELECT * FROM ozon_webhook_events WHERE shop_id=? AND event_key=?",
+                         (shop_id, event_key)).fetchone()
+    if not row or row["applied_at"]:
+        return None
+    payload = json.loads(row["payload_json"])
+    is_fbo = row["message_type"] == "TYPE_FBO_POSTING_NEW"
+    path = "/v2/posting/fbo/get" if is_fbo else "/v3/posting/fbs/get"
+    try:
+        response = _post(shop_id, path, {"posting_number": row["posting_number"],
+                                          "with": {"analytics_data": True, "financial_data": True}})
+        detail = response.get("result") if isinstance(response.get("result"), dict) else response
+        if not isinstance(detail, dict):
+            raise ValueError(f"{path}: 详情响应不是对象")
+        detail = dict(detail)
+        detail.setdefault("posting_number", row["posting_number"])
+        with transaction() as db:
+            _save_order(db, shop_id, detail, "WHD" if is_fbo else _channel_hint(payload), "api")
+        return detail
+    except Exception as error:
+        with transaction() as db:
+            db.execute("UPDATE ozon_webhook_events SET error=? WHERE shop_id=? AND event_key=?",
+                       (str(error)[:500], shop_id, event_key))
+        raise
+
+
+def _complete_webhook_posting_async(shop_id, event_key):
+    try:
+        complete_webhook_posting(shop_id, event_key)
+    except Exception:
+        pass
+
+
+def process_webhook_event(shop_id, payload, received_at=None):
+    row = persist_webhook_event(shop_id, payload, received_at)
+    if row["message_type"] in {"TYPE_NEW_POSTING", "TYPE_FBO_POSTING_NEW"}:
+        if not row["applied_at"]:
+            threading.Thread(target=_complete_webhook_posting_async,
+                             args=(shop_id, row["event_key"]), daemon=True).start()
+        return row
+    if not row["applied_at"]:
+        with transaction() as db:
+            current = db.execute("SELECT * FROM ozon_webhook_events WHERE shop_id=? AND event_key=?",
+                                 (shop_id, row["event_key"])).fetchone()
+            try:
+                if current and _apply_webhook_event(db, current):
+                    _mark_webhook_event(db, current)
+            except Exception as error:
+                db.execute("UPDATE ozon_webhook_events SET error=? WHERE shop_id=? AND event_key=?",
+                           (str(error)[:500], shop_id, row["event_key"]))
+    return row
+
+
+def push_type_list(shop_id):
+    return _post(shop_id, "/v1/notification/push-type/list", {})
+
+
+def notification_check(shop_id, url):
+    return _post(shop_id, "/v1/notification/check", {"url": url})
+
+
+def notification_set(shop_id, url, types=None):
+    return _post(shop_id, "/v1/notification/set", {"url": url,
+                                                     "types": list(types or PUSH_EVENT_TYPES)})
+
+
+def notification_list(shop_id):
+    return _post(shop_id, "/v1/notification/list", {})
+
+
+def notification_enable(shop_id, notification_id, enabled):
+    return _post(shop_id, "/v1/notification/enable", {"id": int(notification_id), "enabled": bool(enabled)})
+
+
+def notification_delete(shop_id, notification_id):
+    return _post(shop_id, "/v1/notification/delete", {"id": int(notification_id)})
 
 
 def sync_module(module, shop_id, start=None, end=None, include_existing_missing=True):

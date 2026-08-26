@@ -26,7 +26,12 @@ from .exchange import (convert_compensation, exchange_rate_status, load_base_rat
                        rates_for_order, sync_exchange_rates)
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
-                   RETURN_STATUS_ZH, STATUS_ZH, _env, default_range, probe_shop, sync_module)
+                   PUSH_EVENT_TYPES, RETURN_STATUS_ZH, STATUS_ZH, _env, analytics_data,
+                   default_range, notification_check,
+                   notification_delete, notification_enable, notification_list,
+                   notification_set, probe_shop, process_webhook_event, push_type_list,
+                   product_queries, product_query_details, sync_module,
+                   webhook_validation_error)
 from .products import clean_product_name, load_product_rules, resolve_product
 from .security import (clear_login_failures, login_limited, migrate_env_password,
                        password_matches, record_login_failure)
@@ -100,12 +105,18 @@ def _authenticated(request):
         return False
 
 
+def _is_ozon_webhook_path(path):
+    parts = path.split("/")
+    return len(parts) == 5 and parts[:4] == ["", "api", "webhooks", "ozon"] and bool(parts[4])
+
+
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
     public = {"/api/login", "/api/session"}
-    if request.url.path.startswith("/api/") and request.url.path not in public and not _authenticated(request):
+    webhook = _is_ozon_webhook_path(request.url.path)
+    if request.url.path.startswith("/api/") and request.url.path not in public and not webhook and not _authenticated(request):
         return Response(json.dumps({"detail": "未登录"}, ensure_ascii=False), 401, media_type="application/json")
-    if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path != "/api/login"
+    if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path != "/api/login" and not webhook
             and request.url.path.startswith("/api/")):
         try:
             _, csrf, _ = request.cookies.get("session", "").split(".", 2)
@@ -178,6 +189,153 @@ async def ozon_probe(shop_id: int):
         return await run_in_threadpool(probe_shop, shop_id)
     except Exception as error:
         return {"valid": False, "error": str(error)[:200], "roles": [], "permissions": {}}
+
+
+WEBHOOK_MAX_BODY_BYTES = 1024 * 1024
+
+
+def _webhook_shop_id(secret):
+    values = _env()
+    matches = []
+    for shop_id in (1, 2):
+        expected = str(values.get(f"OZON_WEBHOOK_SECRET_{shop_id}") or "")
+        if expected and hmac.compare_digest(str(secret), expected):
+            matches.append(shop_id)
+    if len(matches) != 1:
+        raise HTTPException(403, "Webhook密钥无效")
+    return matches[0]
+
+
+def _validate_webhook_seller(shop_id, payload):
+    if "seller_id" not in payload or payload["seller_id"] in (None, ""):
+        return
+    values = _env()
+    expected = values.get(f"SHOP_{shop_id}_OZON_SELLER_ID") or values.get(f"SHOP_{shop_id}_OZON_CLIENT_ID")
+    if not expected or str(payload["seller_id"]).strip() != str(expected).strip():
+        raise HTTPException(403, "Webhook店铺身份无效")
+
+
+async def _read_webhook_json(request):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > WEBHOOK_MAX_BODY_BYTES:
+                raise HTTPException(413, "Webhook请求体过大")
+        except ValueError as error:
+            raise HTTPException(400, "Content-Length无效") from error
+    chunks, size = [], 0
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > WEBHOOK_MAX_BODY_BYTES:
+                raise HTTPException(413, "Webhook请求体过大")
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+    except AttributeError:
+        raw = await request.body()
+        if len(raw) > WEBHOOK_MAX_BODY_BYTES:
+            raise HTTPException(413, "Webhook请求体过大")
+    try:
+        payload = json.loads(raw.decode("utf-8"), parse_constant=_invalid_json_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise HTTPException(400, "Webhook JSON无效") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "Webhook JSON必须是对象")
+    return payload
+
+
+def _invalid_json_constant(value):
+    raise ValueError(f"非法 JSON 常量: {value}")
+
+
+@app.post("/api/webhooks/ozon/{secret}")
+async def ozon_webhook(secret: str, request: Request):
+    shop_id = _webhook_shop_id(secret)
+    payload = await _read_webhook_json(request)
+    _validate_webhook_seller(shop_id, payload)
+    message_type = str(payload.get("message_type") or "").strip()
+    if message_type == "TYPE_PING":
+        return {"version": "1.0.0", "name": "oPanel", "time": _utc_text(datetime.now(timezone.utc))}
+    error = webhook_validation_error(payload)
+    if error:
+        raise HTTPException(400, error)
+    process_webhook_event(shop_id, payload, _utc_text(datetime.now(timezone.utc)))
+    return {"result": True}
+
+
+def _admin_shop(body):
+    try:
+        shop_id = int(body.get("shop_id"))
+    except (AttributeError, TypeError, ValueError) as error:
+        raise HTTPException(400, "shop_id无效") from error
+    if shop_id not in (1, 2):
+        raise HTTPException(400, "未知店铺")
+    return shop_id
+
+
+async def _ozon_management_call(function, *args):
+    try:
+        return await run_in_threadpool(function, *args)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+
+
+@app.post("/api/ozon/notifications/push-types")
+async def ozon_push_types(shop_id: int):
+    if shop_id not in (1, 2):
+        raise HTTPException(400, "未知店铺")
+    return await _ozon_management_call(push_type_list, shop_id)
+
+
+@app.post("/api/ozon/notifications/check")
+async def ozon_notification_check(request: Request):
+    body = await request.json()
+    shop_id = _admin_shop(body)
+    url = str(body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "url不能为空")
+    return await _ozon_management_call(notification_check, shop_id, url)
+
+
+@app.post("/api/ozon/notifications/set")
+async def ozon_notification_set(request: Request):
+    body = await request.json()
+    shop_id = _admin_shop(body)
+    url = str(body.get("url") or "").strip()
+    types = body.get("types") or PUSH_EVENT_TYPES
+    if not url or not isinstance(types, (list, tuple)) or not all(isinstance(value, str) and value for value in types):
+        raise HTTPException(400, "url或types无效")
+    return await _ozon_management_call(notification_set, shop_id, url, types)
+
+
+@app.post("/api/ozon/notifications/list")
+async def ozon_notification_list(request: Request):
+    return await _ozon_management_call(notification_list, _admin_shop(await request.json()))
+
+
+@app.post("/api/ozon/notifications/enable")
+async def ozon_notification_enable(request: Request):
+    body = await request.json()
+    shop_id = _admin_shop(body)
+    try:
+        notification_id = int(body.get("id"))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "通知ID无效") from error
+    if "enabled" not in body and "enable" not in body:
+        raise HTTPException(400, "缺少 enabled")
+    return await _ozon_management_call(notification_enable, shop_id, notification_id,
+                                       bool(body.get("enabled", body.get("enable"))))
+
+
+@app.post("/api/ozon/notifications/delete")
+async def ozon_notification_delete(request: Request):
+    body = await request.json()
+    shop_id = _admin_shop(body)
+    try:
+        notification_id = int(body.get("id"))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "通知ID无效") from error
+    return await _ozon_management_call(notification_delete, shop_id, notification_id)
 
 
 def _dingtalk_settings():
@@ -258,6 +416,141 @@ def _overview_range(date_from=None, date_to=None, now=None):
     utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
     utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
     return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")
+
+
+def _analytics_range(date_from=None, date_to=None, now=None):
+    available_end = (now or datetime.now(BEIJING)).date() - timedelta(days=3)
+    if not date_to:
+        date_to = available_end.isoformat()
+    if not date_from:
+        try:
+            date_from = (date.fromisoformat(date_to) - timedelta(days=29)).isoformat()
+        except (TypeError, ValueError):
+            pass
+    start, end, _, _ = _overview_range(date_from, date_to, now)
+    return start, end
+
+
+def _analytics_shops(shop_id):
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    with connect() as db:
+        return [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")
+                if not shop_id or row["id"] == shop_id]
+
+
+def _analytics_sku(sku):
+    value = str(sku or "").strip()
+    if value and (not value.isdigit() or int(value) <= 0):
+        raise HTTPException(400, "SKU必须为正整数")
+    return value
+
+
+def _analytics_row(row, shop):
+    values = list(row.get("metrics") or []) + [0] * 6
+    dimension = (row.get("dimensions") or [{}])[0]
+    return {
+        "shop_id": shop["id"], "shop_name": shop["name"],
+        "sku": str(dimension.get("id") or ""), "name": dimension.get("name") or "",
+        "impressions": values[0], "product_views": values[1], "cart_adds": values[2],
+        "unique_visitors": values[3], "ordered_units": values[4], "revenue": values[5],
+        "currency": "RUB",
+        "view_rate": values[1] / values[0] if values[0] else None,
+        "cart_rate": values[2] / values[1] if values[1] else None,
+        "order_rate": values[4] / values[2] if values[2] else None,
+    }
+
+
+@app.get("/api/analytics/data")
+def get_analytics_data(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
+                       date_from: Annotated[str | None, Query(alias="from")] = None,
+                       date_to: Annotated[str | None, Query(alias="to")] = None):
+    page, size = _paging(page, size)
+    start, end = _analytics_range(date_from, date_to)
+    sku = _analytics_sku(sku)
+    shops = _analytics_shops(shop_id)
+    items, summaries = [], []
+    try:
+        for shop in shops:
+            result = analytics_data(shop["id"], start.isoformat(), end.isoformat(), sku).get("result") or {}
+            rows = [_analytics_row(row, shop) for row in result.get("data") or []]
+            items.extend(rows)
+            totals = _analytics_row({"dimensions": [{}], "metrics": result.get("totals") or []}, shop)
+            totals.pop("sku"); totals.pop("name")
+            summaries.append(totals)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+    items.sort(key=lambda row: (-float(row["impressions"] or 0), row["shop_id"], row["sku"]))
+    total, offset = len(items), (page - 1) * size
+    return {"shops": summaries, "items": items[offset:offset + size], "total": total,
+            "page": page, "size": size, "data_through": end.isoformat()}
+
+
+@app.get("/api/analytics/product-queries")
+def get_product_queries(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
+                        date_from: Annotated[str | None, Query(alias="from")] = None,
+                        date_to: Annotated[str | None, Query(alias="to")] = None):
+    page, size = _paging(page, size)
+    start, end = _analytics_range(date_from, date_to)
+    sku = _analytics_sku(sku)
+    shops = _analytics_shops(shop_id)
+    date_from_utc, date_to_utc = f"{start.isoformat()}T00:00:00Z", f"{end.isoformat()}T23:59:59Z"
+    items = []
+    try:
+        for shop in shops:
+            if sku:
+                skus = [int(sku)]
+            else:
+                source = analytics_data(shop["id"], start.isoformat(), end.isoformat()).get("result") or {}
+                skus = [int(row["dimensions"][0]["id"]) for row in source.get("data") or []
+                        if row.get("dimensions") and str(row["dimensions"][0].get("id") or "").isdigit()]
+            if not skus:
+                continue
+            # ponytail: Ozon accepts at most 1000 SKUs; split only if a shop actually exceeds that ceiling.
+            body = product_queries(shop["id"], date_from_utc, date_to_utc, skus[:1000])
+            for row in body.get("items") or []:
+                items.append({"shop_id": shop["id"], "shop_name": shop["name"],
+                              "sku": str(row.get("sku") or ""), "name": row.get("name") or "",
+                              "offer_id": row.get("offer_id") or "", "category": row.get("category") or "",
+                              "position": row.get("position"), "unique_search_users": row.get("unique_search_users"),
+                              "unique_view_users": row.get("unique_view_users"),
+                              "view_conversion": row.get("view_conversion"), "gmv": row.get("gmv"),
+                              "currency": row.get("currency") or ""})
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+    items.sort(key=lambda row: (-int(row["unique_search_users"] or 0), row["shop_id"], row["sku"]))
+    total, offset = len(items), (page - 1) * size
+    return {"items": items[offset:offset + size], "total": total, "page": page, "size": size,
+            "data_through": end.isoformat()}
+
+
+@app.get("/api/analytics/product-queries/details")
+def get_product_query_details(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
+                              date_from: Annotated[str | None, Query(alias="from")] = None,
+                              date_to: Annotated[str | None, Query(alias="to")] = None):
+    if shop_id not in (1, 2):
+        raise HTTPException(400, "请选择具体店铺")
+    page, size = _paging(page, size)
+    start, end = _analytics_range(date_from, date_to)
+    sku = _analytics_sku(sku)
+    if not sku:
+        raise HTTPException(400, "请选择SKU")
+    try:
+        body = product_query_details(shop_id, f"{start.isoformat()}T00:00:00Z",
+                                     f"{end.isoformat()}T23:59:59Z", [int(sku)], page - 1, size)
+    except Exception as error:
+        raise HTTPException(502, str(error)[:300]) from error
+    with connect() as db:
+        shop_name = db.execute("SELECT name FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
+    items = [{"shop_id": shop_id, "shop_name": shop_name, "sku": str(row.get("sku") or sku),
+              "query": row.get("query") or "", "position": row.get("position"),
+              "unique_search_users": row.get("unique_search_users"),
+              "unique_view_users": row.get("unique_view_users"),
+              "view_conversion": row.get("view_conversion"), "order_count": row.get("order_count"),
+              "gmv": row.get("gmv"), "currency": row.get("currency") or ""}
+             for row in body.get("queries") or []]
+    return {"items": items, "total": int(body.get("total") or len(items)), "page": page,
+            "size": size, "data_through": end.isoformat()}
 
 
 def _compensation_pair(body, amount_key, time_key):
@@ -1355,6 +1648,9 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
     shop_clause, shop_args = _shop_clause(shop_id)
     with connect() as db:
         records = _latest_stock_snapshots(db, shop_id)
+        push_rows = db.execute("""SELECT shop_id,source,warehouse_id,sku,present,reserved,occurred_at
+          FROM stock_history WHERE source IN ('push_rfbs','push_fbo')
+          AND (?=0 OR shop_id=?) ORDER BY occurred_at""", (shop_id, shop_id)).fetchall()
         sales = {(row["shop_id"], row["sku"]): dict(row) for row in db.execute(f"""SELECT i.shop_id,i.sku,
           SUM(CASE WHEN o.created_at>=? THEN i.quantity ELSE 0 END) sales_7,
           SUM(CASE WHEN o.created_at>=? THEN i.quantity ELSE 0 END) sales_15,
@@ -1397,6 +1693,32 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             stock_value["present"] += int(value.get("present") or 0)
             stock_value["reserved"] += int(value.get("reserved") or 0)
             stock_value["observed_at"] = max(stock_value["observed_at"] or "", row["observed_at"] or "")
+    push_latest = {}
+    for row in push_rows:
+        key = (row["shop_id"], row["source"], row["sku"], row["warehouse_id"] or "")
+        previous = push_latest.get(key)
+        current_at = _utc_moment(row["occurred_at"])
+        previous_at = _utc_moment(previous["occurred_at"]) if previous else None
+        if not previous or (current_at and (not previous_at or current_at > previous_at)):
+            push_latest[key] = row
+    push_groups = {}
+    for row in push_latest.values():
+        push_groups.setdefault((row["shop_id"], row["source"], row["sku"]), []).append(row)
+    for (push_shop, source, item_sku), rows in push_groups.items():
+        channel = "realFBS" if source == "push_rfbs" else "WHD"
+        key = push_shop, str(item_sku)
+        group = grouped.setdefault(key, {"shop_id": push_shop, "shop_name": shop_names.get(push_shop, f"店铺{push_shop}"),
+          "sku": str(item_sku), "offer_id": "", "product_id": None, "_channels": {}})
+        baseline = group["_channels"].get(channel)
+        values = list(rows)
+        if baseline and _utc_moment(baseline["observed_at"]):
+            values = [value for value in values if _utc_moment(value["occurred_at"])
+                      and _utc_moment(value["occurred_at"]) > _utc_moment(baseline["observed_at"])]
+        if values:
+            observed_at = max(value["occurred_at"] for value in values)
+            group["_channels"][channel] = {"channel": channel, "source": source,
+              "present": sum(int(value["present"]) for value in values),
+              "reserved": sum(int(value["reserved"]) for value in values), "observed_at": observed_at}
     for key in sales:
         grouped.setdefault(key, {"shop_id": key[0], "shop_name": shop_names.get(key[0], f"店铺{key[0]}"),
           "sku": key[1], "offer_id": "", "product_id": None, "_channels": {}})
@@ -1489,7 +1811,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
     return {"summary": summary, "items": cards[start:start + size],
             "total": total, "page": page, "size": size, "data_through": through,
             "sales_through": sales_through,
-            "formula": "预计可售天数=当前可售库存÷(近30天有效货件数÷30)；无销量时无法估算"}
+            "formula": "加权预估日销=近7天销量÷7×50%＋近15天销量÷15×30%＋近30天销量÷30×20%；预计可售天数=当前FBP可售现货÷加权预估日销；无销量时无法估算"}
 
 
 

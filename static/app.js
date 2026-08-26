@@ -1,10 +1,10 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1,analyticsData:1,productQueries:1,productQueryDetails:1}};
 let riskItems = [];
 let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
-const titles = {overview:"总览",orders:"订单",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
@@ -643,6 +643,53 @@ async function loadOverview() {
   }
   renderDataThrough(data.data_through);
   renderOverviewPanels(data);
+}
+let analyticsTab="traffic", analyticsDetail=null, productQueryItems=[];
+const analyticsRate=(value,denominator)=>denominator?`${(Number(value)/Number(denominator)*100).toFixed(2)}%`:"—";
+const analyticsApiRate=value=>value==null?"—":`${num(value)}%`;
+const analyticsMessage=(target,colspan,message,loading=false)=>{$(target).innerHTML=`<tr><td colspan="${colspan}" class="analytics-message">${loading?'<morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon>':'<morph-icon icon="alertCircle" size="18" stroke-width="1.8"></morph-icon>'}<span>${esc(message)}</span></td></tr>`};
+function analyticsError(error){const root=$("#analyticsError");root.textContent=error?.message||String(error);root.classList.remove("hidden")}
+function clearAnalyticsError(){$("#analyticsError").classList.add("hidden")}
+function analyticsQuery(page){return new URLSearchParams({shop_id:state.shop,sku:$("#analyticsSku").value.trim(),page,from:analyticsRange.start,to:analyticsRange.end})}
+function loadAnalyticsPage(){return analyticsTab==="traffic"?loadAnalyticsData():loadProductQueries()}
+async function loadAnalyticsData(){
+  clearAnalyticsError();analyticsMessage("#analyticsRows",11,"流量转化数据加载中…",true);
+  try{
+    const data=await api(`/api/analytics/data?${analyticsQuery(state.pages.analyticsData)}`),shops=data.shops||[];
+    const total=key=>shops.reduce((sum,row)=>sum+Number(row[key]||0),0);
+    const revenue=shops.length?shops.map(row=>`<span>${esc(row.shop_name)}：${num(row.revenue)} ${esc(row.currency)}</span>`).join(""):"—";
+    $("#analyticsSummary").innerHTML=renderAnalysisCards([
+      {icon:"search",label:"曝光量",count:num(total("impressions"),0),tone:"azure"},
+      {icon:"package",label:"商品详情浏览量",count:num(total("product_views"),0),tone:"lavender"},
+      {icon:"activity",label:"独立访客",count:num(total("unique_visitors"),0),tone:"mint"},
+      {icon:"shoppingBag",label:"加购量",count:num(total("cart_adds"),0),tone:"peach"},
+      {icon:"orders",label:"下单件数",count:num(total("ordered_units"),0),tone:"blue"},
+      {icon:"wallet",label:"成交金额",count:`<span class="analytics-money-lines">${revenue}</span>`,note:"按店铺／币种分开展示",tone:"azure"},
+      {icon:"trendingUp",label:"曝光→浏览",count:analyticsRate(total("product_views"),total("impressions")),tone:"lavender"},
+      {icon:"percent",label:"浏览→加购 ／ 加购→下单",count:`${analyticsRate(total("cart_adds"),total("product_views"))} ／ ${analyticsRate(total("ordered_units"),total("cart_adds"))}`,tone:"mint"}
+    ]);
+    $("#analyticsRows").innerHTML=data.items.length?data.items.map(row=>`<tr><td><span class="shop-tag">${esc(row.shop_name)}</span><strong class="analytics-sku">${esc(row.sku)}</strong></td><td title="${esc(row.name)}">${esc(row.name||"—")}</td><td class="text-right">${num(row.impressions,0)}</td><td class="text-right">${num(row.product_views,0)}</td><td class="text-right">${num(row.unique_visitors,0)}</td><td class="text-right">${num(row.cart_adds,0)}</td><td class="text-right">${num(row.ordered_units,0)}</td><td class="text-right">${num(row.revenue)} ${esc(row.currency)}</td><td class="text-right">${analyticsRate(row.product_views,row.impressions)}</td><td class="text-right">${analyticsRate(row.cart_adds,row.product_views)}</td><td class="text-right">${analyticsRate(row.ordered_units,row.cart_adds)}</td></tr>`).join(""):`<tr><td colspan="11" class="analytics-message">该条件下暂无流量数据</td></tr>`;
+    pager("analyticsData",data,loadAnalyticsData);
+  }catch(error){$("#analyticsSummary").innerHTML="";analyticsMessage("#analyticsRows",11,error.message);analyticsError(error)}
+}
+async function loadProductQueries(){
+  clearAnalyticsError();analyticsDetail=null;$("#queryDetailPanel").classList.add("hidden");analyticsMessage("#productQueryRows",8,"商品搜索表现加载中…",true);
+  try{
+    const data=await api(`/api/analytics/product-queries?${analyticsQuery(state.pages.productQueries)}`);productQueryItems=data.items;
+    $("#productQueryRows").innerHTML=data.items.length?data.items.map((row,index)=>`<tr><td><span class="shop-tag">${esc(row.shop_name)}</span><strong class="analytics-sku">${esc(row.sku)}</strong></td><td><strong>${esc(row.name||"—")}</strong><small class="analytics-offer">${esc(row.offer_id||"—")}</small></td><td class="text-right">${row.position==null?"—":num(row.position)}</td><td class="text-right">${num(row.unique_search_users,0)}</td><td class="text-right">${num(row.unique_view_users,0)}</td><td class="text-right">${analyticsApiRate(row.view_conversion)}</td><td class="text-right">${row.gmv==null?"—":`${num(row.gmv)} ${esc(row.currency)}`}</td><td><button type="button" class="analytics-detail-button" data-query-detail="${index}">查看关键词</button></td></tr>`).join(""):`<tr><td colspan="8" class="analytics-message">该条件下暂无搜索表现数据</td></tr>`;
+    pager("productQueries",data,loadProductQueries);
+  }catch(error){analyticsMessage("#productQueryRows",8,error.message);analyticsError(error)}
+}
+async function loadProductQueryDetails(){
+  if(!analyticsDetail)return;
+  clearAnalyticsError();$("#queryDetailPanel").classList.remove("hidden");analyticsMessage("#queryDetailRows",7,"搜索关键词加载中…",true);
+  $("#queryDetailTitle").innerHTML=`<morph-icon icon="fileText" size="18" stroke-width="1.8"></morph-icon> ${esc(analyticsDetail.shop_name)} · ${esc(analyticsDetail.sku)} 搜索关键词`;
+  const query=new URLSearchParams({shop_id:analyticsDetail.shop_id,sku:analyticsDetail.sku,page:state.pages.productQueryDetails,from:analyticsRange.start,to:analyticsRange.end});
+  try{
+    const data=await api(`/api/analytics/product-queries/details?${query}`);
+    $("#queryDetailRows").innerHTML=data.items.length?data.items.map(row=>`<tr><td>${esc(row.query||"—")}</td><td class="text-right">${row.position==null?"—":num(row.position)}</td><td class="text-right">${num(row.unique_search_users,0)}</td><td class="text-right">${num(row.unique_view_users,0)}</td><td class="text-right">${analyticsApiRate(row.view_conversion)}</td><td class="text-right">${num(row.order_count,0)}</td><td class="text-right">${row.gmv==null?"—":`${num(row.gmv)} ${esc(row.currency)}`}</td></tr>`).join(""):`<tr><td colspan="7" class="analytics-message">该 SKU 暂无关键词明细</td></tr>`;
+    pager("productQueryDetails",data,loadProductQueryDetails);
+  }catch(error){analyticsMessage("#queryDetailRows",7,error.message);analyticsError(error)}
 }
 async function loadOrders() {
   $("#orderList").innerHTML = '<div class="panel order-empty"><morph-icon icon="sync" size="20" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>订单加载中…</span></div>';
@@ -1924,13 +1971,14 @@ function probeResult(result={}){
 }
 async function loadPage(page) {
   if(page==="overview") return Promise.all([loadOverview(),loadTrend()]); if(page==="orders") return loadOrders();
+  if(page==="analytics") return loadAnalyticsPage();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock};
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",dingtalk:"dingtalk"};
-const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
+const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",dingtalk:"dingtalk"};
+const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
   document.querySelectorAll("#nav button").forEach(e=>{
@@ -1958,6 +2006,10 @@ function activateReturnTab(name,focus=false){
 }
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await Promise.all([loadOverview(),loadTrend()])}catch(err){$("#loginError").textContent=err.message}});
 $("#nav").addEventListener("click",e=>{const button=e.target.closest("[data-page]");if(button)openPage(button.dataset.page)});
+$("#analyticsTabs").onclick=e=>{const button=e.target.closest("[data-analytics-tab]");if(!button||button.dataset.analyticsTab===analyticsTab)return;analyticsTab=button.dataset.analyticsTab;$("#analyticsTabs").querySelectorAll("button").forEach(item=>{const active=item===button;item.classList.toggle("active",active);item.setAttribute("aria-selected",String(active));item.tabIndex=active?0:-1});$("#analytics-traffic").classList.toggle("hidden",analyticsTab!=="traffic");$("#analytics-queries").classList.toggle("hidden",analyticsTab!=="queries");loadAnalyticsPage()};
+$("#analyticsFilterForm").onsubmit=e=>{e.preventDefault();state.pages.analyticsData=state.pages.productQueries=state.pages.productQueryDetails=1;loadAnalyticsPage()};
+$("#analyticsClear").onclick=()=>{$("#analyticsSku").value="";state.pages.analyticsData=state.pages.productQueries=state.pages.productQueryDetails=1;loadAnalyticsPage()};
+$("#productQueryRows").onclick=e=>{const index=Number(e.target.closest("[data-query-detail]")?.dataset.queryDetail);if(!Number.isInteger(index)||!productQueryItems[index])return;analyticsDetail=productQueryItems[index];state.pages.productQueryDetails=1;loadProductQueryDetails()};
 $("#shopPickerButton").onclick=()=>{const willOpen=$("#shopOptions").classList.contains("hidden");if(willOpen){document.querySelectorAll(".date-range-panel:not(.hidden)").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-pill[aria-expanded=true],.date-range-button[aria-expanded=true]").forEach(b=>{b.setAttribute("aria-expanded","false");b.querySelector("morph-icon:last-of-type")?.morphTo("chevronDown","snappy")});$("#channelOptions")?.classList.add("hidden");$("#channelPickerButton")?.setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy");Object.values(returnSelects).forEach(select=>select.close())}$("#shopOptions").classList.toggle("hidden",!willOpen);$("#shopPickerButton").setAttribute("aria-expanded",String(willOpen));$("#shopPickerMorph")?.morphTo(willOpen?"chevronUp":"chevronDown","snappy")};
 $("#shopOptions").onclick=e=>{const option=e.target.closest("[data-shop]");if(!option)return;const newShop=Number(option.dataset.shop);const changed=state.shop!==newShop;applyShopSelection(newShop,true);document.querySelectorAll("#shopOptions [data-shop]").forEach(button=>button.setAttribute("aria-selected",String(button===option)));$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy");if(changed){const page=$(".page.active")?.id;if(page)loadPage(page).catch(err=>toast(err.message,true))}};
 $("#channelPickerButton").onclick=()=>{const willOpen=$("#channelOptions").classList.contains("hidden");if(willOpen){document.querySelectorAll(".date-range-panel:not(.hidden)").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-pill[aria-expanded=true],.date-range-button[aria-expanded=true]").forEach(b=>{b.setAttribute("aria-expanded","false");b.querySelector("morph-icon:last-of-type")?.morphTo("chevronDown","snappy")});$("#shopOptions")?.classList.add("hidden");$("#shopPickerButton")?.setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy");Object.values(returnSelects).forEach(select=>select.close())}$("#channelOptions").classList.toggle("hidden",!willOpen);$("#channelPickerButton").setAttribute("aria-expanded",String(willOpen));$("#channelPickerMorph")?.morphTo(willOpen?"chevronUp":"chevronDown","snappy")};
@@ -2294,6 +2346,7 @@ const localDate=value=>{const [year,month,day]=value.split("-").map(Number);retu
 const shiftDays=(date,amount)=>new Date(date.getFullYear(),date.getMonth(),date.getDate()+amount);
 const shiftMonths=(date,amount)=>new Date(date.getFullYear(),date.getMonth()+amount,1);
 const threeMonthsAgo=(()=>{const target=new Date(today.getFullYear(),today.getMonth()-3,1);target.setDate(Math.min(today.getDate(),new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return target})();
+const analyticsEnd=shiftDays(today,-3),analyticsStart=shiftDays(analyticsEnd,-29);
 const formatShortDate=dStr=>{const parts=dStr.split("-");return `${parts[1]}.${parts[2]}`};
 const formatRangeDisplay=(start,end,presetText)=>{
   if(presetText)return presetText;
@@ -2302,7 +2355,7 @@ const formatRangeDisplay=(start,end,presetText)=>{
   if(sY===eY)return `${formatShortDate(start)} - ${formatShortDate(end)}`;
   return `${sY.slice(2)}.${formatShortDate(start)} - ${eY.slice(2)}.${formatShortDate(end)}`;
 };
-function createDateRange(rootId,onChange){
+function createDateRange(rootId,onChange,defaultPreset="3months"){
   const root=$(rootId);if(!root)return null;
   const range={start:isoDate(threeMonthsAgo),end:isoDate(today),selecting:false,view:new Date(today.getFullYear(),today.getMonth(),1),preset:"3months"};
   root.innerHTML=`<div class="date-range-wrap"><button class="date-range-pill" data-range-role="button" type="button" aria-haspopup="dialog" aria-expanded="false" title="时间范围：${range.start} 至 ${range.end}"><morph-icon icon="calendar" size="14" spring="snappy" stroke-width="1.8"></morph-icon><span class="date-range-text" data-range-role="label">近三个月</span><morph-icon icon="chevronDown" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button><div class="date-range-panel header-date-panel hidden" data-range-role="panel" role="dialog" aria-label="选择日期范围"><div class="range-calendars"><div class="range-calendar"><div class="range-month-head"><button data-range-role="prev" type="button" aria-label="上个月"><morph-icon icon="chevronLeft" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button><strong data-range-role="month-a"></strong><span></span></div><div class="range-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="range-days" data-range-role="days-a"></div></div><div class="range-calendar"><div class="range-month-head"><span></span><strong data-range-role="month-b"></strong><button data-range-role="next" type="button" aria-label="下个月"><morph-icon icon="chevronRight" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button></div><div class="range-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="range-days" data-range-role="days-b"></div></div></div><div class="range-presets"><button type="button" data-range="today">今天</button><button type="button" data-range="3days">3天内</button><button type="button" data-range="7days">7天内</button><button type="button" data-range="3months">近三个月</button><button type="button" data-range="all">全部时间</button></div></div></div>`;
@@ -2319,7 +2372,7 @@ function createDateRange(rootId,onChange){
   };
   const set=(start,end,presetName="",notify=true)=>{
     range.start=isoDate(start);range.end=isoDate(end);range.selecting=false;range.preset=presetName;
-    const choices={today:"今天","3days":"3天内","7days":"7天内","3months":"近三个月",all:"全部时间"};
+    const choices={today:"今天","3days":"3天内","7days":"7天内","3months":"近三个月",analytics30:"近30天（截至3天前）",all:"全部时间"};
     const presetText=choices[presetName]||"";
     label.textContent=formatRangeDisplay(range.start,range.end,presetText);
     label.classList.remove("shop-picker-swap");
@@ -2328,7 +2381,7 @@ function createDateRange(rootId,onChange){
     button.title=`时间范围：${range.start} 至 ${range.end}`;
     render();if(notify)onChange(range);
   };
-  const preset=(name,notify=true)=>{const choices={today:[today,today],"3days":[shiftDays(today,-2),today],"7days":[shiftDays(today,-6),today],"3months":[threeMonthsAgo,today],all:[new Date(2020,0,1),today]};set(...choices[name],name,notify)};
+  const preset=(name,notify=true)=>{const choices={today:[today,today],"3days":[shiftDays(today,-2),today],"7days":[shiftDays(today,-6),today],"3months":[threeMonthsAgo,today],analytics30:[analyticsStart,analyticsEnd],all:[new Date(2020,0,1),today]};set(...choices[name],name,notify)};
   root.onclick=e=>{
     if(e.target.closest(".date-range-pill,.date-range-button")){
       const willOpen=panel.classList.contains("hidden");
@@ -2363,9 +2416,10 @@ function createDateRange(rootId,onChange){
       if(caret)caret.morphTo("chevronDown","snappy");
     }
   };
-  preset("3months",false);return range;
+  preset(defaultPreset,false);return range;
 }
 const overviewRange=createDateRange("#overviewDateRange",()=>loadOverview().catch(error=>toast(error.message,true)));
+const analyticsRange=createDateRange("#analyticsDateRange",()=>{state.pages.analyticsData=state.pages.productQueries=state.pages.productQueryDetails=1;loadAnalyticsPage()},"analytics30");
 const orderRange=createDateRange("#orderDateRange",()=>{state.page=1;loadOrders().catch(error=>toast(error.message,true))});
 const riskRange=createDateRange("#riskDateRange",()=>loadRisk().catch(error=>toast(error.message,true)));
 const timelinessRange=createDateRange("#timelinessDateRange",()=>{state.pages.timeliness=1;loadTimeliness().catch(error=>toast(error.message,true))});

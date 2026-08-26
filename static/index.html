@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>oPanel</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
-  <link rel="stylesheet" href="/static/macaron.css?v=20260826-07">
+  <link rel="stylesheet" href="/static/macaron.css?v=20260826-08">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -34,6 +34,10 @@
           <button data-page="orders">
             <morph-icon class="nav-icon" data-nav-morph="orders" icon="orders" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
             <span>订单</span>
+          </button>
+          <button data-page="analytics">
+            <morph-icon class="nav-icon" data-nav-morph="analytics" icon="search" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>流量与搜索分析</span>
           </button>
         </div>
         <div class="nav-group">
@@ -113,6 +117,7 @@
           </div>
           <div id="headerDateRange" class="header-date-wrap">
             <div id="overviewDateRange"></div>
+            <div id="analyticsDateRange" class="hidden"></div>
             <div id="orderDateRange" class="hidden"></div>
             <div id="riskDateRange" class="hidden"></div>
             <div id="timelinessDateRange" class="hidden"></div>
@@ -202,6 +207,70 @@
             </div>
             <div id="overviewTopProducts" class="overview-products"></div>
             <div id="topProductsInsights" class="trend-insights"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="analytics" class="page">
+        <div id="analyticsTabs" class="subtabs return-subtabs" role="tablist" aria-label="流量与搜索分析">
+          <button id="analyticsTrafficTab" class="active" type="button" role="tab" aria-selected="true" aria-controls="analytics-traffic" data-analytics-tab="traffic">
+            <morph-icon icon="trendingUp" size="14" stroke-width="2"></morph-icon><span>流量转化</span>
+          </button>
+          <button id="analyticsQueriesTab" type="button" role="tab" aria-selected="false" aria-controls="analytics-queries" tabindex="-1" data-analytics-tab="queries">
+            <morph-icon icon="search" size="14" stroke-width="2"></morph-icon><span>搜索关键词</span>
+          </button>
+        </div>
+        <div id="analyticsError" class="analytics-error hidden" role="alert"></div>
+        <div class="panel analytics-filter-panel">
+          <form id="analyticsFilterForm" class="return-filter" role="search">
+            <div class="return-search-wrap">
+              <morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon>
+              <input id="analyticsSku" type="search" inputmode="numeric" aria-label="筛选SKU" placeholder="输入 SKU（可选）…">
+            </div>
+            <button class="primary" type="submit"><morph-icon icon="search" size="14" stroke-width="2"></morph-icon><span>查询</span></button>
+            <button id="analyticsClear" type="button">清除</button>
+          </form>
+          <span class="muted">搜索分析最近 3 天由 Ozon 计算中，默认展示截至 3 天前的最近 30 天</span>
+        </div>
+
+        <div id="analytics-traffic" class="analytics-tab" role="tabpanel" aria-labelledby="analyticsTrafficTab">
+          <div id="analyticsSummary" class="analytics-summary"></div>
+          <div class="panel analytics-panel">
+            <div class="panel-title"><div><h2><morph-icon icon="package" size="18" stroke-width="1.8"></morph-icon> SKU 商品表现</h2><span class="muted">展现 → 浏览 → 加购 → 下单转化链路</span></div></div>
+            <div class="table-wrap analytics-table-wrap">
+              <table class="analytics-table">
+                <thead><tr>
+                  <th>店铺／SKU</th><th>商品</th><th class="text-right">曝光量</th><th class="text-right">详情浏览</th>
+                  <th class="text-right">独立访客</th><th class="text-right">加购量</th><th class="text-right">下单件数</th><th class="text-right">成交金额</th>
+                  <th class="text-right">曝光→浏览</th><th class="text-right">浏览→加购</th><th class="text-right">加购→下单</th>
+                </tr></thead>
+                <tbody id="analyticsRows"></tbody>
+              </table>
+            </div>
+            <div class="pager"><button id="analyticsDataPrev">上一页</button><span id="analyticsDataInfo"></span><button id="analyticsDataNext">下一页</button></div>
+          </div>
+        </div>
+
+        <div id="analytics-queries" class="analytics-tab hidden" role="tabpanel" aria-labelledby="analyticsQueriesTab">
+          <div class="panel analytics-panel">
+            <div class="panel-title"><div><h2><morph-icon icon="search" size="18" stroke-width="1.8"></morph-icon> 商品搜索表现</h2><span class="muted">点击查看关键词后才加载该 SKU 的详情</span></div></div>
+            <div class="table-wrap analytics-table-wrap">
+              <table class="analytics-query-table">
+                <thead><tr><th>店铺／SKU</th><th>商品／货号</th><th class="text-right">平均排名</th><th class="text-right">独立搜索人数</th><th class="text-right">独立访问人数</th><th class="text-right">点击转化率</th><th class="text-right">GMV</th><th></th></tr></thead>
+                <tbody id="productQueryRows"></tbody>
+              </table>
+            </div>
+            <div class="pager"><button id="productQueriesPrev">上一页</button><span id="productQueriesInfo"></span><button id="productQueriesNext">下一页</button></div>
+          </div>
+          <div id="queryDetailPanel" class="panel analytics-panel hidden">
+            <div class="panel-title"><div><h2 id="queryDetailTitle"><morph-icon icon="fileText" size="18" stroke-width="1.8"></morph-icon> 搜索关键词详情</h2><span class="muted">仅显示当前点击 SKU</span></div></div>
+            <div class="table-wrap analytics-table-wrap">
+              <table class="analytics-detail-table">
+                <thead><tr><th>搜索关键词</th><th class="text-right">平均自然排名</th><th class="text-right">独立搜索人数</th><th class="text-right">独立访问人数</th><th class="text-right">点击转化率</th><th class="text-right">订单量</th><th class="text-right">GMV／币种</th></tr></thead>
+                <tbody id="queryDetailRows"></tbody>
+              </table>
+            </div>
+            <div class="pager"><button id="productQueryDetailsPrev">上一页</button><span id="productQueryDetailsInfo"></span><button id="productQueryDetailsNext">下一页</button></div>
           </div>
         </div>
       </section>
@@ -1377,5 +1446,5 @@
     </div>
   </dialog>
   <script src="/static/morphicons.js?v=20260826-07"></script>
-  <script src="/static/app.js?v=20260826-07"></script>
+  <script src="/static/app.js?v=20260826-08"></script>
 </body></html>
