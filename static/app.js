@@ -5,7 +5,11 @@ let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
 let pushSubscriptionState={},pushSubscriptionLoadToken=0;
-const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
+const profitCalculator = window.ProfitCalculator;
+const profitCostLabels = {purchase_cost:"采购成本",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_logistics:"国际组织物流费",bank_fee:"银行手续费",insurance:"保险",packing:"打包成本",other_cost:"其他费用"};
+const profitPathLabels = {FBP:"FBP",realFBS_hongkong:"realFBS · 香港",realFBS_shenzhen:"realFBS · 深圳"};
+const profitStatusLabels = {implemented:"已接入",missing_input:"待输入",not_implemented:"未接入规则"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
 const PUSH_EVENT_FALLBACK_TYPES=[
   "TYPE_NEW_POSTING","TYPE_POSTING_CANCELLED","TYPE_STATE_CHANGED",
@@ -627,6 +631,71 @@ async function loadShops() {
   $("#importShop").value = importShop;
   returnSelects.importShop?.render();
   $("#shop1").value = state.shops[0].name; $("#shop2").value = state.shops[1].name;
+  renderProfitShopOptions();
+}
+function profitMoney(value, currency = "CNY") {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  const symbol = currency === "USD" ? "$" : "¥";
+  return `${symbol}${Number(value).toLocaleString("zh-CN", {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+}
+function profitPercent(value) {
+  return value == null || !Number.isFinite(Number(value)) ? "—" : `${(Number(value) * 100).toFixed(2)}%`;
+}
+function profitShopCurrency(shopId) {
+  return Number(shopId) === 2 ? "CNY" : "USD";
+}
+function renderProfitShopOptions() {
+  const select = $("#profitShop");
+  if (!select || !state.shops.length) return;
+  const current = Number(select.value || 1);
+  const shops = state.shops.filter(shop => [1, 2].includes(Number(shop.id)));
+  if (!shops.length) return;
+  select.innerHTML = shops.map(shop => `<option value="${shop.id}">${esc(shop.name)} · ${profitShopCurrency(shop.id)}</option>`).join("");
+  select.value = String(shops.find(shop => Number(shop.id) === current)?.id || shops[0].id);
+}
+function renderProfitCalculator() {
+  if (!profitCalculator || !$("#profitForm")) return;
+  const fulfillmentMode = $("#profitFulfillment").value;
+  const realFbs = fulfillmentMode === "realFBS";
+  const channelField = $("#profitChannelField");
+  const channel = $("#profitChannel");
+  channelField.classList.toggle("hidden", !realFbs);
+  channel.disabled = !realFbs;
+
+  const result = profitCalculator.calculateProfit({
+    shopId: Number($("#profitShop").value),
+    priceOriginal: $("#profitPrice").value,
+    purchasePriceUsd: $("#profitPurchasePrice").value,
+    weightGrams: $("#profitWeight").value,
+    usdCnyRate: $("#profitRate").value,
+    fulfillmentMode,
+    realFbsChannel: channel.value
+  });
+  const currency = result.price_currency;
+  const isCny = currency === "CNY";
+  $("#profitPriceCurrency").textContent = currency || "—";
+  $("#profitPricePrefix").textContent = isCny ? "¥" : "$";
+  $("#profitPriceUsdLabel").textContent = isCny ? "美元等值" : "美元售价";
+  $("#profitPriceCnyLabel").textContent = isCny ? "人民币售价" : "人民币等值";
+  $("#profitPriceUsd").textContent = profitMoney(result.price_usd, "USD");
+  $("#profitPriceCny").textContent = profitMoney(result.price_cny);
+  $("#profitPathBadge").textContent = profitPathLabels[result.fulfillment_path] || result.fulfillment_path;
+  $("#profitCostRows").innerHTML = profitCalculator.COST_KEYS.map(key => {
+    const cost = result.costs[key];
+    const implemented = cost.status === "implemented";
+    return `<div class="profit-cost-row"><div class="profit-cost-label"><strong>${profitCostLabels[key]}</strong><small>${profitStatusLabels[cost.status]}</small></div><strong class="profit-cost-value ${implemented ? "" : "is-pending"}">${implemented ? profitMoney(cost.value) : "—"}</strong></div>`;
+  }).join("");
+  $("#profitRevenue").textContent = profitMoney(result.revenue_cny);
+  $("#profitTotalCost").textContent = profitMoney(result.total_cost_cny);
+  $("#profitAmount").textContent = profitMoney(result.profit_cny);
+  $("#profitMargin").textContent = profitPercent(result.net_margin);
+  $("#profitSummaryNote").textContent = result.profit_cny === null
+    ? "请输入有效的平台售价、采购价格和测算汇率；部分费用规则尚未接入。"
+    : "当前仅包含已接入费用：采购成本；部分费用规则尚未接入。";
+}
+function loadProfitPage() {
+  renderProfitShopOptions();
+  renderProfitCalculator();
 }
 let overviewReqId = 0, trendReqId = 0;
 async function loadTrend() {
@@ -2125,11 +2194,11 @@ async function loadPage(page) {
   if(page==="overview") return Promise.all([loadOverview(),loadTrend()]); if(page==="orders") return loadOrders();
   if(page==="analytics") return loadAnalyticsPage();
   if(page==="risk") return loadRisk();
-  const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock};
+  const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock,profit:loadProfitPage};
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="pushSubscriptions") return loadPushSubscriptions(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
+const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",profit:"trendingUp",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
 const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -2142,6 +2211,7 @@ function openPage(page) {
     }
   });
   $("#settingsButton")?.classList.toggle("active", page === "settings");
+  $("#shopPickerButton")?.closest(".shop-picker-wrap")?.classList.toggle("hidden", page === "profit");
   Object.entries(pageDateRangeMap).forEach(([p,sel])=>{
     const el=$(sel);
     if(el) el.classList.toggle("hidden", p!==page);
@@ -2157,6 +2227,9 @@ function activateReturnTab(name,focus=false){
   document.querySelectorAll(".return-tab").forEach(panel=>{const active=panel.id===`returns-${name}`;panel.classList.toggle("active",active);panel.hidden=!active});
 }
 $("#loginForm").addEventListener("submit",async e=>{e.preventDefault();try{await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:$("#password").value})});const session=await api("/api/session");state.csrf=session.csrf_token;showShell();await loadShops();await Promise.all([loadOverview(),loadTrend()])}catch(err){$("#loginError").textContent=err.message}});
+$("#profitForm")?.addEventListener("submit",e=>e.preventDefault());
+$("#profitForm")?.addEventListener("input",renderProfitCalculator);
+$("#profitForm")?.addEventListener("change",renderProfitCalculator);
 $("#nav").addEventListener("click",e=>{const button=e.target.closest("[data-page]");if(button)openPage(button.dataset.page)});
 $("#analyticsTabs").onclick=e=>{const button=e.target.closest("[data-analytics-tab]");if(!button||button.dataset.analyticsTab===analyticsTab)return;analyticsTab=button.dataset.analyticsTab;$("#analyticsTabs").querySelectorAll("button").forEach(item=>{const active=item===button;item.classList.toggle("active",active);item.setAttribute("aria-selected",String(active));item.tabIndex=active?0:-1});$("#analytics-traffic").classList.toggle("hidden",analyticsTab!=="traffic");$("#analytics-queries").classList.toggle("hidden",analyticsTab!=="queries");loadAnalyticsPage()};
 $("#analyticsFilterForm").onsubmit=e=>{e.preventDefault();state.pages.analyticsData=state.pages.productQueries=state.pages.productQueryDetails=1;loadAnalyticsPage()};

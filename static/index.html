@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>oPanel</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
-  <link rel="stylesheet" href="/static/macaron.css?v=20260826-09">
+  <link rel="stylesheet" href="/static/macaron.css?v=20260827-01">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -64,6 +64,10 @@
           <button data-page="stock">
             <morph-icon class="nav-icon" data-nav-morph="stock" icon="stock" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
             <span>销量与备货建议</span>
+          </button>
+          <button data-page="profit">
+            <morph-icon class="nav-icon" data-nav-morph="profit" icon="trendingUp" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>利润测算</span>
           </button>
           <button data-page="transfer">
             <morph-icon class="nav-icon" data-nav-morph="transfer" icon="transfer" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
@@ -1340,6 +1344,140 @@
         </div>
       </section>
 
+      <section id="profit" class="page">
+        <section class="panel profit-intro-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8"></morph-icon> 利润测算</h2>
+              <span class="muted">按店铺定价币种换算，当前结果统一以人民币展示</span>
+            </div>
+            <span class="profit-stage-badge">第一阶段框架</span>
+          </div>
+          <div class="profit-notice" role="status">
+            <morph-icon icon="alertCircle" size="15" stroke-width="1.8"></morph-icon>
+            <span>当前仅包含已接入费用：采购成本。其他费用规则尚未接入，利润结果仅供阶段性参考。</span>
+          </div>
+        </section>
+
+        <div class="profit-input-grid">
+          <section class="panel profit-input-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="settings" size="18" stroke-width="1.8"></morph-icon> 基础信息</h2>
+                <span class="muted">店铺币种固定，不能自由选择售价币种</span>
+              </div>
+            </div>
+            <form id="profitForm" class="profit-form">
+              <div class="profit-fields-grid">
+                <label class="profit-field">
+                  <span>店铺</span>
+                  <select id="profitShop" aria-label="利润测算店铺">
+                    <option value="1">店铺1 · USD</option>
+                    <option value="2">店铺2 · CNY</option>
+                  </select>
+                </label>
+                <label class="profit-field">
+                  <span>履约模式</span>
+                  <select id="profitFulfillment" aria-label="履约模式">
+                    <option value="FBP">FBP</option>
+                    <option value="realFBS">realFBS</option>
+                  </select>
+                </label>
+                <label id="profitChannelField" class="profit-field hidden">
+                  <span>realFBS 发货渠道</span>
+                  <select id="profitChannel" aria-label="realFBS 发货渠道">
+                    <option value="hongkong">香港</option>
+                    <option value="shenzhen">深圳</option>
+                  </select>
+                </label>
+                <label class="profit-field">
+                  <span>平台售价 <small id="profitPriceCurrency">USD</small></span>
+                  <span class="profit-input-with-prefix"><b id="profitPricePrefix">$</b><input id="profitPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="输入售价" aria-label="平台售价"></span>
+                </label>
+                <label class="profit-field">
+                  <span>采购价格 <small>USD</small></span>
+                  <span class="profit-input-with-prefix"><b>$</b><input id="profitPurchasePrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="输入采购价" aria-label="采购价格 USD"></span>
+                </label>
+                <label class="profit-field">
+                  <span>重量</span>
+                  <span class="profit-input-with-suffix"><input id="profitWeight" type="number" min="0" step="1" inputmode="numeric" placeholder="输入重量" aria-label="重量克数"><b>g</b></span>
+                </label>
+                <label class="profit-field">
+                  <span>USD/CNY 测算汇率</span>
+                  <span class="profit-rate-input"><b>1 USD =</b><input id="profitRate" type="number" min="0.0001" step="0.01" value="7.20" inputmode="decimal" aria-label="USD CNY 测算汇率"><b>CNY</b></span>
+                </label>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel profit-price-panel">
+            <div class="panel-title">
+              <div>
+                <h2><morph-icon icon="layers" size="18" stroke-width="1.8"></morph-icon> 售价折算</h2>
+                <span class="muted">输入变化后即时更新标准化价格</span>
+              </div>
+            </div>
+            <div class="profit-conversion-values">
+              <div class="profit-conversion-item">
+                <span id="profitPriceUsdLabel">美元售价</span>
+                <strong id="profitPriceUsd">—</strong>
+              </div>
+              <div class="profit-conversion-item">
+                <span id="profitPriceCnyLabel">人民币售价</span>
+                <strong id="profitPriceCny">—</strong>
+              </div>
+            </div>
+            <div class="profit-price-meta">
+              <span>内部标准化字段</span>
+              <code>price_original · price_currency · price_usd · price_cny</code>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel profit-cost-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="package" size="18" stroke-width="1.8"></morph-icon> 费用明细</h2>
+              <span class="muted">费用均以 CNY 核算；“—”表示规则尚未接入</span>
+            </div>
+            <span id="profitPathBadge" class="profit-path-badge">FBP</span>
+          </div>
+          <div id="profitCostRows" class="profit-cost-list"></div>
+        </section>
+
+        <section class="panel profit-summary-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8"></morph-icon> 利润汇总</h2>
+              <span class="muted">基于当前已接入费用计算</span>
+            </div>
+          </div>
+          <div class="profit-summary-grid">
+            <article class="profit-summary-card azure">
+              <span>销售收入</span>
+              <strong id="profitRevenue">—</strong>
+              <small>price_cny</small>
+            </article>
+            <article class="profit-summary-card peach">
+              <span>总成本</span>
+              <strong id="profitTotalCost">—</strong>
+              <small>已接入费用之和</small>
+            </article>
+            <article class="profit-summary-card mint">
+              <span>预计利润</span>
+              <strong id="profitAmount">—</strong>
+              <small>销售收入 − 当前总成本</small>
+            </article>
+            <article class="profit-summary-card lavender">
+              <span>净利润率</span>
+              <strong id="profitMargin">—</strong>
+              <small>当前阶段性结果</small>
+            </article>
+          </div>
+          <p id="profitSummaryNote" class="profit-summary-note">部分费用规则尚未接入。</p>
+        </section>
+      </section>
+
       <section id="rules" class="page">
         <div id="ruleSummary" class="summary-grid rule-summary"></div>
         <div class="rules-grid">
@@ -1458,5 +1596,6 @@
     </div>
   </dialog>
   <script src="/static/morphicons.js?v=20260826-07"></script>
-  <script src="/static/app.js?v=20260826-09"></script>
+  <script src="/static/profit-calculator.js?v=20260827-01"></script>
+  <script src="/static/app.js?v=20260827-01"></script>
 </body></html>

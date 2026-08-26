@@ -7120,3 +7120,264 @@ th.text-right .stock-sort {
 @media (max-width: 640px) {
   .analytics-summary { grid-template-columns: 1fr; }
 }
+
+/* Profit Calculator: first-stage calculation workspace */
+.profit-intro-panel,
+.profit-input-panel,
+.profit-price-panel,
+.profit-cost-panel,
+.profit-summary-panel {
+  margin-bottom: 20px;
+}
+
+.profit-stage-badge,
+.profit-path-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary);
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.profit-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--line));
+  border-radius: var(--radius-input);
+  background: var(--warning-soft);
+  color: var(--butter-text);
+  font-size: 12.5px;
+}
+
+.profit-input-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .85fr);
+  gap: 20px;
+}
+
+.profit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profit-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+}
+
+.profit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profit-field > span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.profit-field small {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.profit-field select,
+.profit-field input {
+  width: 100%;
+  height: 38px;
+}
+
+.profit-input-with-prefix,
+.profit-input-with-suffix,
+.profit-rate-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.profit-input-with-prefix b,
+.profit-input-with-suffix b,
+.profit-rate-input b {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.profit-input-with-prefix input,
+.profit-input-with-suffix input,
+.profit-rate-input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.profit-conversion-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 6px 0 18px;
+}
+
+.profit-conversion-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  background: var(--panel-hover);
+}
+
+.profit-conversion-item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.profit-conversion-item strong {
+  color: var(--text);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.profit-price-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.profit-price-meta code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.profit-cost-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  overflow: hidden;
+}
+
+.profit-cost-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 68px;
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-solid);
+}
+
+.profit-cost-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profit-cost-label strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.profit-cost-label small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profit-cost-value {
+  flex-shrink: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.profit-cost-value.is-pending {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.profit-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.profit-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.profit-summary-card > span {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.profit-summary-card strong {
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+
+.profit-summary-card small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profit-summary-card.azure { background: color-mix(in srgb, var(--azure) 45%, var(--panel-solid)); }
+.profit-summary-card.peach { background: color-mix(in srgb, var(--peach) 40%, var(--panel-solid)); }
+.profit-summary-card.mint { background: color-mix(in srgb, var(--mint) 40%, var(--panel-solid)); }
+.profit-summary-card.lavender { background: color-mix(in srgb, var(--lavender) 40%, var(--panel-solid)); }
+
+.profit-summary-note {
+  margin: 14px 0 0;
+  color: var(--butter-text);
+  font-size: 12.5px;
+}
+
+@media (max-width: 980px) {
+  .profit-input-grid { grid-template-columns: 1fr; }
+  .profit-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .profit-fields-grid,
+  .profit-conversion-values,
+  .profit-cost-list,
+  .profit-summary-grid { grid-template-columns: 1fr; }
+  .profit-stage-badge { align-self: flex-start; }
+}
