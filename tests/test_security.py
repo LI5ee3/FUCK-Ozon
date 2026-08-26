@@ -56,7 +56,3 @@ class SecurityTest(DatabaseTestCase):
         with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}), \
              patch("app.main._token", return_value="token"):
             self.assertEqual(asyncio.run(login(Request(), Response())), {"ok": True})
-
-
-if __name__ == "__main__":
-    unittest.main()

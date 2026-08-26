@@ -1,10 +1,10 @@
-import json
 import unittest
 from datetime import datetime, timedelta, timezone
 
 from app import db
 from app.main import stock
-from tests.support import DatabaseTestCase
+from tests.support import (DatabaseTestCase, add_item, add_order,
+                           add_stock_snapshot)
 
 
 class InventoryPageTest(DatabaseTestCase):
@@ -34,20 +34,16 @@ class InventoryPageTest(DatabaseTestCase):
     @staticmethod
     def _order(connection, shop, posting, channel, sku, offer, name, quantity, created,
                status="已签收", shipped=1):
-        timestamp = created.isoformat()
-        connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,status_raw,shipped,source)
-          VALUES(?,?,?,?,?,?, 'api')""", (shop, posting, channel, timestamp, status, shipped))
-        connection.execute("""INSERT INTO order_items(
-          shop_id,channel,posting_number,sku,offer_id,product_name_raw,quantity,source)
-          VALUES(?,?,?,?,?,?,?,'api')""", (shop, channel, posting, sku, offer, name, quantity))
+        add_order(connection, shop, posting, channel, created.isoformat(), status, shipped)
+        add_item(connection, shop, posting, channel, sku, quantity,
+                 offer_id=offer, product_name_raw=name)
 
     @staticmethod
     def _snapshot(connection, shop, sku, offer, values, observed):
         payload = {"offer_id": offer, "stocks": [
             {"sku": sku, "type": channel, "present": present, "reserved": reserved}
             for channel, present, reserved in values]}
-        connection.execute("INSERT INTO stock_snapshots VALUES(?,?,?,?)",
-                           (shop, sku, observed.isoformat(), json.dumps(payload)))
+        add_stock_snapshot(connection, shop, sku, observed.isoformat(), payload)
 
     def test_sales_windows_channels_forecast_and_shop_isolation(self):
         data = stock(1, size=100)
@@ -98,6 +94,3 @@ class InventoryPageTest(DatabaseTestCase):
         self.assertEqual(stock(1, size=1, sort_by="forecast")["items"][0]["sku"], "S-R")
         self.assertEqual(stock(1, size=1, sort_by="replenishment")["items"][0]["sku"], "S-R")
         self.assertEqual(stock(1, size=1, sort_by="fbp", sort_order="asc")["items"][0]["fbp_present"], 0)
-
-if __name__ == "__main__":
-    unittest.main()

@@ -62,7 +62,3 @@ class DatabaseSchemaTest(DatabaseTestCase):
                 "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
             self.assertIsNotNone(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ozon_webhook_events'").fetchone())
-
-
-if __name__ == "__main__":
-    unittest.main()

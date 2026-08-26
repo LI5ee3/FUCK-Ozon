@@ -86,7 +86,3 @@ class TransferPageTest(DatabaseTestCase):
             detached = connection.execute("SELECT COUNT(*) FROM orders WHERE import_batch_id IS NULL").fetchone()[0]
         self.assertEqual(len(batches), 10)
         self.assertEqual((orders, detached), (12, 2))
-
-
-if __name__ == "__main__":
-    unittest.main()

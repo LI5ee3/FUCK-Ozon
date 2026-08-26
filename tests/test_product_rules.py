@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from app import db
 from app.main import product_rules, save_product_rule
 from app.products import clean_product_name, load_product_rules, resolve_product
-from tests.support import DatabaseTestCase, MockRequest as Request
+from tests.support import DatabaseTestCase, MockRequest as Request, add_item, add_order
 
 
 class ProductRulesTest(DatabaseTestCase):
@@ -18,12 +18,9 @@ class ProductRulesTest(DatabaseTestCase):
 
     @staticmethod
     def _product(connection, shop, posting, sku, offer, name):
-        connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,
-          status_raw,shipped,source) VALUES(?,?,'FBP','2026-08-01T00:00:00Z','已签收',1,'api')""",
-                           (shop, posting))
-        connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,
-          product_name_raw,quantity,source) VALUES(?,'FBP',?,?,?,?,1,'api')""",
-                           (shop, posting, sku, offer, name))
+        add_order(connection, shop, posting, "FBP", "2026-08-01T00:00:00Z", "已签收", 1)
+        add_item(connection, shop, posting, "FBP", sku, offer_id=offer,
+                 product_name_raw=name)
 
     def test_name_cleaning_and_sku_only_short_name(self):
         self.assertEqual(clean_product_name("  Новый&#xA0;A Новый\u00a0B  "), "A B")
@@ -59,6 +56,3 @@ class ProductRulesTest(DatabaseTestCase):
         group_id = result["groups"][0]["id"]
         asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
         self.assertEqual(product_rules()["groups"], [])
-
-if __name__ == "__main__":
-    unittest.main()

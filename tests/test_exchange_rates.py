@@ -130,7 +130,3 @@ class ExchangeRateTest(DatabaseTestCase):
         self.assertFalse(logistics_cny["missing_rate"])
         self.assertTrue(boundary["missing_rate"])
         self.assertEqual(platform_usd["base_rates"], {"USD_RUB": "90"})
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -60,7 +60,3 @@ class OrdersPageTest(DatabaseTestCase):
         cancelled = orders(1, "", "", 1, 30, "2026-08-10", "2026-08-10", status="cancelled")
         self.assertEqual(cancelled["total"], 1)
         self.assertEqual(cancelled["items"][0]["posting_number"], "MULTI")
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -8,7 +8,7 @@ from fastapi import HTTPException, Response
 
 from app import db, main, ozon
 from app.main import WEBHOOK_MAX_BODY_BYTES, ozon_webhook, protect_api, stock
-from tests.support import DatabaseTestCase
+from tests.support import DatabaseTestCase, add_item, add_order, add_stock_snapshot
 
 
 class WebhookRequest:
@@ -32,9 +32,7 @@ ENV = {
 class OzonWebhookTest(DatabaseTestCase):
     def order(self, posting, channel="realFBS", status="运输中", shipped=1):
         with db.transaction() as connection:
-            connection.execute("""INSERT INTO orders(
-              shop_id,posting_number,channel,status_raw,shipped,source)
-              VALUES(1,?,?,?,?, 'api')""", (posting, channel, status, shipped))
+            add_order(connection, 1, posting, channel, status_raw=status, shipped=shipped)
 
     def test_ping_is_public_and_other_api_is_not(self):
         with patch("app.main._env", return_value=ENV):
@@ -186,15 +184,14 @@ class OzonWebhookTest(DatabaseTestCase):
         ozon.process_webhook_event(1, fbs)
         ozon.process_webhook_event(1, fbo)
         with db.transaction() as connection:
-            connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,status_raw,shipped,source)
-              VALUES(1,'STOCK-11','realFBS','2026-08-01T00:00:00Z','运输中',1,'api')""")
-            connection.execute("""INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,quantity,source)
-              VALUES(1,'realFBS','STOCK-11','11','O-11','商品11',1,'api')""")
-            connection.execute("""INSERT INTO stock_snapshots VALUES(1,'base-11','2026-08-01T10:00:00Z',?)""", (json.dumps({
+            add_order(connection, 1, "STOCK-11", "realFBS", "2026-08-01T00:00:00Z", "运输中", 1)
+            add_item(connection, 1, "STOCK-11", "realFBS", "11", offer_id="O-11",
+                     product_name_raw="商品11")
+            add_stock_snapshot(connection, 1, "base-11", "2026-08-01T10:00:00Z", {
                 "offer_id": "O-11", "stocks": [{"sku": "11", "type": "fbp", "present": 4, "reserved": 0},
-                                                    {"sku": "11", "type": "rfbs", "present": 3, "reserved": 0}]}),))
-            connection.execute("""INSERT INTO stock_snapshots VALUES(1,'base-old','2026-08-01T10:00:00Z',?)""", (json.dumps({
-                "offer_id": "O-13", "stocks": [{"sku": "13", "type": "rfbs", "present": 6, "reserved": 0}]}),))
+                                                    {"sku": "11", "type": "rfbs", "present": 3, "reserved": 0}]})
+            add_stock_snapshot(connection, 1, "base-old", "2026-08-01T10:00:00Z", {
+                "offer_id": "O-13", "stocks": [{"sku": "13", "type": "rfbs", "present": 6, "reserved": 0}]})
             connection.execute("""INSERT INTO stock_history(
               shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
               VALUES(1,'push_rfbs','3','13',99,0,'2026-08-01T09:00:00Z','old-push','{}')""")
@@ -228,7 +225,3 @@ class OzonWebhookTest(DatabaseTestCase):
         self.assertEqual([call.args[1] for call in post.call_args_list], [
             "/v1/notification/set", "/v1/notification/enable", "/v1/notification/delete"])
         self.assertEqual(post.call_args_list[1].args[2], {"id": 7, "enabled": True})
-
-
-if __name__ == "__main__":
-    unittest.main()

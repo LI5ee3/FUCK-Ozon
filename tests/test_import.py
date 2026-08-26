@@ -340,6 +340,3 @@ class ImportRegressionTest(DatabaseTestCase):
             result = asyncio.run(upload("FBP", Request(), 1))
         self.assertEqual(result, {"rows": 1})
         runner.assert_awaited_once()
-
-if __name__ == "__main__":
-    unittest.main()

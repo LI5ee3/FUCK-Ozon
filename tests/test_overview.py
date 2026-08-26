@@ -98,7 +98,3 @@ class OverviewRegressionTest(DatabaseTestCase):
             order_trend(99, "day")
         with self.assertRaises(HTTPException):
             order_trend(1, "year")
-
-
-if __name__ == "__main__":
-    unittest.main()

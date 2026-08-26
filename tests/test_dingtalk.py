@@ -89,5 +89,3 @@ class DingtalkTest(DatabaseTestCase):
         values={"DINGTALK_WEBHOOK_URL":"https://example.test/hook?access_token=x","DINGTALK_SECRET":"secret"}
         with patch("app.dingtalk._env",return_value=values),patch("app.dingtalk.urllib.request.urlopen",return_value=response) as open_url: send_text("测试")
         query=parse_qs(urlsplit(open_url.call_args.args[0].full_url).query); self.assertIn("timestamp",query); self.assertIn("sign",query)
-
-if __name__ == "__main__": unittest.main()
