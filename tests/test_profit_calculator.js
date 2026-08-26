@@ -32,8 +32,28 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
     fulfillmentMode: "FBP"
   });
   assert.equal(fbp.costs.purchase_cost.value, 288);
+  assert.equal(fbp.costs.hunchun_shipping.value, 10);
+  assert.equal(fbp.costs.hunchun_shipping.status, "implemented");
+  assert.equal(fbp.total_cost_cny, 298);
   assert.equal(fbp.fulfillment_path, "FBP");
-  assert.equal(fbp.profit_cny, 432);
-  assert.equal(calculateProfit({fulfillmentMode: "realFBS", realFbsChannel: "hongkong"}).fulfillment_path, "realFBS_hongkong");
-  assert.equal(calculateProfit({fulfillmentMode: "realFBS", realFbsChannel: "shenzhen"}).fulfillment_path, "realFBS_shenzhen");
+  assert.equal(fbp.profit_cny, 422);
+  assert.equal(fbp.net_margin, 422 / 720);
+
+  const realFbsInput = {
+    shopId: 1,
+    priceOriginal: 100,
+    purchasePriceUsd: 40,
+    usdCnyRate: 7.2,
+    fulfillmentMode: "realFBS"
+  };
+  const hongKong = calculateProfit({...realFbsInput, realFbsChannel: "hongkong"});
+  const shenzhen = calculateProfit({...realFbsInput, realFbsChannel: "shenzhen"});
+  assert.equal(hongKong.fulfillment_path, "realFBS_hongkong");
+  assert.equal(hongKong.costs.hunchun_shipping.value, null);
+  assert.equal(hongKong.costs.hunchun_shipping.status, "not_applicable");
+  assert.equal(hongKong.total_cost_cny, 288);
+  assert.equal(shenzhen.fulfillment_path, "realFBS_shenzhen");
+  assert.equal(shenzhen.costs.hunchun_shipping.value, null);
+  assert.equal(shenzhen.costs.hunchun_shipping.status, "not_applicable");
+  assert.equal(shenzhen.total_cost_cny, 288);
 });

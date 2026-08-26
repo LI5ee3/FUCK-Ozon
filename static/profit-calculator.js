@@ -1,6 +1,7 @@
 const PROFIT_PRICE_CURRENCIES = Object.freeze({ 1: "USD", 2: "CNY" });
 const PROFIT_COST_KEYS = Object.freeze([
   "purchase_cost",
+  "hunchun_shipping",
   "cross_border_shipping",
   "last_mile_shipping",
   "warehouse_fee",
@@ -61,15 +62,21 @@ function emptyProfitCosts(input = {}) {
 }
 
 function calculateFbpCosts(input) {
-  return emptyProfitCosts(input);
+  const costs = emptyProfitCosts(input);
+  costs.hunchun_shipping = { value: 10, status: "implemented" };
+  return costs;
 }
 
 function calculateRealFbsHongKongCosts(input) {
-  return emptyProfitCosts(input);
+  const costs = emptyProfitCosts(input);
+  costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  return costs;
 }
 
 function calculateRealFbsShenzhenCosts(input) {
-  return emptyProfitCosts(input);
+  const costs = emptyProfitCosts(input);
+  costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  return costs;
 }
 
 function calculateProfit(input = {}) {
@@ -90,7 +97,7 @@ function calculateProfit(input = {}) {
 
   const hasPurchaseCost = costs.purchase_cost.status === "implemented";
   const totalCostCny = hasPurchaseCost
-    ? PROFIT_COST_KEYS.reduce((total, key) => total + (costs[key].value ?? 0), 0)
+    ? PROFIT_COST_KEYS.reduce((total, key) => total + (costs[key].status === "implemented" ? costs[key].value : 0), 0)
     : null;
   const profitCny = price.price_cny !== null && totalCostCny !== null
     ? price.price_cny - totalCostCny
