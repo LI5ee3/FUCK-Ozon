@@ -4,8 +4,28 @@ let riskItems = [];
 let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
-const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",dingtalk:"钉钉机器人",settings:"系统设置"};
+let pushSubscriptionState={},pushSubscriptionLoadToken=0;
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
+const PUSH_EVENT_FALLBACK_TYPES=[
+  "TYPE_NEW_POSTING","TYPE_POSTING_CANCELLED","TYPE_STATE_CHANGED",
+  "TYPE_FBO_POSTING_NEW","TYPE_FBO_POSTING_CANCELLED","TYPE_FBO_POSTING_STATE_CHANGED",
+  "TYPE_STOCKS_CHANGED","TYPE_FBO_STOCKS_CHANGED","TYPE_ORDER_NEW",
+  "TYPE_ORDER_CANCELLED","TYPE_ORDER_STATE_CHANGED"
+];
+const PUSH_EVENT_LABELS={
+  TYPE_NEW_POSTING:"新建 FBS 货件",
+  TYPE_POSTING_CANCELLED:"FBS 货件取消",
+  TYPE_STATE_CHANGED:"FBS 货件状态变化",
+  TYPE_FBO_POSTING_NEW:"新建 FBO 货件",
+  TYPE_FBO_POSTING_CANCELLED:"FBO 货件取消",
+  TYPE_FBO_POSTING_STATE_CHANGED:"FBO 货件状态变化",
+  TYPE_STOCKS_CHANGED:"FBS 库存变化",
+  TYPE_FBO_STOCKS_CHANGED:"FBO 库存变化",
+  TYPE_ORDER_NEW:"新建订单",
+  TYPE_ORDER_CANCELLED:"订单取消",
+  TYPE_ORDER_STATE_CHANGED:"订单状态变化"
+};
 const esc = (v) => String(v ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => `${(Number(v || 0) * 100).toFixed(2)}%`;
 const bj = (v) => { if (!v) return "暂无"; const date=new Date(v); return Number.isNaN(date.getTime()) ? "暂无" : new Intl.DateTimeFormat("zh-CN",{timeZone:"Asia/Shanghai",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(date).replaceAll("/","-"); };
@@ -1850,6 +1870,138 @@ async function loadDingtalk() {
     `;
   }
 }
+function pushTypesFromResponse(response){
+  const values=Array.isArray(response)?response:(response?.types||response?.result?.types||[]);
+  return values.map(value=>typeof value==="string"?value:value?.type).filter(Boolean).map(String);
+}
+function pushSubscriptionsFromResponse(response){
+  const values=Array.isArray(response)?response:(response?.urls||response?.result?.urls||response?.notifications||response?.result?.notifications||[]);
+  if(!Array.isArray(values))return [];
+  return values.filter(row=>row&&typeof row==="object"&&(row.id!=null||row.notification_id!=null||row.url)).map(row=>{
+    const enabled=row.enabled??row.is_enabled??false;
+    return {
+      id:row.id??row.notification_id,
+      url:String(row.url||""),
+      enabled:enabled===true||enabled===1||enabled==="1"||enabled==="true",
+      types:pushTypesFromResponse({types:row.types}),
+      createdAt:row.created_at,
+      updatedAt:row.updated_at,
+      error:row.error||row.last_error||""
+    };
+  });
+}
+function maskPushUrl(value){
+  const raw=String(value||"").trim();
+  if(!raw)return "暂无";
+  try{
+    const url=new URL(raw),parts=url.pathname.split("/"),marker=parts.findIndex((part,index)=>part==="ozon"&&parts[index+1]);
+    if(marker>=0)parts[marker+1]="***";
+    url.pathname=parts.join("/");
+    if(url.search)url.search="?***";
+    if(url.hash)url.hash="#***";
+    return url.toString();
+  }catch(_error){return "已配置（地址格式未解析）"}
+}
+function pushShopName(shopId){return state.shops.find(shop=>shop.id===shopId)?.name||`店铺 ${shopId}`}
+function pushNotice(data){
+  if(!data.notice?.message)return "";
+  const error=data.notice.kind==="error";
+  return `<div class="push-operation-message ${error?"is-error":"is-success"}" role="status"><morph-icon icon="${error?"alertCircle":"checkCircle"}" size="14" stroke-width="2"></morph-icon><span>${esc(data.notice.message)}</span></div>`;
+}
+function pushCheckNotice(data){
+  const check=data.check||{};
+  if(check.status==="loading")return `<div class="push-operation-message is-running" role="status"><morph-icon icon="sync" size="14" class="ozon-pulse" stroke-width="2"></morph-icon><span>正在请求 Ozon 检测 Webhook…</span></div>`;
+  if(check.status==="success")return `<div class="push-operation-message is-success" role="status"><morph-icon icon="checkCircle" size="14" stroke-width="2"></morph-icon><span>${esc(check.message)}</span></div>`;
+  if(check.status==="error")return `<div class="push-operation-message is-error" role="alert"><morph-icon icon="alertCircle" size="14" stroke-width="2"></morph-icon><span>${esc(check.message)}</span></div>`;
+  return "";
+}
+function renderPushCard(shopId){
+  const data=pushSubscriptionState[shopId]||{shopId,loading:true,types:[],subscriptions:[],listReady:false};
+  const shopName=data.name||pushShopName(shopId);
+  if(data.loading)return `<section class="panel push-shop-card" data-push-shop-card="${shopId}"><div class="panel-title"><div><h2><morph-icon icon="store" size="18" stroke-width="1.8"></morph-icon> ${esc(shopName)}</h2><span class="muted">店铺 ${shopId} · Push 订阅配置</span></div><span class="push-shop-tag">店铺 ${shopId}</span></div><div class="push-loading-state"><morph-icon icon="sync" size="20" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>正在读取 Ozon Push 配置…</span></div></section>`;
+  const subscriptions=data.subscriptions||[],types=data.types||[],selected=new Set(data.selectedTypes||types);
+  const apiText=data.apiAvailable?"可用":"不可用",apiClass=data.apiAvailable?"is-ok":"is-error";
+  const count=data.listReady?String(subscriptions.length):"—",enabledCount=data.listReady?String(subscriptions.filter(row=>row.enabled).length):"—";
+  const currentUrls=subscriptions.map(row=>row.url).filter(Boolean),currentUrl=currentUrls.length?maskPushUrl(currentUrls[0]):data.listReady?"暂无":"无法读取";
+  const currentUrlNote=currentUrls.length>1?`另有 ${currentUrls.length-1} 个订阅`:"";
+  const eventOptions=types.length?types.map(type=>`<label class="push-type-option"><input type="checkbox" data-push-type value="${esc(type)}" ${selected.has(type)?"checked":""}><span><strong>${esc(PUSH_EVENT_LABELS[type]||"Ozon Push 事件")}</strong><small>${esc(type)}</small></span></label>`).join(""):"<div class=\"push-empty-state\">Ozon 未返回可订阅类型</div>";
+  const typeNotice=data.typesFresh?"":`<div class="push-inline-banner is-warning" role="status"><morph-icon icon="alertTriangle" size="14" stroke-width="1.8"></morph-icon><span>无法从 Ozon 获取最新类型，已使用内置已知类型作为降级展示。${data.typeError?` ${esc(data.typeError)}`:""}</span></div>`;
+  const listError=!data.listReady?`<div class="push-empty-state is-error"><morph-icon icon="alertCircle" size="18" stroke-width="1.8"></morph-icon><strong>订阅读取失败</strong><span>${esc(data.listError||"Ozon 未返回订阅列表")}</span></div>`:"";
+  const subscriptionRows=data.listReady?(subscriptions.length?subscriptions.map(row=>{
+    const rowTypes=row.types.length?row.types.map(type=>`<span class="push-type-chip">${esc(PUSH_EVENT_LABELS[type]||type)}</span>`).join(""):"<span class=\"muted\">未返回事件类型</span>";
+    const details=[row.createdAt?`创建于 ${bj(row.createdAt)}`:"",row.updatedAt?`更新于 ${bj(row.updatedAt)}`:"",row.error?`Ozon：${row.error}`:""].filter(Boolean).join(" · ");
+    const deleting=data.action===`deleting:${row.id}`,busy=data.enableBusyId===String(row.id);
+    return `<article class="push-subscription"><div class="push-subscription-main"><div class="push-subscription-id"><span>ID</span><code>${esc(row.id??"—")}</code></div><code class="push-subscription-url" title="Webhook 地址已隐藏密钥">${esc(maskPushUrl(row.url))}</code><div class="push-subscription-types">${rowTypes}</div>${details?`<small class="push-subscription-details">${esc(details)}</small>`:""}</div><div class="push-subscription-actions"><label class="push-enable-label"><span>启用</span><span class="settings-switch"><input type="checkbox" data-push-enabled data-shop="${shopId}" data-id="${esc(row.id)}" aria-label="启用订阅 ${esc(row.id)}" ${row.enabled?"checked":""} ${busy?"disabled":""}><span aria-hidden="true"></span></span></label><button type="button" class="rule-act-btn is-danger" data-push-action="delete" data-shop="${shopId}" data-id="${esc(row.id)}" ${deleting?"disabled":""}><morph-icon icon="trash" size="12" stroke-width="2"></morph-icon><span>${deleting?"删除中…":"删除"}</span></button></div></article>`;
+  }).join(""):'<div class="push-empty-state"><morph-icon icon="zap" size="18" stroke-width="1.8"></morph-icon><strong>暂无 Push 订阅</strong><span>填写 Webhook 地址并选择事件后即可注册。</span></div>'):listError;
+  const draft=String(data.urlDraft||""),sameUrl=subscriptions.some(row=>row.url===draft.trim()),setting=data.action==="setting";
+  return `<section class="panel push-shop-card" data-push-shop-card="${shopId}"><div class="panel-title"><div><h2><morph-icon icon="store" size="18" stroke-width="1.8"></morph-icon> ${esc(shopName)}</h2><span class="muted">店铺 ${shopId} · 单独管理 Seller API Push 订阅</span></div><span class="push-shop-tag">店铺 ${shopId}</span></div><div class="push-status-grid"><div class="push-status-item"><span>Ozon API</span><strong class="push-status-value ${apiClass}">${apiText}</strong></div><div class="push-status-item"><span>Push 订阅</span><strong class="push-status-value ${subscriptions.length?"is-ok":"is-muted"}">${data.listReady?(subscriptions.length?"已配置":"未配置"):"无法读取"}</strong></div><div class="push-status-item"><span>当前订阅数量</span><strong class="push-status-value">${count}</strong></div><div class="push-status-item"><span>已启用数量</span><strong class="push-status-value">${enabledCount}</strong></div><div class="push-status-item push-status-url"><span>当前订阅 URL</span><code title="Webhook 地址已隐藏密钥">${esc(currentUrl)}</code>${currentUrlNote?`<small>${esc(currentUrlNote)}</small>`:""}</div></div>${!data.apiAvailable?`<div class="push-inline-banner is-error" role="alert"><morph-icon icon="alertCircle" size="14" stroke-width="1.8"></morph-icon><span>Ozon Push 管理 API 不可用：${esc(data.typeError||data.listError||"请检查服务器中的 Ozon API 凭据")}</span></div>`:""}<form id="pushForm${shopId}" class="push-form" data-push-form data-shop="${shopId}" novalidate><div class="push-section-title"><div><h3>Webhook 地址</h3><span>向 Ozon 注册订阅时使用的公网 HTTPS 地址</span></div></div><label class="push-field" for="pushUrl${shopId}"><span>Webhook URL</span><input id="pushUrl${shopId}" data-push-url type="text" value="${esc(draft)}" placeholder="https://example.com/api/webhooks/ozon/…" autocomplete="off"><small>Webhook 地址必须能够被 Ozon 通过公网 HTTPS 访问；密钥由服务器 .env 管理，请勿在页面中展示或保存 Secret。</small></label><div class="push-section-title"><div><h3>订阅事件</h3><span>提交给 Ozon API 的是原始 <code>TYPE_*</code> 值</span></div></div>${typeNotice}<div class="push-type-list">${eventOptions}</div><div class="push-form-actions"><button type="button" class="push-check-btn" data-push-action="check" data-shop="${shopId}" ${data.check?.status==="loading"?"disabled":""}><morph-icon icon="sync" size="14" stroke-width="2" spring="snappy"></morph-icon><span>检测连接</span></button><button type="submit" class="primary" data-push-set-label data-shop="${shopId}" ${setting?"disabled":""}><morph-icon icon="${sameUrl?"edit":"plus"}" size="14" stroke-width="2"></morph-icon><span>${setting?"保存中…":sameUrl?"更新订阅":"注册订阅"}</span></button></div>${pushCheckNotice(data)}${pushNotice(data)}</form><section class="push-subscription-section"><div class="push-section-title"><div><h3>当前订阅</h3><span>Ozon API 返回的订阅列表</span></div><span class="push-count-badge">${data.listReady?`${subscriptions.length} 条`:"读取中"}</span></div><div class="push-subscription-list">${subscriptionRows}</div></section></section>`;
+}
+function renderPushGrid(){
+  const host=$("#pushShopGrid");
+  if(host)host.innerHTML=[1,2].map(shopId=>renderPushCard(shopId)).join("");
+}
+async function loadPushShop(shopId,loadToken=pushSubscriptionLoadToken){
+  const previous=pushSubscriptionState[shopId]||{};
+  pushSubscriptionState[shopId]={...previous,shopId,name:pushShopName(shopId),loading:true,apiAvailable:false,listReady:false,types:[],subscriptions:[],typeError:"",listError:"",notice:null,action:"",enableBusyId:"",check:{status:"idle"}};
+  renderPushGrid();
+  const resultOf=promise=>promise.then(response=>({ok:true,response})).catch(error=>({ok:false,error}));
+  const [typesResult,listResult]=await Promise.all([
+    resultOf(api(`/api/ozon/notifications/push-types?shop_id=${shopId}`,{method:"POST"})),
+    resultOf(api("/api/ozon/notifications/list",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:shopId})}))
+  ]);
+  if(loadToken!==pushSubscriptionLoadToken)return;
+  const ozonTypes=typesResult.ok?pushTypesFromResponse(typesResult.response):[],subscriptions=listResult.ok?pushSubscriptionsFromResponse(listResult.response):[];
+  const subscriptionTypes=subscriptions.find(row=>row.types.length)?.types||[],baseTypes=ozonTypes.length?ozonTypes:PUSH_EVENT_FALLBACK_TYPES,types=[...new Set([...baseTypes,...subscriptionTypes])];
+  pushSubscriptionState[shopId]={...previous,shopId,name:pushShopName(shopId),loading:false,apiAvailable:typesResult.ok||listResult.ok,listReady:listResult.ok,types,typesFresh:ozonTypes.length>0,subscriptions,typeError:typesResult.ok?(ozonTypes.length?"":"Ozon 未返回可订阅类型"):typesResult.error.message,listError:listResult.ok?"":listResult.error.message,selectedTypes:subscriptionTypes.length?subscriptionTypes:(previous.selectedTypes?.filter(type=>types.includes(type)).length?previous.selectedTypes.filter(type=>types.includes(type)):types),notice:null,action:"",enableBusyId:"",check:{status:"idle"}};
+  renderPushGrid();
+}
+async function loadPushSubscriptions(){
+  if(!$("#pushShopGrid"))return;
+  const loadToken=++pushSubscriptionLoadToken;
+  pushSubscriptionState=Object.fromEntries([1,2].map(shopId=>[shopId,{shopId,name:pushShopName(shopId),loading:true,types:[],subscriptions:[]} ]));
+  renderPushGrid();
+  await Promise.all([loadPushShop(1,loadToken),loadPushShop(2,loadToken)]);
+}
+function pushActionError(shopId,message){
+  const data=pushSubscriptionState[shopId];
+  if(!data)return;
+  data.notice={kind:"error",message};data.action="";renderPushGrid();toast(message,true);
+}
+async function checkPushWebhook(shopId){
+  const form=$("#pushForm"+shopId),url=form?.querySelector("[data-push-url]")?.value.trim()||"",data=pushSubscriptionState[shopId];
+  if(!url)return pushActionError(shopId,"请输入 Webhook 地址");
+  if(!url.startsWith("https://"))return pushActionError(shopId,"Webhook 地址必须以 https:// 开头");
+  data.urlDraft=url;data.check={status:"loading"};data.notice=null;renderPushGrid();
+  try{await api("/api/ozon/notifications/check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:shopId,url})});data.check={status:"success",message:"检测成功：Ozon 已接受 Webhook 地址"};}
+  catch(error){data.check={status:"error",message:error.message};}
+  renderPushGrid();
+}
+async function setPushSubscription(form){
+  const shopId=Number(form.dataset.shop),data=pushSubscriptionState[shopId],url=form.querySelector("[data-push-url]")?.value.trim()||"",types=[...form.querySelectorAll("[data-push-type]:checked")].map(input=>input.value);
+  data.urlDraft=url;data.selectedTypes=types;
+  if(!url)return pushActionError(shopId,"请输入 Webhook 地址");
+  if(!url.startsWith("https://"))return pushActionError(shopId,"Webhook 地址必须以 https:// 开头");
+  if(!types.length)return pushActionError(shopId,"至少选择一个 Push 类型");
+  data.action="setting";data.notice=null;renderPushGrid();
+  try{await api("/api/ozon/notifications/set",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:shopId,url,types})});toast(data.subscriptions.some(row=>row.url===url)?"Push 订阅已更新":"Push 订阅已注册");data.urlDraft="";await loadPushShop(shopId);}
+  catch(error){data.action="";data.notice={kind:"error",message:error.message};renderPushGrid();toast(error.message,true);}
+}
+async function togglePushSubscription(shopId,id,input){
+  const data=pushSubscriptionState[shopId],row=data?.subscriptions.find(item=>String(item.id)===String(id)),notificationId=Number(id);
+  if(!data||!row||!Number.isInteger(notificationId))return pushActionError(shopId,"通知ID无效");
+  const previous=row.enabled;row.enabled=input.checked;data.enableBusyId=String(id);data.notice=null;renderPushGrid();
+  try{await api("/api/ozon/notifications/enable",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:shopId,id:notificationId,enabled:input.checked})});toast(input.checked?"Push 订阅已启用":"Push 订阅已停用");await loadPushShop(shopId);}
+  catch(error){row.enabled=previous;data.enableBusyId="";data.notice={kind:"error",message:error.message};renderPushGrid();toast(error.message,true);}
+}
+async function deletePushSubscription(shopId,id){
+  const notificationId=Number(id);
+  if(!Number.isInteger(notificationId))return pushActionError(shopId,"通知ID无效");
+  const ok=await showConfirm({title:"删除 Push 订阅？",message:`将从 Ozon 删除订阅 ID ${id}，此操作不可撤销。`,confirmText:"确认删除",cancelText:"取消",icon:"trash"});
+  if(!ok)return;
+  const data=pushSubscriptionState[shopId];data.action=`deleting:${id}`;data.notice=null;renderPushGrid();
+  try{await api("/api/ozon/notifications/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:shopId,id:notificationId})});toast("Push 订阅已删除");await loadPushShop(shopId);}
+  catch(error){data.action="";data.notice={kind:"error",message:error.message};renderPushGrid();toast(error.message,true);}
+}
 function addMergeMember(member={key_type:"sku",key_value:""}){
   const id=`mergeMemberType${++mergeMemberIndex}`,row=document.createElement("div");
   row.className="merge-member";
@@ -1974,10 +2126,10 @@ async function loadPage(page) {
   if(page==="analytics") return loadAnalyticsPage();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock};
-  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
+  if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="pushSubscriptions") return loadPushSubscriptions(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",dingtalk:"dingtalk"};
+const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
 const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -2129,6 +2281,10 @@ $("#shop2").addEventListener("change",saveShopNames);
 $("#shop1").addEventListener("blur",saveShopNames);
 $("#shop2").addEventListener("blur",saveShopNames);
 $("#dingtalkForm")?.addEventListener("submit",async e=>{e.preventDefault();try{const weekdays=[...document.querySelectorAll("#dingWeekdays input:checked")].map(input=>Number(input.value));await api("/api/dingtalk/settings",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({daily_enabled:$("#dingEnabled").checked,push_time:$("#dingTime").value,weekdays})});toast("推送计划已保存");await loadDingtalk()}catch(err){toast(err.message,true)}});
+$("#pushShopGrid")?.addEventListener("submit",e=>{const form=e.target.closest("form[data-push-form]");if(form){e.preventDefault();setPushSubscription(form)}});
+$("#pushShopGrid")?.addEventListener("input",e=>{if(!e.target.matches("[data-push-url]"))return;const form=e.target.closest("[data-push-form]"),data=pushSubscriptionState[Number(form?.dataset.shop)];if(!form||!data)return;data.urlDraft=e.target.value;const label=form.querySelector("[data-push-set-label] span"),same=data.subscriptions?.some(row=>row.url===e.target.value.trim());if(label)label.textContent=same?"更新订阅":"注册订阅"});
+$("#pushShopGrid")?.addEventListener("change",e=>{if(e.target.matches("[data-push-type]")){const form=e.target.closest("[data-push-form]"),data=pushSubscriptionState[Number(form?.dataset.shop)];if(data)data.selectedTypes=[...form.querySelectorAll("[data-push-type]:checked")].map(input=>input.value);return}if(e.target.matches("[data-push-enabled]"))togglePushSubscription(Number(e.target.dataset.shop),e.target.dataset.id,e.target)});
+$("#pushShopGrid")?.addEventListener("click",e=>{const button=e.target.closest("[data-push-action]");if(!button)return;const shopId=Number(button.dataset.shop);if(button.dataset.pushAction==="check")checkPushWebhook(shopId);if(button.dataset.pushAction==="delete")deletePushSubscription(shopId,button.dataset.id)});
 async function probeSingleShop(shopId){
   const target=$("#probeResult"+shopId),btn=document.querySelector(`[data-probe-single="${shopId}"]`);
   if(btn) btn.disabled=true;

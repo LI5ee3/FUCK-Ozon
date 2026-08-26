@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>oPanel</title><link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <script>(function(){try{var f=localStorage.getItem("themeFollowSystem"),t=localStorage.getItem("theme"),d=(f==="false")?(t==="dark"):window.matchMedia("(prefers-color-scheme: dark)").matches;if(d)document.documentElement.dataset.theme="dark"}catch(e){}})()</script>
-  <link rel="stylesheet" href="/static/macaron.css?v=20260826-08">
+  <link rel="stylesheet" href="/static/macaron.css?v=20260826-09">
 </head>
 <body>
   <div id="notice" role="status" aria-live="polite"></div>
@@ -79,6 +79,10 @@
           <button data-page="rules">
             <morph-icon class="nav-icon" data-nav-morph="rules" icon="rules" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
             <span>商品匹配规则</span>
+          </button>
+          <button data-page="pushSubscriptions">
+            <morph-icon class="nav-icon" data-nav-morph="pushSubscriptions" icon="zap" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>推送订阅管理</span>
           </button>
           <button data-page="dingtalk">
             <morph-icon class="nav-icon" data-nav-morph="dingtalk" icon="dingtalk" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
@@ -719,6 +723,14 @@
           </div>
           <div id="probeShops" class="settings-shop-grid"></div>
         </section>
+      </section>
+
+      <section id="pushSubscriptions" class="page">
+        <div class="ding-system-banner push-page-intro">
+          <morph-icon icon="zap" size="16" stroke-width="1.8"></morph-icon>
+          <span>通过 Ozon Push 实时接收订单、状态和库存变化。Webhook 密钥由服务器环境变量管理。</span>
+        </div>
+        <div id="pushShopGrid" class="push-shop-grid"></div>
       </section>
 
       <section id="dingtalk" class="page">
@@ -1446,5 +1458,5 @@
     </div>
   </dialog>
   <script src="/static/morphicons.js?v=20260826-07"></script>
-  <script src="/static/app.js?v=20260826-08"></script>
+  <script src="/static/app.js?v=20260826-09"></script>
 </body></html>
