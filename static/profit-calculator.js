@@ -8,7 +8,7 @@ const PROFIT_COST_KEYS = Object.freeze([
   "commission",
   "advertising",
   "international_transport_contract_service",
-  "bank_fee",
+  "bank_acquiring_fee",
   "insurance",
   "packing",
   "other_cost"
@@ -65,6 +65,7 @@ function calculateFbpCosts(input, price) {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: 10, status: "implemented" };
   costs.international_transport_contract_service = contractServiceCost(price);
+  costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
 }
 
@@ -72,6 +73,7 @@ function calculateRealFbsHongKongCosts(input, price) {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
   costs.international_transport_contract_service = contractServiceCost(price);
+  costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
 }
 
@@ -79,12 +81,19 @@ function calculateRealFbsShenzhenCosts(input, price) {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
   costs.international_transport_contract_service = contractServiceCost(price);
+  costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
 }
 
 function contractServiceCost(price) {
   return price?.price_cny !== null && price?.price_cny !== undefined
     ? { value: price.price_cny * 0.0033, status: "implemented" }
+    : { value: null, status: "missing_input" };
+}
+
+function acquiringFeeCost(price) {
+  return price?.price_cny !== null && price?.price_cny !== undefined
+    ? { value: price.price_cny * 0.01, status: "implemented" }
     : { value: null, status: "missing_input" };
 }
 
