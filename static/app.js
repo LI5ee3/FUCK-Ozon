@@ -7,7 +7,7 @@ let ruleData=null,mergeMemberIndex=0;
 let pushSubscriptionState={},pushSubscriptionLoadToken=0;
 const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
 const profitCalculator = window.ProfitCalculator;
-const profitCostLabels = {purchase_cost:"采购成本",hunchun_shipping:"发往珲春物流费",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_logistics:"国际组织物流费",bank_fee:"银行手续费",insurance:"保险",packing:"打包成本",other_cost:"其他费用"};
+const profitCostLabels = {purchase_cost:"采购成本",hunchun_shipping:"发往珲春物流费",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_transport_contract_service:"国际运输组织合同的签订服务",bank_fee:"银行手续费",insurance:"保险",packing:"打包成本",other_cost:"其他费用"};
 const profitPathLabels = {FBP:"FBP",realFBS_hongkong:"realFBS · 香港",realFBS_shenzhen:"realFBS · 深圳"};
 const profitStatusLabels = {implemented:"已接入",missing_input:"待输入",not_implemented:"未接入规则",not_applicable:"不适用"};
 const syncNames = {orders:"订单",returns:"退货",stock:"库存"};
