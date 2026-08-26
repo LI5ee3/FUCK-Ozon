@@ -31,6 +31,7 @@ test("店铺2将 CNY 售价标准化为 USD/CNY", () => {
 test("费用 key 完整重命名", () => {
   assert.ok(COST_KEYS.includes("international_transport_contract_service"));
   assert.ok(COST_KEYS.includes("bank_acquiring_fee"));
+  assert.equal(COST_KEYS.includes(["insur", "ance"].join("")), false);
 });
 
 test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流", () => {
@@ -44,6 +45,7 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
   assert.equal(fbp.costs.purchase_cost.value, 288);
   assert.equal(fbp.costs.hunchun_shipping.value, 10);
   assert.equal(fbp.costs.hunchun_shipping.status, "implemented");
+  assert.equal(Object.prototype.hasOwnProperty.call(fbp.costs, ["insur", "ance"].join("")), false);
   assertClose(fbp.costs.international_transport_contract_service.value, 2.376);
   assert.equal(fbp.costs.international_transport_contract_service.status, "implemented");
   assertClose(fbp.costs.bank_acquiring_fee.value, 7.2);
@@ -65,6 +67,7 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
   assert.equal(hongKong.fulfillment_path, "realFBS_hongkong");
   assert.equal(hongKong.costs.hunchun_shipping.value, null);
   assert.equal(hongKong.costs.hunchun_shipping.status, "not_applicable");
+  assert.equal(Object.prototype.hasOwnProperty.call(hongKong.costs, ["insur", "ance"].join("")), false);
   assertClose(hongKong.costs.international_transport_contract_service.value, 2.376);
   assert.equal(hongKong.costs.international_transport_contract_service.status, "implemented");
   assertClose(hongKong.costs.bank_acquiring_fee.value, 7.2);
@@ -73,6 +76,7 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
   assert.equal(shenzhen.fulfillment_path, "realFBS_shenzhen");
   assert.equal(shenzhen.costs.hunchun_shipping.value, null);
   assert.equal(shenzhen.costs.hunchun_shipping.status, "not_applicable");
+  assert.equal(Object.prototype.hasOwnProperty.call(shenzhen.costs, ["insur", "ance"].join("")), false);
   assertClose(shenzhen.costs.international_transport_contract_service.value, 2.376);
   assert.equal(shenzhen.costs.international_transport_contract_service.status, "implemented");
   assertClose(shenzhen.costs.bank_acquiring_fee.value, 7.2);

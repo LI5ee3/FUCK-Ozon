@@ -9,7 +9,6 @@ const PROFIT_COST_KEYS = Object.freeze([
   "advertising",
   "international_transport_contract_service",
   "bank_acquiring_fee",
-  "insurance",
   "packing",
   "other_cost"
 ]);
