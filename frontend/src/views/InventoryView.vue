@@ -87,10 +87,10 @@ const summaryCards = computed(() => {
 });
 
 const channelOptions = [
-  { label: "全部（FBP补货口径）", value: "" },
-  { label: "仅看 FBP 库存", value: "FBP" },
-  { label: "仅看 realFBS 库存", value: "realFBS" },
-  { label: "仅看 WHD 库存", value: "WHD" },
+  { label: "默认（FBP 补货口径）", value: "" },
+  { label: "FBP 参考口径", value: "FBP" },
+  { label: "realFBS 参考口径", value: "realFBS" },
+  { label: "WHD 参考口径", value: "WHD" },
 ];
 const riskOptions = [
   { label: "需要关注", value: "attention" },
@@ -406,7 +406,7 @@ onBeforeUnmount(() => {
         <NInput v-model:value="filters.productName" class="inventory-product-search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称" @keydown.enter.prevent="submitFilters">
           <template #prefix><morph-icon icon="package" size="15" stroke-width="1.8" /></template>
         </NInput>
-        <label class="inventory-select-label"><span>库存参考筛选</span><NSelect :value="filters.channel" :options="channelOptions" aria-label="库存参考筛选" @update:value="updateChannel" /></label>
+        <label class="inventory-select-label"><span>库存参考口径</span><NSelect :value="filters.channel" :options="channelOptions" aria-label="库存参考口径" @update:value="updateChannel" /></label>
         <label class="inventory-select-label"><span>风险</span><NSelect :value="filters.risk" :options="riskOptions" aria-label="库存预测风险筛选" @update:value="updateRisk" /></label>
         <div class="inventory-filter-actions">
           <NButton type="primary" attr-type="submit" :loading="loading"><template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>查询</NButton>

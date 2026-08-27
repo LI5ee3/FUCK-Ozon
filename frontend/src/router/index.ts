@@ -3,20 +3,18 @@ import AppLayout from "../layouts/AppLayout.vue";
 import PlaceholderView from "../views/PlaceholderView.vue";
 import { navigationItems } from "./navigation";
 
+const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
+  overview: () => import("../views/DashboardView.vue"),
+  orders: () => import("../views/OrdersView.vue"),
+  inventory: () => import("../views/InventoryView.vue"),
+  analytics: () => import("../views/AnalyticsView.vue"),
+  timeliness: () => import("../views/TimelinessView.vue"),
+};
+
 const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({
   path: item.path === "/" ? "" : item.path.slice(1),
   name: item.name,
-  component: item.name === "overview"
-    ? () => import("../views/DashboardView.vue")
-    : item.name === "orders"
-      ? () => import("../views/OrdersView.vue")
-      : item.name === "analytics"
-        ? () => import("../views/AnalyticsView.vue")
-        : item.name === "timeliness"
-          ? () => import("../views/TimelinessView.vue")
-          : item.name === "inventory"
-            ? () => import("../views/InventoryView.vue")
-            : PlaceholderView,
+  component: migratedViews[item.name] ?? PlaceholderView,
   meta: { title: item.label, icon: item.icon, description: item.description },
 }));
 

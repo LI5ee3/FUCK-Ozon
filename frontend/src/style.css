@@ -161,26 +161,12 @@ morph-icon {
 .opanel-sider-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px 16px;
   border-top: 1px solid var(--opanel-line);
   color: var(--opanel-muted);
   font-size: 12px;
-}
-
-.opanel-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.opanel-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--opanel-success);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--opanel-success) 20%, transparent);
 }
 
 .opanel-header {

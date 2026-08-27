@@ -30,8 +30,8 @@ import {
   formatPercent,
 } from "../utils/format";
 import OrderTrendChart from "../components/dashboard/OrderTrendChart.vue";
+import { beijingToday, shiftDays, subtractMonths, type DateRange } from "../utils/date";
 
-type DateRange = [string, string];
 type DatePreset = "today" | "3days" | "7days" | "3months" | "all" | "";
 type Insight = {
   icon: string;
@@ -53,8 +53,12 @@ const loading = ref(false);
 const error = ref("");
 let requestId = 0;
 
-const today = beijingToday();
-const dateRange = ref<DateRange>([subtractMonths(today, 3), today]);
+function defaultDateRange(): DateRange {
+  const today = beijingToday();
+  return [subtractMonths(today, 3), today];
+}
+
+const dateRange = ref<DateRange>(defaultDateRange());
 const activePreset = ref<DatePreset>("3months");
 const presets: ReadonlyArray<{ key: Exclude<DatePreset, "">; label: string }> = [
   { key: "today", label: "今天" },
@@ -69,39 +73,17 @@ const granularities: ReadonlyArray<{ key: Granularity; label: string }> = [
   { key: "month", label: "月" },
 ];
 
-function beijingToday(): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function dateParts(value: string): [number, number, number] {
-  const [year, month, day] = value.split("-").map(Number);
-  return [year, month, day];
-}
-
-function dateText(year: number, month: number, day: number): string {
-  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-}
-
-function shiftDays(value: string, days: number): string {
-  const [year, month, day] = dateParts(value);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return dateText(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
-}
-
-function subtractMonths(value: string, months: number): string {
-  const [year, month, day] = dateParts(value);
-  const target = new Date(Date.UTC(year, month - 1 - months, 1));
-  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
-  return dateText(target.getUTCFullYear(), target.getUTCMonth() + 1, Math.min(day, lastDay));
+function presetRange(preset: Exclude<DatePreset, "">): DateRange {
+  const today = beijingToday();
+  if (preset === "today") return [today, today];
+  if (preset === "3days") return [shiftDays(today, -2), today];
+  if (preset === "7days") return [shiftDays(today, -6), today];
+  if (preset === "3months") return [subtractMonths(today, 3), today];
+  return ["2020-01-01", today];
 }
 
 async function loadDashboard(): Promise<void> {
+  if (activePreset.value) dateRange.value = presetRange(activePreset.value);
   const currentRequest = ++requestId;
   loading.value = true;
   error.value = "";
@@ -141,17 +123,7 @@ function updateDateRange(value: string | [string, string] | null): void {
 }
 
 function selectPreset(preset: Exclude<DatePreset, "">): void {
-  const end = today;
-  const start = preset === "today"
-    ? end
-    : preset === "3days"
-      ? shiftDays(end, -2)
-      : preset === "7days"
-        ? shiftDays(end, -6)
-        : preset === "3months"
-          ? subtractMonths(end, 3)
-          : "2020-01-01";
-  dateRange.value = [start, end];
+  dateRange.value = presetRange(preset);
   activePreset.value = preset;
   void loadDashboard();
 }

@@ -8,6 +8,7 @@ import type { Channel, OrderTrend, TrendBucket } from "../../types/api";
 import { useTheme } from "../../composables/useTheme";
 import { macaronTokens } from "../../theme/tokens";
 import { formatGmv, formatInteger } from "../../utils/format";
+import { beijingToday } from "../../utils/date";
 
 use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
@@ -22,16 +23,6 @@ const channels: Channel[] = ["FBP", "realFBS", "WHD"];
 
 function labelFor(bucket: TrendBucket, granularity: OrderTrend["granularity"]): string {
   return granularity === "month" ? bucket.from.slice(0, 7) : bucket.from.slice(5);
-}
-
-function beijingToday(): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function escapeHtml(value: string): string {

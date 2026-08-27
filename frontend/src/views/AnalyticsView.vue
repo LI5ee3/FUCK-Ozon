@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
-import type { LocationQuery, LocationQueryValue } from "vue-router";
+import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
   NAlert,
@@ -29,8 +29,9 @@ import type {
   ShopSelection,
 } from "../types/api";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../utils/format";
+import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../utils/date";
+import { isShopSelection, positiveInteger, queryValue } from "../utils/query";
 
-type DateRange = [string, string];
 type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
 type AnalyticsTab = "traffic" | "queries";
 type AnalyticsFilters = {
@@ -57,8 +58,6 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { selectedShopId, selectShop } = useShop();
-const today = beijingToday();
-const defaultRange: DateRange = analyticsDefaultRange();
 const datePresets: ReadonlyArray<{ key: DatePreset; label: string }> = [
   { key: "today", label: "今天" },
   { key: "3days", label: "3天内" },
@@ -136,67 +135,9 @@ const trafficKpis = computed<AnalyticsKpi[]>(() => {
   ];
 });
 
-function beijingToday(): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function dateParts(value: string): [number, number, number] {
-  const [year, month, day] = value.split("-").map(Number);
-  return [year, month, day];
-}
-
-function dateText(year: number, month: number, day: number): string {
-  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-}
-
-function shiftDays(value: string, days: number): string {
-  const [year, month, day] = dateParts(value);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return dateText(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
-}
-
-function subtractMonths(value: string, months: number): string {
-  const [year, month, day] = dateParts(value);
-  const target = new Date(Date.UTC(year, month - 1 - months, 1));
-  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
-  return dateText(target.getUTCFullYear(), target.getUTCMonth() + 1, Math.min(day, lastDay));
-}
-
 function analyticsDefaultRange(): DateRange {
-  const end = shiftDays(today, -3);
+  const end = shiftDays(beijingToday(), -3);
   return [shiftDays(end, -29), end];
-}
-
-function firstQueryValue(value: LocationQueryValue | LocationQueryValue[] | undefined): string {
-  return Array.isArray(value) ? String(value[0] ?? "") : value ?? "";
-}
-
-function queryValue(query: LocationQuery, key: string): string {
-  return firstQueryValue(query[key]);
-}
-
-function validDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = dateParts(value);
-  if (year < 1) return false;
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
-}
-
-function positiveInteger(value: string, fallback: number): number {
-  if (!/^\d+$/.test(value)) return fallback;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function isShopSelection(value: string): value is "0" | "1" | "2" {
-  return value === "0" || value === "1" || value === "2";
 }
 
 function isAnalyticsTab(value: string): value is AnalyticsTab {
@@ -204,7 +145,7 @@ function isAnalyticsTab(value: string): value is AnalyticsTab {
 }
 
 function parseDateRange(from: string, to: string): DateRange {
-  return validDate(from) && validDate(to) && from <= to ? [from, to] : [...defaultRange];
+  return parseValidDateRange(from, to, analyticsDefaultRange());
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AnalyticsFilters {
@@ -222,6 +163,7 @@ function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): Analyt
 }
 
 function presetRange(preset: DatePreset): DateRange {
+  const today = beijingToday();
   if (preset === "today") return [today, today];
   if (preset === "3days") return [shiftDays(today, -2), today];
   if (preset === "7days") return [shiftDays(today, -6), today];
@@ -230,6 +172,7 @@ function presetRange(preset: DatePreset): DateRange {
 }
 
 function queryFor(value: AnalyticsFilters): Record<string, string> {
+  const defaultRange = analyticsDefaultRange();
   const query: Record<string, string> = { shop_id: String(value.shopId) };
   const sku = value.sku.trim();
   if (value.tab === "queries") query.tab = value.tab;
@@ -274,8 +217,16 @@ function updateRoute(next: AnalyticsFilters, replace = false): void {
   void navigation;
 }
 
+function currentFilters(): AnalyticsFilters {
+  const next = { ...filters, sku: skuDraft.value };
+  if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
+    [next.from, next.to] = analyticsDefaultRange();
+  }
+  return next;
+}
+
 function updateFilters(overrides: Partial<AnalyticsFilters>, replace = false): void {
-  updateRoute({ ...filters, sku: skuDraft.value, ...overrides }, replace);
+  updateRoute({ ...currentFilters(), ...overrides }, replace);
 }
 
 function clearDetails(): void {
@@ -395,7 +346,9 @@ async function loadDetails(row: AnalyticsProductQueryRow, page = 1): Promise<voi
 }
 
 function retry(): void {
-  void loadActiveTab({ ...filters });
+  const next = currentFilters();
+  Object.assign(filters, next);
+  void loadActiveTab(next);
 }
 
 function retryDetails(): void {

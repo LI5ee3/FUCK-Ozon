@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
-import type { LocationQuery, LocationQueryValue } from "vue-router";
+import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
   NAlert,
@@ -26,8 +26,9 @@ import type {
   TimelinessResponse,
 } from "../types/api";
 import { formatBeijingDateTime, formatHours, formatInteger, formatPercent } from "../utils/format";
+import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../utils/date";
+import { isShopSelection, positiveInteger, queryValue } from "../utils/query";
 
-type DateRange = [string, string];
 type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
 type TimelinessFilters = {
   shopId: ShopSelection;
@@ -51,8 +52,6 @@ const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { selectedShopId, selectShop } = useShop();
-const today = beijingToday();
-const defaultRange: DateRange = [subtractMonths(today, 3), today];
 const datePresets: ReadonlyArray<{ key: DatePreset; label: string }> = [
   { key: "today", label: "今天" },
   { key: "3days", label: "3天内" },
@@ -121,66 +120,13 @@ const summaryKpis = computed<TimelinessKpi[]>(() => {
   ];
 });
 
-function beijingToday(): string {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date()).map((part) => [part.type, part.value]));
-  return `${parts.year}-${parts.month}-${parts.day}`;
-}
-
-function dateParts(value: string): [number, number, number] {
-  const [year, month, day] = value.split("-").map(Number);
-  return [year, month, day];
-}
-
-function dateText(year: number, month: number, day: number): string {
-  return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-}
-
-function shiftDays(value: string, days: number): string {
-  const [year, month, day] = dateParts(value);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return dateText(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate());
-}
-
-function subtractMonths(value: string, months: number): string {
-  const [year, month, day] = dateParts(value);
-  const target = new Date(Date.UTC(year, month - 1 - months, 1));
-  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
-  return dateText(target.getUTCFullYear(), target.getUTCMonth() + 1, Math.min(day, lastDay));
-}
-
-function firstQueryValue(value: LocationQueryValue | LocationQueryValue[] | undefined): string {
-  return Array.isArray(value) ? String(value[0] ?? "") : value ?? "";
-}
-
-function queryValue(query: LocationQuery, key: string): string {
-  return firstQueryValue(query[key]);
-}
-
-function validDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = dateParts(value);
-  if (year < 1) return false;
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
-}
-
-function positiveInteger(value: string, fallback: number): number {
-  if (!/^\d+$/.test(value)) return fallback;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function isShopSelection(value: string): value is "0" | "1" | "2" {
-  return value === "0" || value === "1" || value === "2";
+function defaultDateRange(): DateRange {
+  const today = beijingToday();
+  return [subtractMonths(today, 3), today];
 }
 
 function parseDateRange(from: string, to: string): DateRange {
-  return validDate(from) && validDate(to) && from <= to ? [from, to] : [...defaultRange];
+  return parseValidDateRange(from, to, defaultDateRange());
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): TimelinessFilters {
@@ -196,14 +142,16 @@ function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): Timeli
 }
 
 function presetRange(preset: DatePreset): DateRange {
+  const today = beijingToday();
   if (preset === "today") return [today, today];
   if (preset === "3days") return [shiftDays(today, -2), today];
   if (preset === "7days") return [shiftDays(today, -6), today];
   if (preset === "all") return ["2020-01-01", today];
-  return [...defaultRange];
+  return defaultDateRange();
 }
 
 function queryFor(value: TimelinessFilters): Record<string, string> {
+  const defaultRange = defaultDateRange();
   const query: Record<string, string> = { shop_id: String(value.shopId) };
   const search = value.search.trim();
   if (search) query.q = search;
@@ -243,8 +191,16 @@ function updateRoute(next: TimelinessFilters, replace = false): void {
   void (replace ? router.replace({ query: queryFor(normalized) }) : router.push({ query: queryFor(normalized) }));
 }
 
+function currentFilters(): TimelinessFilters {
+  const next = { ...filters, search: searchDraft.value };
+  if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
+    [next.from, next.to] = defaultDateRange();
+  }
+  return next;
+}
+
 function updateFilters(overrides: Partial<TimelinessFilters>): void {
-  updateRoute({ ...filters, search: searchDraft.value, ...overrides });
+  updateRoute({ ...currentFilters(), ...overrides });
 }
 
 async function loadTimeliness(queryFilters: TimelinessFilters): Promise<void> {
@@ -278,7 +234,9 @@ async function loadTimeliness(queryFilters: TimelinessFilters): Promise<void> {
 }
 
 function retry(): void {
-  void loadTimeliness({ ...filters, search: searchDraft.value });
+  const next = currentFilters();
+  Object.assign(filters, next);
+  void loadTimeliness(next);
 }
 
 function submitSearch(): void {
@@ -292,7 +250,7 @@ function clearSearch(): void {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const [from, to] = parseDateRange(value[0], value[1]);
+  const [from, to] = parseValidDateRange(value[0], value[1], defaultDateRange());
   if (from !== value[0] || to !== value[1]) return;
   updateFilters({ from, to, page: 1 });
 }

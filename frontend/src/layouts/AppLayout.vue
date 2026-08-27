@@ -94,7 +94,6 @@ onMounted(async () => {
         @update:value="navigate"
       />
       <div class="opanel-sider-footer">
-        <span class="opanel-status"><span class="opanel-status-dot" />系统正常</span>
         <NButton quaternary circle size="small" class="opanel-theme-button" @click="toggleTheme">
           <template #icon>
             <morph-icon :icon="isDark ? 'moon' : 'sun'" size="16" stroke-width="1.8" />
