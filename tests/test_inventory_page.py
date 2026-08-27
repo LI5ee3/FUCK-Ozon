@@ -84,7 +84,7 @@ class InventoryPageTest(DatabaseTestCase):
         items = {item["sku"]: item for item in stock(1, size=100)["items"]}
         self.assertEqual(items["LOW"]["risk_status"], "紧急补货")
         self.assertEqual(items["WARN"]["risk_status"], "紧急补货")
-        self.assertEqual(items["SAFE"]["risk_status"], "库存充足")
+        self.assertEqual(items["SAFE"]["risk_status"], "库存偏高")
         self.assertIsInstance(items["LOW"]["replenishment"], int)
 
     def test_numeric_sorting_happens_before_paging(self):

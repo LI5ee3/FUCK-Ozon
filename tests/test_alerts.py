@@ -245,10 +245,11 @@ class AlertTest(DatabaseTestCase):
         result, _ = self.evaluate(1, "inventory_risk")
         self.assertEqual(result["triggered"], 2)
         with db.connect() as connection:
-            values = {row["sku"]: row["severity"] for row in connection.execute(
-                "SELECT json_extract(metric_json,'$.sku') sku,severity FROM alert_events")}
-        self.assertEqual(values["OUT"], "critical")
-        self.assertEqual(values["URGENT"], "high")
+            values = {row["sku"]: row for row in connection.execute(
+                "SELECT json_extract(metric_json,'$.sku') sku,severity,message FROM alert_events")}
+        self.assertEqual(values["OUT"]["severity"], "critical")
+        self.assertEqual(values["URGENT"]["severity"], "high")
+        self.assertIn("当前库存无法覆盖30天补货交期。", values["URGENT"]["message"])
         self.assertNotIn("SAFE", values)
 
     def test_inventory_alert_is_based_on_fbp_stock_only(self):

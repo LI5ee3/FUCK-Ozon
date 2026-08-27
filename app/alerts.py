@@ -490,7 +490,7 @@ def _inventory_risk(db, shop_id, config, now):
                  f"FBP有效库存：{_fmt(metrics['effective_stock'], 0)}", f"预测日销（FBP+realFBS需求）：{_fmt(metrics['forecast_daily'])}",
                  f"FBP预计可售：{_fmt(metrics['days_cover'])} 天", f"FBP预计缺货：{metrics['expected_stockout_date'] or '—'}",
                  f"FBP建议补货：{_fmt(metrics['recommended_replenishment'], 0)}",
-                 "当前库存无法覆盖22天补货交期。" if risk == "urgent_replenishment" else "当前已缺货。"]
+                 f"当前库存无法覆盖{row['lead_time_days']}天补货交期。" if risk == "urgent_replenishment" else "当前已缺货。"]
         item = _event("inventory_risk", shop_id, "sku", sku, metrics, "\n".join(lines))
         item["severity"] = severity
         result.append(item)
