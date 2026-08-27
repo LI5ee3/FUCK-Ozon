@@ -103,9 +103,11 @@ class PerformanceClientTest(DatabaseTestCase):
     def test_campaign_upsert_and_shop_isolation(self):
         shop_one = [{"id": "10", "title": "旧名称", "state": "CAMPAIGN_STATE_RUNNING",
                      "paymentType": "CPC", "weeklyBudget": "1500000",
+                     "placement": ["PLACEMENT_TOP"],
                      "createdAt": "2026-08-01T00:00:00Z"}]
         shop_one_updated = [{"id": "10", "title": "新名称", "state": "CAMPAIGN_STATE_STOPPED",
-                             "paymentType": "CPC", "weeklyBudget": "2500000"}]
+                             "paymentType": "CPC", "weeklyBudget": "2500000",
+                             "placement": ["PLACEMENT_TOP"]}]
         shop_two = [{"id": "10", "title": "店铺2名称", "state": "CAMPAIGN_STATE_RUNNING"}]
         with patch("app.performance._env", return_value=ENV), \
              patch("app.performance.list_campaigns",
@@ -114,11 +116,11 @@ class PerformanceClientTest(DatabaseTestCase):
             self.assertEqual(performance.sync_performance_campaigns(1)["inserted_or_updated"], 1)
             self.assertEqual(performance.sync_performance_campaigns(2)["inserted_or_updated"], 1)
         with db.connect() as connection:
-            rows = connection.execute("""SELECT shop_id,campaign_id,name,state,weekly_budget
+            rows = connection.execute("""SELECT shop_id,campaign_id,name,state,placement,weekly_budget
               FROM ad_campaigns ORDER BY shop_id""").fetchall()
         self.assertEqual([tuple(row) for row in rows], [
-            (1, "10", "新名称", "CAMPAIGN_STATE_STOPPED", 2.5),
-            (2, "10", "店铺2名称", "CAMPAIGN_STATE_RUNNING", None),
+            (1, "10", "新名称", "CAMPAIGN_STATE_STOPPED", '["PLACEMENT_TOP"]', 2.5),
+            (2, "10", "店铺2名称", "CAMPAIGN_STATE_RUNNING", None, None),
         ])
 
     def test_sync_route_records_result_without_secrets(self):

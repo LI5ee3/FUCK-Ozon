@@ -189,6 +189,14 @@ def _weekly_budget(value):
         return None
 
 
+def _text_value(value):
+    if value is None:
+        return None
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
 def _campaign_row(shop_id, campaign):
     if not isinstance(campaign, dict):
         raise PerformanceAPIError(f"Performance API {CAMPAIGN_PATH}: Campaign 数据格式无效")
@@ -198,14 +206,14 @@ def _campaign_row(shop_id, campaign):
     return (
         shop_id,
         str(campaign_id),
-        str(_value(campaign, "title", "name") or ""),
-        str(_value(campaign, "state", "status") or ""),
-        _value(campaign, "paymentType", "payment_type"),
-        _value(campaign, "advObjectType", "adv_object_type", "campaign_type"),
-        _value(campaign, "placement"),
+        _text_value(_value(campaign, "title", "name")) or "",
+        _text_value(_value(campaign, "state", "status")) or "",
+        _text_value(_value(campaign, "paymentType", "payment_type")),
+        _text_value(_value(campaign, "advObjectType", "adv_object_type", "campaign_type")),
+        _text_value(_value(campaign, "placement")),
         _weekly_budget(_value(campaign, "weeklyBudget", "weekly_budget")),
-        _value(campaign, "createdAt", "created_at"),
-        _value(campaign, "updatedAt", "updated_at"),
+        _text_value(_value(campaign, "createdAt", "created_at")),
+        _text_value(_value(campaign, "updatedAt", "updated_at")),
     )
 
 
