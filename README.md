@@ -34,172 +34,47 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
 static/           纯原生前端页面（Macaron UI 体系、Tabler 矢量图标、物理形变组件）
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
-compose.yaml      Docker Compose 服务配置
-deploy.sh         Linux 服务器一键部署运维脚本
+scripts/          macOS 安装、启动、停止、重启、更新脚本
+deploy/           launchd 服务配置模板
+docs/             部署与业务口径文档
 ```
 
-## 方式一：Docker 部署（推荐）
+## macOS + Apple Silicon 部署
 
-### 1. 环境要求
+生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+。
 
-- 64 位 Linux 服务器。
-- 已安装 Docker Engine 和 Docker Compose v2。
-- 能够正常访问 `api-seller.ozon.ru`。
-
-> `compose.yaml` 默认使用 host 网络模式，优先推荐用于 Linux 服务器。macOS 和 Windows 建议使用下文的本地 Python 运行方式。
-
-### 2. 下载项目
+完整部署说明见 [`docs/macos-deployment.md`](docs/macos-deployment.md)。
 
 ```sh
 git clone https://github.com/LI5ee3/oPanel.git
 cd oPanel
+./scripts/install-macos.sh
 ```
 
-### 3. 配置 Ozon API 密钥
-
-在项目根目录创建 `.env`：
-
-```sh
-touch .env
-chmod 600 .env
-```
-
-编辑 `.env`，填入两个店铺的 Seller API 凭据及钉钉配置：
-
-```dotenv
-SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
-SHOP_1_OZON_API_KEY=店铺1的Api-Key
-SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
-SHOP_2_OZON_API_KEY=店铺2的Api-Key
-# 可选：Performance API service account，用于只读同步广告 Campaign 与统计
-SHOP_1_OZON_PERF_CLIENT_ID=店铺1的Performance-Client-Id
-SHOP_1_OZON_PERF_CLIENT_SECRET=店铺1的Performance-Client-Secret
-SHOP_2_OZON_PERF_CLIENT_ID=店铺2的Performance-Client-Id
-SHOP_2_OZON_PERF_CLIENT_SECRET=店铺2的Performance-Client-Secret
-OZON_WEBHOOK_SECRET_1=店铺1Webhook随机密钥
-OZON_WEBHOOK_SECRET_2=店铺2Webhook随机密钥
-# 若 Ozon Push 的 seller_id 与 Client-Id 不同，再填写对应 Seller ID
-# SHOP_1_OZON_SELLER_ID=店铺1的Seller ID
-# SHOP_2_OZON_SELLER_ID=店铺2的Seller ID
-DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
-DINGTALK_SECRET=钉钉机器人加签Secret
-```
-
-Performance API 配置为可选项；未填写时不影响 Seller API 和 oPanel 启动，广告相关同步会提示未配置。
-
-不要在密钥两侧添加引号，也不要把 `.env` 发送给他人或提交到 Git。
-
-### 4. 启动
-
-```sh
-chmod +x deploy.sh
-./deploy.sh
-```
-
-`deploy.sh` 会自动：
-
-1. 将 `.env` 权限设置为 `600`。
-2. 生成一个 `20000–60000` 之间的随机可用端口。
-3. 生成随机管理员初始密码（仅在首次创建时在控制台展示）。
-4. 构建 Docker 镜像并启动容器服务。
-
-请立即保存终端输出的管理员密码。部署完成后访问：
+安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），创建 `.venv`、安装 `requirements.txt`、创建或检查 `.env` 并设置权限为 `600`，完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，安装用户级 launchd 服务并验证：
 
 ```text
-http://服务器IP:生成的端口
+http://127.0.0.1:38652
 ```
 
-### 5. 验证服务
+如果首次没有管理员密码哈希，脚本会生成随机初始密码并只在终端显示一次，请立即保存。然后编辑项目根目录的 `.env`，填入店铺、可选 Performance API 及钉钉配置。
+
+不要在密钥两侧添加引号，不要把 `.env` 发送给他人或提交到 Git。Cloudflare 凭据由 cloudflared/Cloudflare 管理，不写入 `.env`。
+
+### 2. 服务操作
 
 ```sh
-docker compose ps
-docker compose logs --tail=100 app
+./scripts/start.sh
+./scripts/stop.sh
+./scripts/restart.sh
+./scripts/update.sh
 ```
 
-如使用 1Panel、Nginx 或 Caddy，将 HTTPS 反向代理目标设置为：
+`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、重启和固定地址验证；不会覆盖 `.env` 或删除 `data/`。
 
-```text
-http://127.0.0.1:APP_PORT
-```
+### 3. Cloudflare Tunnel
 
-`APP_PORT` 的实际值保存在 `.env` 中。
-
-## 方式二：本地 Python 安装
-
-### 1. 创建虚拟环境
-
-建议使用 Python 3.14（或 Python 3.12+）：
-
-```sh
-git clone https://github.com/LI5ee3/oPanel.git
-cd oPanel
-python3.14 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-Windows PowerShell 激活虚拟环境的命令为：
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-### 2. 创建 `.env`
-
-用标准库生成管理员密码的盐和 `scrypt` 哈希：
-
-```sh
-python - <<'PY'
-from app.security import password_hash
-password = input("管理员密码：")
-salt, digest = password_hash(password)
-print(f"ADMIN_PASSWORD_SALT={salt}\nADMIN_PASSWORD_HASH={digest}")
-PY
-```
-
-将输出和店铺凭据写入 `.env`：
-
-```dotenv
-ADMIN_PASSWORD_SALT=上一步生成的盐
-ADMIN_PASSWORD_HASH=上一步生成的哈希
-SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
-SHOP_1_OZON_API_KEY=店铺1的Api-Key
-SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
-SHOP_2_OZON_API_KEY=店铺2的Api-Key
-# 可选：Performance API service account，用于只读同步广告 Campaign 与统计
-SHOP_1_OZON_PERF_CLIENT_ID=店铺1的Performance-Client-Id
-SHOP_1_OZON_PERF_CLIENT_SECRET=店铺1的Performance-Client-Secret
-SHOP_2_OZON_PERF_CLIENT_ID=店铺2的Performance-Client-Id
-SHOP_2_OZON_PERF_CLIENT_SECRET=店铺2的Performance-Client-Secret
-OZON_WEBHOOK_SECRET_1=店铺1Webhook随机密钥
-OZON_WEBHOOK_SECRET_2=店铺2Webhook随机密钥
-# 若 Ozon Push 的 seller_id 与 Client-Id 不同，再填写对应 Seller ID
-# SHOP_1_OZON_SELLER_ID=店铺1的Seller ID
-# SHOP_2_OZON_SELLER_ID=店铺2的Seller ID
-DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
-DINGTALK_SECRET=钉钉机器人加签Secret
-```
-
-macOS/Linux 继续执行：
-
-```sh
-chmod 600 .env
-```
-
-### 3. 启动本地服务
-
-```sh
-uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-开启开发热更新：
-
-```sh
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-然后访问 [http://127.0.0.1:8000](http://127.0.0.1:8000)。首次启动会在 `data/` 目录自动创建 SQLite 数据库和会话密钥。
+安装并配置 Cloudflare Tunnel 的步骤见 [`docs/macos-deployment.md`](docs/macos-deployment.md)。Tunnel 发布后，使用其 HTTPS 域名访问 oPanel；oPanel 始终只监听本机固定地址。
 
 ## Ozon Push Webhook
 
@@ -233,7 +108,7 @@ POST /api/ozon/notifications/delete
 
 ## 首次使用
 
-1. 使用生成哈希时输入的管理员密码登录。
+1. 使用安装脚本生成的管理员密码登录。
 2. 在“系统设置”中修改两个店铺的显示名称。
 3. 在右上角选择单个店铺或合并查看。
 4. 进入“数据同步中心”，选择日期范围后分别拉取所需模块。页面默认为近三个月；长时段按自然月串行执行并显示进度，库存只拉取一次当前快照。也可按“店铺+模块”分别设置订单、退货和库存的每日自动同步，自定义北京时间及最近 1–365 天范围，同日成功任务不重复创建。
@@ -247,38 +122,39 @@ POST /api/ozon/notifications/delete
 查看日志：
 
 ```sh
-docker compose logs -f app
+tail -f logs/opanel.stdout.log
+tail -f logs/opanel.stderr.log
 ```
 
 重启：
 
 ```sh
-docker compose restart app
+./scripts/restart.sh
 ```
 
-重新构建并更新：
+更新：
 
 ```sh
-docker compose up -d --build
+./scripts/update.sh
 ```
 
 停止：
 
 ```sh
-docker compose down
+./scripts/stop.sh
 ```
 
 备份时请同时保存：
 
 - `data/`：数据库和会话密钥。
-- `.env`：管理员密码哈希、端口和 Ozon API 凭据。
+- `.env`：管理员密码哈希和 Ozon API 凭据。
 
-恢复时将两者放回项目根目录，确认 `.env` 权限为 `600`，再启动容器。
+恢复时将两者放回项目根目录，确认 `.env` 权限为 `600`，再运行 `./scripts/start.sh`。
 
 ## 安全说明
 
 - 不要将 `.env`、`data/`、CSV、XLSX 或任何真实店铺数据提交到 Git。
-- 公网部署必须使用 HTTPS，不要直接暴露容器端口。
+- 公网访问使用 Cloudflare Tunnel 的 HTTPS 域名；oPanel 不直接暴露公网端口。
 - 只授予 Ozon API 密钥项目所需的最小权限，密钥泄露后应立即轮换。
 - 该项目为单管理员系统，不适合直接作为多租户或多用户服务。
 
@@ -292,13 +168,17 @@ docker compose down
 
 检查店铺的 `Client-Id`、`Api-Key`、API 权限和请求日期范围。两个店铺的凭据不能混用。
 
-### Docker 容器已启动但无法访问
+### 服务已启动但无法访问
 
-先执行 `docker compose logs app`，然后检查 `.env` 中的 `APP_PORT`、服务器防火墙和反向代理配置。
+先执行 `launchctl print "gui/$(id -u)/com.opanel.app"`，再检查 `logs/opanel.stderr.log`，并确认 `http://127.0.0.1:38652` 可以访问。
+
+### 固定端口已被占用
+
+安装脚本会显示占用 `38652` 端口的进程并停止安装，不会切换端口。先处理该进程，再重新运行安装。
 
 ### 数据库位置
 
-默认数据库为 `data/opanel.db`。Docker 部署时 `data/` 会挂载到容器内的 `/app/data`。
+默认数据库为 `data/opanel.db`，会话密钥为 `data/session_secret`。
 
 ## 开源协议与鸣谢
 
