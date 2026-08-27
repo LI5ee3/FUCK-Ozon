@@ -10,9 +10,13 @@ const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({
     ? () => import("../views/DashboardView.vue")
     : item.name === "orders"
       ? () => import("../views/OrdersView.vue")
-      : item.name === "inventory"
-        ? () => import("../views/InventoryView.vue")
-        : PlaceholderView,
+      : item.name === "analytics"
+        ? () => import("../views/AnalyticsView.vue")
+        : item.name === "timeliness"
+          ? () => import("../views/TimelinessView.vue")
+          : item.name === "inventory"
+            ? () => import("../views/InventoryView.vue")
+            : PlaceholderView,
   meta: { title: item.label, icon: item.icon, description: item.description },
 }));
 
