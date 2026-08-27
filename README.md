@@ -71,7 +71,7 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
-# 可选：Performance API service account，用于只读同步广告 Campaign
+# 可选：Performance API service account，用于只读同步广告 Campaign 与统计
 SHOP_1_OZON_PERF_CLIENT_ID=店铺1的Performance-Client-Id
 SHOP_1_OZON_PERF_CLIENT_SECRET=店铺1的Performance-Client-Secret
 SHOP_2_OZON_PERF_CLIENT_ID=店铺2的Performance-Client-Id
@@ -85,7 +85,7 @@ DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
 DINGTALK_SECRET=钉钉机器人加签Secret
 ```
 
-Performance API 配置为可选项；未填写时不影响 Seller API 和 oPanel 启动，仅广告 Campaign 同步会提示未配置。
+Performance API 配置为可选项；未填写时不影响 Seller API 和 oPanel 启动，广告相关同步会提示未配置。
 
 不要在密钥两侧添加引号，也不要把 `.env` 发送给他人或提交到 Git。
 
@@ -167,7 +167,7 @@ SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
 SHOP_1_OZON_API_KEY=店铺1的Api-Key
 SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
 SHOP_2_OZON_API_KEY=店铺2的Api-Key
-# 可选：Performance API service account，用于只读同步广告 Campaign
+# 可选：Performance API service account，用于只读同步广告 Campaign 与统计
 SHOP_1_OZON_PERF_CLIENT_ID=店铺1的Performance-Client-Id
 SHOP_1_OZON_PERF_CLIENT_SECRET=店铺1的Performance-Client-Secret
 SHOP_2_OZON_PERF_CLIENT_ID=店铺2的Performance-Client-Id

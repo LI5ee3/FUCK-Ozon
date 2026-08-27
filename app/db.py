@@ -5,7 +5,7 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 
 {{店铺明细}}"""
@@ -77,6 +77,54 @@ def _create_ad_campaigns(db):
     """)
 
 
+def _create_ad_statistics(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS ad_campaign_daily (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL REFERENCES shops(id), stat_date TEXT NOT NULL,
+      campaign_id TEXT NOT NULL, impressions INTEGER, clicks INTEGER, cart_adds INTEGER,
+      spend_rub REAL, orders INTEGER, revenue_rub REAL,
+      synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      UNIQUE(shop_id,stat_date,campaign_id));
+    CREATE INDEX IF NOT EXISTS idx_ad_campaign_daily_date
+      ON ad_campaign_daily(shop_id,stat_date);
+    CREATE INDEX IF NOT EXISTS idx_ad_campaign_daily_campaign
+      ON ad_campaign_daily(shop_id,campaign_id,stat_date);
+    CREATE TABLE IF NOT EXISTS ad_sku_daily (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL REFERENCES shops(id), stat_date TEXT NOT NULL,
+      campaign_id TEXT NOT NULL, sku TEXT NOT NULL, product_name TEXT,
+      impressions INTEGER, clicks INTEGER, cart_adds INTEGER,
+      spend_rub REAL, orders INTEGER, revenue_rub REAL,
+      synced_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      UNIQUE(shop_id,stat_date,campaign_id,sku));
+    CREATE INDEX IF NOT EXISTS idx_ad_sku_daily_date
+      ON ad_sku_daily(shop_id,stat_date);
+    CREATE INDEX IF NOT EXISTS idx_ad_sku_daily_sku
+      ON ad_sku_daily(shop_id,sku,stat_date);
+    CREATE INDEX IF NOT EXISTS idx_ad_sku_daily_campaign
+      ON ad_sku_daily(shop_id,campaign_id,stat_date);
+    """)
+
+
+def _migrate_auto_sync_settings(db):
+    if db.execute("SELECT 1 FROM shop_auto_sync_settings WHERE module='ad_campaign_daily' LIMIT 1").fetchone():
+        return
+    db.execute("ALTER TABLE shop_auto_sync_settings RENAME TO shop_auto_sync_settings_v4")
+    db.execute("""CREATE TABLE shop_auto_sync_settings (
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      module TEXT NOT NULL CHECK(module IN ('orders','returns','stock','ad_campaign_daily','ad_sku_daily')),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+      interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
+      range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module))""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      SELECT shop_id,module,enabled,interval_hours,range_days FROM shop_auto_sync_settings_v4""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      VALUES(1,'ad_campaign_daily',0,24,7),(1,'ad_sku_daily',0,24,7),
+            (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7)""")
+    db.execute("DROP TABLE shop_auto_sync_settings_v4")
+
+
 def _migrate_v1_to_v2(db):
     _create_webhook_events(db)
     db.execute("PRAGMA user_version=2")
@@ -85,6 +133,16 @@ def _migrate_v1_to_v2(db):
 def _migrate_v2_to_v3(db):
     _create_ad_campaigns(db)
     db.execute("PRAGMA user_version=3")
+
+
+def _migrate_v3_to_v4(db):
+    _create_ad_statistics(db)
+    db.execute("PRAGMA user_version=4")
+
+
+def _migrate_v4_to_v5(db):
+    _migrate_auto_sync_settings(db)
+    db.execute("PRAGMA user_version=5")
 
 
 def init_db():
@@ -99,6 +157,12 @@ def init_db():
             if version == 2:
                 _migrate_v2_to_v3(db)
                 version = 3
+            if version == 3:
+                _migrate_v3_to_v4(db)
+                version = 4
+            if version == 4:
+                _migrate_v4_to_v5(db)
+                version = 5
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -215,13 +279,15 @@ def init_db():
           note TEXT NOT NULL DEFAULT '');
         CREATE TABLE shop_auto_sync_settings (
           shop_id INTEGER NOT NULL REFERENCES shops(id),
-          module TEXT NOT NULL CHECK(module IN ('orders','returns','stock')),
+          module TEXT NOT NULL CHECK(module IN ('orders','returns','stock','ad_campaign_daily','ad_sku_daily')),
           enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
           interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
           range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module));
         INSERT INTO shop_auto_sync_settings VALUES
           (1,'orders',0,24,3),(1,'returns',0,24,3),(1,'stock',0,24,1),
-          (2,'orders',0,24,3),(2,'returns',0,24,3),(2,'stock',0,24,1);
+          (2,'orders',0,24,3),(2,'returns',0,24,3),(2,'stock',0,24,1),
+          (1,'ad_campaign_daily',0,24,7),(1,'ad_sku_daily',0,24,7),
+          (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7);
         CREATE TABLE stock_history (
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
@@ -253,3 +319,4 @@ def init_db():
         PRAGMA user_version={SCHEMA_VERSION};
         PRAGMA optimize;
         """)
+        _create_ad_statistics(db)

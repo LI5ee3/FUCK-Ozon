@@ -84,7 +84,8 @@ class AutoSyncTest(DatabaseTestCase):
               FROM shop_auto_sync_settings WHERE shop_id=1 ORDER BY module""").fetchall()
         self.assertEqual({row["module"]: (row["interval_hours"], row["range_days"])
                           for row in rows},
-                         {"orders": (6, 7), "returns": (6, 7), "stock": (6, 1)})
+                         {"orders": (6, 7), "returns": (6, 7), "stock": (6, 1),
+                          "ad_campaign_daily": (24, 7), "ad_sku_daily": (24, 7)})
         for invalid in (0, 5, 7, 25):
             with self.assertRaisesRegex(ValueError, "只允许"):
                 save_auto_sync_settings(settings(interval=invalid))
@@ -133,6 +134,22 @@ class SyncProgressTest(DatabaseTestCase):
             row = connection.execute("SELECT status,progress_done,progress_total,records,error FROM sync_runs").fetchone()
         self.assertEqual(sync_call.call_count, 2)
         self.assertEqual(tuple(row), ("failed", 1, 3, 2, "第二段失败"))
+
+    def test_ad_sync_job_uses_performance_statistics_and_one_step(self):
+        timezone = ZoneInfo("Asia/Shanghai")
+        start = datetime(2026, 8, 1, tzinfo=timezone)
+        end = datetime(2026, 8, 7, 23, 59, 59, tzinfo=timezone)
+        ranges = _sync_ranges("ad_campaign_daily", start, end)
+        with db.transaction() as connection:
+            run_id = connection.execute("""INSERT INTO sync_runs(
+              shop_id,module,range_from,range_to,status,progress_total)
+              VALUES(1,'ad_campaign_daily','','','running',?)""", (len(ranges),)).lastrowid
+        with patch("app.main.sync_performance_statistics", return_value={"inserted_or_updated": 3}) as sync_call:
+            _run_sync_job(run_id, "ad_campaign_daily", 1, ranges)
+        self.assertEqual(sync_call.call_args.args, (1, "2026-08-01", "2026-08-07", "ad_campaign_daily"))
+        with db.connect() as connection:
+            row = connection.execute("SELECT status,progress_done,progress_total,records FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 1, 1, 3))
 
     def test_old_sync_logs_are_deleted_without_touching_pulled_data(self):
         with db.transaction() as connection:

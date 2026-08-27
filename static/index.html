@@ -41,6 +41,21 @@
           </button>
         </div>
         <div class="nav-group">
+          <div class="nav-group-title">广告管理</div>
+          <button data-page="adOverview">
+            <morph-icon class="nav-icon" data-nav-morph="adOverview" icon="activity" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>广告总览</span>
+          </button>
+          <button data-page="adCampaigns">
+            <morph-icon class="nav-icon" data-nav-morph="adCampaigns" icon="layers" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>广告活动</span>
+          </button>
+          <button data-page="adSkus">
+            <morph-icon class="nav-icon" data-nav-morph="adSkus" icon="tag" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>SKU广告分析</span>
+          </button>
+        </div>
+        <div class="nav-group">
           <div class="nav-group-title">履约与异常</div>
           <button data-page="timeliness">
             <morph-icon class="nav-icon" data-nav-morph="timeliness" icon="delivery" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
@@ -133,6 +148,9 @@
             <div id="complaintDateRange" class="hidden"></div>
             <div id="exportDateRange" class="hidden"></div>
             <div id="syncDateRange" class="hidden"></div>
+            <div id="adOverviewDateRange" class="hidden"></div>
+            <div id="adCampaignsDateRange" class="hidden"></div>
+            <div id="adSkusDateRange" class="hidden"></div>
           </div>
           <span id="dataThrough" class="data-through-badge"><span class="pulse-dot" aria-hidden="true"></span><span class="data-through-label">数据截止</span><span class="data-through-time">暂无</span></span>
         </div>
@@ -281,6 +299,66 @@
             <div class="pager"><button id="productQueryDetailsPrev">上一页</button><span id="productQueryDetailsInfo"></span><button id="productQueryDetailsNext">下一页</button></div>
           </div>
         </div>
+      </section>
+
+      <section id="adOverview" class="page">
+        <div id="adOverviewKpis" class="cards ad-kpi-grid"></div>
+        <section class="panel ad-trend-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8"></morph-icon> 广告趋势</h2>
+              <span class="muted">Performance API 自然日；金额单位 RUB</span>
+            </div>
+            <div class="ad-trend-legend"><span><i class="ad-legend-dot spend"></i>广告花费</span><span><i class="ad-legend-dot revenue"></i>广告销售额</span></div>
+          </div>
+          <div id="adTrend" class="ad-trend-chart" aria-label="广告花费与销售额趋势"></div>
+        </section>
+        <p class="ad-data-note">页面只读取本地 SQLite；请在“数据同步中心”先同步广告日统计。</p>
+      </section>
+
+      <section id="adCampaigns" class="page">
+        <section class="panel ad-list-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="layers" size="18" stroke-width="1.8"></morph-icon> 广告活动</h2>
+              <span class="muted">Campaign 元数据与本地广告日统计区间汇总</span>
+            </div>
+            <div class="ad-filter-inline">
+              <label>状态<select id="adCampaignState"><option value="">全部状态</option><option value="CAMPAIGN_STATE_RUNNING">运行中</option><option value="CAMPAIGN_STATE_INACTIVE">未激活</option><option value="CAMPAIGN_STATE_ARCHIVED">已归档</option><option value="CAMPAIGN_STATE_STOPPED">已停止</option></select></label>
+              <label>排序<select id="adCampaignSort"><option value="spend_rub">广告花费</option><option value="revenue_rub">广告销售额</option><option value="orders">广告订单</option><option value="drr">DRR</option><option value="roas">ROAS</option><option value="impressions">曝光</option><option value="clicks">点击</option></select></label>
+            </div>
+          </div>
+          <div class="table-wrap ad-table-wrap">
+            <table class="ad-table">
+              <thead><tr><th>Campaign</th><th>状态</th><th>类型 / Placement</th><th class="text-right">周预算</th><th class="text-right">曝光</th><th class="text-right">点击</th><th class="text-right">CTR</th><th class="text-right">广告花费</th><th class="text-right">平均 CPC</th><th class="text-right">订单</th><th class="text-right">销售额</th><th class="text-right">DRR</th><th class="text-right">ROAS</th></tr></thead>
+              <tbody id="adCampaignRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><button id="adCampaignsPrev">上一页</button><span id="adCampaignsInfo"></span><button id="adCampaignsNext">下一页</button></div>
+        </section>
+      </section>
+
+      <section id="adSkus" class="page">
+        <section class="panel ad-list-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="tag" size="18" stroke-width="1.8"></morph-icon> SKU 广告分析</h2>
+              <span class="muted">同店铺内按 SKU 聚合；全部店铺保留店铺维度，不跨店合并</span>
+            </div>
+            <div class="ad-filter-inline">
+              <form id="adSkuFilterForm" class="ad-search-form"><input id="adSkuQuery" type="search" placeholder="搜索 SKU 或商品名称…" aria-label="搜索 SKU 或商品名称"><button class="primary" type="submit">查询</button><button id="adSkuClear" type="button">清除</button></form>
+              <label>排序<select id="adSkuSort"><option value="spend_rub">广告花费</option><option value="revenue_rub">广告销售额</option><option value="drr">DRR</option><option value="roas">ROAS</option><option value="orders">广告订单</option><option value="clicks">点击</option></select></label>
+            </div>
+          </div>
+          <div class="table-wrap ad-table-wrap">
+            <table class="ad-table ad-sku-table">
+              <thead><tr><th>店铺 / SKU</th><th>商品名称</th><th class="text-right">Campaign数</th><th class="text-right">曝光</th><th class="text-right">点击</th><th class="text-right">CTR</th><th class="text-right">广告花费</th><th class="text-right">平均 CPC</th><th class="text-right">广告订单</th><th class="text-right">广告销售额</th><th class="text-right">DRR</th><th class="text-right">ROAS</th></tr></thead>
+              <tbody id="adSkuRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><button id="adSkusPrev">上一页</button><span id="adSkusInfo"></span><button id="adSkusNext">下一页</button></div>
+        </section>
+        <p class="ad-data-note">当前未显示总订单、总销售额和广告占比：项目尚无可靠的按 SKU Seller Analytics 历史落库。</p>
       </section>
 
       <section id="orders" class="page">
@@ -612,7 +690,7 @@
           <div class="panel-title">
             <div>
               <h2><morph-icon icon="clock" size="18" stroke-width="1.8"></morph-icon> 自动拉取设置</h2>
-              <span class="muted">两个店铺的三个模块独立设置，启用后按北京时间每隔 N 小时自动调度</span>
+              <span class="muted">两个店铺的五个模块独立设置，广告统计启用后按最近 N 天重拉并 UPSERT</span>
             </div>
           </div>
           <div id="autoSyncCards" class="auto-sync-shop-grid"></div>

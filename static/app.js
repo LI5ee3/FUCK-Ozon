@@ -1,17 +1,17 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1,analyticsData:1,productQueries:1,productQueryDetails:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1,analyticsData:1,productQueries:1,productQueryDetails:1,adCampaigns:1,adSkus:1}};
 let riskItems = [];
 let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
 let pushSubscriptionState={},pushSubscriptionLoadToken=0;
-const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",adOverview:"广告总览",adCampaigns:"广告活动",adSkus:"SKU广告分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
 const profitCalculator = window.ProfitCalculator;
 const profitCostLabels = {purchase_cost:"采购成本",hunchun_shipping:"发往珲春物流费",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_transport_contract_service:"国际运输组织合同的签订服务",bank_acquiring_fee:"银行收单手续费",packing:"打包成本",other_cost:"其他费用"};
 const profitPathLabels = {FBP:"FBP",realFBS_hongkong:"realFBS · 香港",realFBS_shenzhen:"realFBS · 深圳"};
 const profitStatusLabels = {implemented:"已接入",missing_input:"待输入",not_implemented:"未接入规则",not_applicable:"不适用"};
-const syncNames = {orders:"订单",returns:"退货",stock:"库存",ad_campaigns:"广告 Campaign"};
-const autoSyncNames = {orders:"订单",returns:"退货",stock:"库存"};
+const syncNames = {orders:"订单",returns:"退货",stock:"库存",ad_campaigns:"广告 Campaign",ad_campaign_daily:"广告日统计",ad_sku_daily:"SKU广告统计",ad_statistics:"广告统计"};
+const autoSyncNames = {orders:"订单",returns:"退货",stock:"库存",ad_campaign_daily:"广告日统计",ad_sku_daily:"SKU广告统计"};
 const PUSH_EVENT_FALLBACK_TYPES=[
   "TYPE_NEW_POSTING","TYPE_POSTING_CANCELLED","TYPE_STATE_CHANGED",
   "TYPE_FBO_POSTING_NEW","TYPE_FBO_POSTING_CANCELLED","TYPE_FBO_POSTING_STATE_CHANGED",
@@ -738,6 +738,52 @@ async function loadOverview() {
   }
   renderDataThrough(data.data_through);
   renderOverviewPanels(data);
+}
+const adMoney = value => value == null ? "—" : `${num(value)} RUB`;
+const adRate = value => value == null ? "—" : `${Number(value).toFixed(2)}%`;
+const adRatio = value => value == null ? "—" : Number(value).toFixed(2);
+function adQuery(range, extra={}) {
+  return new URLSearchParams({shop_id:state.shop,from:range.start,to:range.end,...extra});
+}
+function renderAdTrend(rows) {
+  const host=$("#adTrend");
+  if (!host) return;
+  const data=rows||[], max=Math.max(1,...data.map(row=>Math.max(Number(row.spend_rub||0),Number(row.revenue_rub||0))));
+  host.innerHTML=data.length?`<div class="ad-trend-bars">${data.map(row=>{
+    const spend=Number(row.spend_rub||0),revenue=Number(row.revenue_rub||0);
+    return `<div class="ad-trend-day" title="${esc(row.date)} · 花费 ${adMoney(spend)} · 销售额 ${adMoney(revenue)}"><div class="ad-trend-columns"><span class="ad-bar spend" style="height:${spend?Math.max(3,spend/max*100):0}%"></span><span class="ad-bar revenue" style="height:${revenue?Math.max(3,revenue/max*100):0}%"></span></div><small>${esc(String(row.date).slice(5))}</small></div>`;
+  }).join("")}</div>`:'<div class="ad-empty"><morph-icon icon="activity" size="20" stroke-width="1.8"></morph-icon><span>所选范围暂无广告日统计，请先同步。</span></div>';
+}
+async function loadAdOverview() {
+  const data=await api(`/api/performance/overview?${adQuery(adOverviewRange)}`),summary=data.summary||data;
+  $("#adOverviewKpis").innerHTML=renderAnalysisCards([
+    {icon:"wallet",label:"广告花费",count:adMoney(summary.spend_rub),tone:"peach"},
+    {icon:"shoppingBag",label:"广告销售额",count:adMoney(summary.revenue_rub),tone:"azure"},
+    {icon:"orders",label:"广告订单",count:num(summary.orders,0),tone:"mint"},
+    {icon:"barChart",label:"曝光",count:num(summary.impressions,0),tone:"lavender"},
+    {icon:"activity",label:"点击",count:num(summary.clicks,0),tone:"blue"},
+    {icon:"percent",label:"CTR",count:adRate(summary.ctr),tone:"lavender"},
+    {icon:"coins",label:"平均 CPC",count:adMoney(summary.avg_cpc_rub),tone:"mint"},
+    {icon:"percent",label:"广告成本率（DRR）",count:adRate(summary.drr),note:"广告花费 ÷ 广告销售额",tone:"peach"},
+    {icon:"trendingUp",label:"ROAS",count:adRatio(summary.roas),note:"广告销售额 ÷ 广告花费",tone:"azure"}
+  ]);
+  renderAdTrend(data.trend);
+  renderDataThrough(data.data_through);
+}
+function adTableMessage(selector,colspan,message) {
+  $(selector).innerHTML=`<tr><td colspan="${colspan}" class="ad-table-message"><morph-icon icon="activity" size="18" stroke-width="1.8"></morph-icon><span>${esc(message)}</span></td></tr>`;
+}
+async function loadAdCampaigns() {
+  const range=adCampaignsRange, query=adQuery(range,{state:$("#adCampaignState").value,sort:$("#adCampaignSort").value,order:"desc",page:state.pages.adCampaigns,size:50});
+  const data=await api(`/api/performance/campaign-stats?${query}`),rows=data.items||[];
+  $("#adCampaignRows").innerHTML=rows.length?rows.map(row=>`<tr><td><div class="ad-campaign-cell"><strong>${esc(row.name||row.campaign_id)}</strong><small>${esc(row.shop_name)} · ${esc(row.campaign_id)}</small></div></td><td>${esc(row.state||"—")}</td><td><div class="ad-type-cell"><span>${esc(row.adv_object_type||"—")}</span><small>${esc(row.placement||"—")}</small></div></td><td class="text-right">${adMoney(row.weekly_budget)}</td><td class="text-right">${num(row.impressions,0)}</td><td class="text-right">${num(row.clicks,0)}</td><td class="text-right">${adRate(row.ctr)}</td><td class="text-right">${adMoney(row.spend_rub)}</td><td class="text-right">${adMoney(row.avg_cpc_rub)}</td><td class="text-right">${num(row.orders,0)}</td><td class="text-right">${adMoney(row.revenue_rub)}</td><td class="text-right">${adRate(row.drr)}</td><td class="text-right">${adRatio(row.roas)}</td></tr>`).join(""):'<tr><td colspan="13" class="ad-table-message"><morph-icon icon="layers" size="20" stroke-width="1.8"></morph-icon><span>所选范围暂无 Campaign 数据</span></td></tr>';
+  pager("adCampaigns",data,loadAdCampaigns);
+}
+async function loadAdSkus() {
+  const range=adSkusRange, query=adQuery(range,{q:$("#adSkuQuery").value.trim(),sort:$("#adSkuSort").value,order:"desc",page:state.pages.adSkus,size:50});
+  const data=await api(`/api/performance/sku-stats?${query}`),rows=data.items||[];
+  $("#adSkuRows").innerHTML=rows.length?rows.map(row=>`<tr><td><div class="ad-campaign-cell"><strong>${esc(row.shop_name)}</strong><small class="copyable" data-copy="${esc(row.sku)}" title="点击复制 SKU">SKU ${esc(row.sku)}</small></div></td><td>${esc(row.product_name||"—")}</td><td class="text-right">${num(row.campaign_count,0)}</td><td class="text-right">${num(row.impressions,0)}</td><td class="text-right">${num(row.clicks,0)}</td><td class="text-right">${adRate(row.ctr)}</td><td class="text-right">${adMoney(row.spend_rub)}</td><td class="text-right">${adMoney(row.avg_cpc_rub)}</td><td class="text-right">${num(row.orders,0)}</td><td class="text-right">${adMoney(row.revenue_rub)}</td><td class="text-right">${adRate(row.drr)}</td><td class="text-right">${adRatio(row.roas)}</td></tr>`).join(""):'<tr><td colspan="12" class="ad-table-message"><morph-icon icon="tag" size="20" stroke-width="1.8"></morph-icon><span>所选范围暂无 SKU 广告数据</span></td></tr>';
+  pager("adSkus",data,loadAdSkus);
 }
 let analyticsTab="traffic", analyticsDetail=null, productQueryItems=[];
 const analyticsRate=(value,denominator)=>denominator?`${(Number(value)/Number(denominator)*100).toFixed(2)}%`:"—";
@@ -1804,10 +1850,10 @@ function renderSyncSummary() {
     {
       tone: "blue",
       label: "自动拉取配置",
-      badge: `${enabledCount} / 6 开启`,
+      badge: `${enabledCount} / 10 开启`,
       icon: "clock",
-      count: `${enabledCount}<small style="font-size:14px;font-weight:600;margin-left:4px;">/ 6 项启用</small>`,
-      note: "两店铺三大模块独立定时调度"
+      count: `${enabledCount}<small style="font-size:14px;font-weight:600;margin-left:4px;">/ 10 项启用</small>`,
+      note: "两店铺五大模块独立定时调度"
     },
     {
       tone: "mint",
@@ -2199,13 +2245,14 @@ function probeResult(result={}){
 async function loadPage(page) {
   if(page==="overview") return Promise.all([loadOverview(),loadTrend()]); if(page==="orders") return loadOrders();
   if(page==="analytics") return loadAnalyticsPage();
+  if(page==="adOverview") return loadAdOverview(); if(page==="adCampaigns") return loadAdCampaigns(); if(page==="adSkus") return loadAdSkus();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock,profit:loadProfitPage};
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="pushSubscriptions") return loadPushSubscriptions(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",profit:"trendingUp",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
-const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
+const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",adOverview:"activity",adCampaigns:"layers",adSkus:"tag",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",profit:"trendingUp",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
+const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",adOverview:"#adOverviewDateRange",adCampaigns:"#adCampaignsDateRange",adSkus:"#adSkusDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
   document.querySelectorAll("#nav button").forEach(e=>{
@@ -2554,7 +2601,9 @@ const manualSyncModules = {
   orders: { title: "订单数据", desc: "拉取订单、商品明细及订单状态数据", scope: "受顶部时间范围影响", icon: "package", tone: "blue" },
   returns: { title: "退货数据", desc: "拉取退货与客户售后申请记录", scope: "受顶部时间范围影响", icon: "rotateCcw", tone: "peach" },
   stock: { title: "实时库存", desc: "拉取当前全量现货与快照数据", scope: "全量快照 · 实时", icon: "stock", tone: "mint" },
-  ad_campaigns: { title: "广告 Campaign", desc: "读取 Performance API Campaign 元数据并同步到本地", scope: "Performance API · 只读", icon: "activity", tone: "lavender" }
+  ad_campaigns: { title: "广告 Campaign", desc: "读取 Performance API Campaign 元数据并同步到本地", scope: "Performance API · 只读", icon: "activity", tone: "lavender" },
+  ad_campaign_daily: { title: "广告日统计", desc: "同步 Campaign × 日期的曝光、点击、花费与订单", scope: "建议最近 7 天 · 只读", icon: "trendingUp", tone: "azure" },
+  ad_sku_daily: { title: "SKU 广告统计", desc: "同步 SKU 广告表现；Ozon 接口当前只支持今天或昨天", scope: "今天 / 昨天 · 只读", icon: "tag", tone: "peach" }
 };
 $("#syncButtons").innerHTML = Object.entries(manualSyncModules).map(([key, item]) => `
   <article class="sync-manual-card tone-${item.tone}" data-sync-module="${key}">
@@ -2579,6 +2628,7 @@ $("#syncButtons").innerHTML = Object.entries(manualSyncModules).map(([key, item]
 const today=new Date(); today.setHours(0,0,0,0);
 const isoDate=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
 const localDate=value=>{const [year,month,day]=value.split("-").map(Number);return new Date(year,month-1,day)};
+const moscowToday=localDate(new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Moscow",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
 const shiftDays=(date,amount)=>new Date(date.getFullYear(),date.getMonth(),date.getDate()+amount);
 const shiftMonths=(date,amount)=>new Date(date.getFullYear(),date.getMonth()+amount,1);
 const threeMonthsAgo=(()=>{const target=new Date(today.getFullYear(),today.getMonth()-3,1);target.setDate(Math.min(today.getDate(),new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return target})();
@@ -2591,12 +2641,13 @@ const formatRangeDisplay=(start,end,presetText)=>{
   if(sY===eY)return `${formatShortDate(start)} - ${formatShortDate(end)}`;
   return `${sY.slice(2)}.${formatShortDate(start)} - ${eY.slice(2)}.${formatShortDate(end)}`;
 };
-function createDateRange(rootId,onChange,defaultPreset="3months"){
+function createDateRange(rootId,onChange,defaultPreset="3months",referenceToday=today){
   const root=$(rootId);if(!root)return null;
-  const range={start:isoDate(threeMonthsAgo),end:isoDate(today),selecting:false,view:new Date(today.getFullYear(),today.getMonth(),1),preset:"3months"};
+  const referenceThreeMonthsAgo=(()=>{const target=new Date(referenceToday.getFullYear(),referenceToday.getMonth()-3,1);target.setDate(Math.min(referenceToday.getDate(),new Date(target.getFullYear(),target.getMonth()+1,0).getDate()));return target})();
+  const range={start:isoDate(referenceThreeMonthsAgo),end:isoDate(referenceToday),selecting:false,view:new Date(referenceToday.getFullYear(),referenceToday.getMonth(),1),preset:"3months"};
   root.innerHTML=`<div class="date-range-wrap"><button class="date-range-pill" data-range-role="button" type="button" aria-haspopup="dialog" aria-expanded="false" title="时间范围：${range.start} 至 ${range.end}"><morph-icon icon="calendar" size="14" spring="snappy" stroke-width="1.8"></morph-icon><span class="date-range-text" data-range-role="label">近三个月</span><morph-icon icon="chevronDown" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button><div class="date-range-panel header-date-panel hidden" data-range-role="panel" role="dialog" aria-label="选择日期范围"><div class="range-calendars"><div class="range-calendar"><div class="range-month-head"><button data-range-role="prev" type="button" aria-label="上个月"><morph-icon icon="chevronLeft" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button><strong data-range-role="month-a"></strong><span></span></div><div class="range-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="range-days" data-range-role="days-a"></div></div><div class="range-calendar"><div class="range-month-head"><span></span><strong data-range-role="month-b"></strong><button data-range-role="next" type="button" aria-label="下个月"><morph-icon icon="chevronRight" size="14" spring="snappy" stroke-width="1.8"></morph-icon></button></div><div class="range-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="range-days" data-range-role="days-b"></div></div></div><div class="range-presets"><button type="button" data-range="today">今天</button><button type="button" data-range="3days">3天内</button><button type="button" data-range="7days">7天内</button><button type="button" data-range="3months">近三个月</button><button type="button" data-range="all">全部时间</button></div></div></div>`;
   const find=role=>root.querySelector(`[data-range-role="${role}"]`),label=find("label"),panel=find("panel"),button=find("button"),caret=button.querySelector("morph-icon:last-of-type");
-  const month=(value,title,days)=>{title.textContent=`${value.getFullYear()}年 ${value.getMonth()+1}月`;const first=new Date(value.getFullYear(),value.getMonth(),1),last=new Date(value.getFullYear(),value.getMonth()+1,0),items=[];for(let index=0;index<(first.getDay()+6)%7;index++)items.push('<span class="range-blank"></span>');for(let day=1;day<=last.getDate();day++){const current=new Date(value.getFullYear(),value.getMonth(),day),key=isoDate(current),weekend=current.getDay()===0||current.getDay()===6,inRange=key>=range.start&&key<=range.end,edge=key===range.start||key===range.end,edgeStart=key===range.start&&range.start!==range.end,edgeEnd=key===range.end&&range.start!==range.end;items.push(`<button type="button" data-date="${key}" class="${weekend?'weekend ':''}${inRange?'in-range ':''}${edge?'range-edge ':''}${edgeStart?'range-start ':''}${edgeEnd?'range-end ':''}${key===isoDate(today)?'today':''}" aria-label="${value.getFullYear()}年${value.getMonth()+1}月${day}日">${day}</button>`)}days.innerHTML=items.join("")};
+  const month=(value,title,days)=>{title.textContent=`${value.getFullYear()}年 ${value.getMonth()+1}月`;const first=new Date(value.getFullYear(),value.getMonth(),1),last=new Date(value.getFullYear(),value.getMonth()+1,0),items=[];for(let index=0;index<(first.getDay()+6)%7;index++)items.push('<span class="range-blank"></span>');for(let day=1;day<=last.getDate();day++){const current=new Date(value.getFullYear(),value.getMonth(),day),key=isoDate(current),weekend=current.getDay()===0||current.getDay()===6,inRange=key>=range.start&&key<=range.end,edge=key===range.start||key===range.end,edgeStart=key===range.start&&range.start!==range.end,edgeEnd=key===range.end&&range.start!==range.end;items.push(`<button type="button" data-date="${key}" class="${weekend?'weekend ':''}${inRange?'in-range ':''}${edge?'range-edge ':''}${edgeStart?'range-start ':''}${edgeEnd?'range-end ':''}${key===isoDate(referenceToday)?'today':''}" aria-label="${value.getFullYear()}年${value.getMonth()+1}月${day}日">${day}</button>`)}days.innerHTML=items.join("")};
   const render=(dir=null)=>{
     month(range.view,find("month-a"),find("days-a"));
     month(shiftMonths(range.view,1),find("month-b"),find("days-b"));
@@ -2617,7 +2668,7 @@ function createDateRange(rootId,onChange,defaultPreset="3months"){
     button.title=`时间范围：${range.start} 至 ${range.end}`;
     render();if(notify)onChange(range);
   };
-  const preset=(name,notify=true)=>{const choices={today:[today,today],"3days":[shiftDays(today,-2),today],"7days":[shiftDays(today,-6),today],"3months":[threeMonthsAgo,today],analytics30:[analyticsStart,analyticsEnd],all:[new Date(2020,0,1),today]};set(...choices[name],name,notify)};
+  const preset=(name,notify=true)=>{const choices={today:[referenceToday,referenceToday],"3days":[shiftDays(referenceToday,-2),referenceToday],"7days":[shiftDays(referenceToday,-6),referenceToday],"3months":[referenceThreeMonthsAgo,referenceToday],analytics30:[shiftDays(referenceToday,-32),shiftDays(referenceToday,-3)],all:[new Date(2020,0,1),referenceToday]};set(...choices[name],name,notify)};
   root.onclick=e=>{
     if(e.target.closest(".date-range-pill,.date-range-button")){
       const willOpen=panel.classList.contains("hidden");
@@ -2662,8 +2713,16 @@ const timelinessRange=createDateRange("#timelinessDateRange",()=>{state.pages.ti
 const returnsRange=createDateRange("#returnsDateRange",()=>{state.pages.returns=state.pages.rfbsReturns=1;loadReturnPage().catch(error=>toast(error.message,true))});
 const complaintRange=createDateRange("#complaintDateRange",()=>{state.pages.shippingComplaints=state.pages.receivedDisputes=1;loadExceptionComplaints().catch(error=>toast(error.message,true))});
 const exportRange=createDateRange("#exportDateRange",()=>updateExportScope());
-const syncRange=createDateRange("#syncDateRange",()=>{});
+const syncRange=createDateRange("#syncDateRange",()=>{},"7days",moscowToday);
+const adOverviewRange=createDateRange("#adOverviewDateRange",()=>loadAdOverview().catch(error=>toast(error.message,true)),"7days",moscowToday);
+const adCampaignsRange=createDateRange("#adCampaignsDateRange",()=>{state.pages.adCampaigns=1;loadAdCampaigns().catch(error=>toast(error.message,true))},"7days",moscowToday);
+const adSkusRange=createDateRange("#adSkusDateRange",()=>{state.pages.adSkus=1;loadAdSkus().catch(error=>toast(error.message,true))},"7days",moscowToday);
 const exchangeRateRange=createDateRange("#exchangeRateDateRange",()=>{});
+$("#adCampaignState")?.addEventListener("change",()=>{state.pages.adCampaigns=1;loadAdCampaigns().catch(error=>toast(error.message,true))});
+$("#adCampaignSort")?.addEventListener("change",()=>{state.pages.adCampaigns=1;loadAdCampaigns().catch(error=>toast(error.message,true))});
+$("#adSkuSort")?.addEventListener("change",()=>{state.pages.adSkus=1;loadAdSkus().catch(error=>toast(error.message,true))});
+$("#adSkuFilterForm")?.addEventListener("submit",e=>{e.preventDefault();state.pages.adSkus=1;loadAdSkus().catch(error=>toast(error.message,true))});
+$("#adSkuClear")?.addEventListener("click",()=>{$("#adSkuQuery").value="";state.pages.adSkus=1;loadAdSkus().catch(error=>toast(error.message,true))});
 document.addEventListener("click",e=>{const copyEl=e.target.closest(".copyable,[data-copy]");if(copyEl){const val=copyEl.dataset.copy?.trim();if(val&&val!=="暂无"&&val!=="—"){const done=()=>toast(`已复制：${val}`);if(navigator.clipboard?.writeText){navigator.clipboard.writeText(val).then(done).catch(()=>{const ta=document.createElement("textarea");ta.value=val;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();done()})}else{const ta=document.createElement("textarea");ta.value=val;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();done()}if(e.target.closest("summary"))e.preventDefault();e.stopPropagation();return}}const clickedWrap=e.target.closest(".date-range-wrap");document.querySelectorAll(".date-range-panel:not(.hidden)").forEach(p=>{if(!clickedWrap||!clickedWrap.contains(p)){p.classList.add("hidden");const b=p.closest(".date-range-wrap")?.querySelector(".date-range-pill,.date-range-button");if(b){b.setAttribute("aria-expanded","false");b.querySelector("morph-icon:last-of-type")?.morphTo("chevronDown","snappy")}}});const path=e.composedPath();if(!path.some(el=>el.id==="shopPickerButton"||el.id==="shopOptions")){$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy")}if(!path.some(el=>el.id==="channelPickerButton"||el.id==="channelOptions")){$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy")}if(!path.some(el=>el.hasAttribute?.("data-select-button")||el.hasAttribute?.("data-select-options")))Object.values(returnSelects).forEach(select=>select.close());if(!e.target.closest("#orderTrend"))$("#orderTrend .ozon-tooltip")?.classList.add("hidden")});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){document.querySelectorAll(".date-range-panel").forEach(panel=>panel.classList.add("hidden"));document.querySelectorAll(".date-range-pill,.date-range-button").forEach(button=>{button.setAttribute("aria-expanded","false");button.querySelector("morph-icon:last-of-type")?.morphTo("chevronDown","snappy")});$("#shopOptions").classList.add("hidden");$("#shopPickerButton").setAttribute("aria-expanded","false");$("#shopPickerMorph")?.morphTo("chevronDown","snappy");$("#channelOptions").classList.add("hidden");$("#channelPickerButton").setAttribute("aria-expanded","false");$("#channelPickerMorph")?.morphTo("chevronDown","snappy");Object.values(returnSelects).forEach(select=>select.close())}});
 $("#trendGranularity").onclick=async e=>{const btn=e.target.closest("button[data-granularity]");if(!btn)return;const value=btn.dataset.granularity;if(!value||value===state.overviewGranularity)return;state.overviewGranularity=value;$("#trendGranularity").querySelectorAll("button").forEach(b=>b.classList.toggle("active",b===btn));renderTrendWaveLoader(value);try{await loadTrend()}catch(error){toast(error.message,true)}};
@@ -2704,6 +2763,15 @@ $("#syncButtons").onclick = async e => {
         body: JSON.stringify({ shop_id: state.shop })
       });
       toast(`广告 Campaign同步完成：${num(result.inserted_or_updated ?? result.fetched, 0)} 条`);
+      await loadSync(true);
+    } else if (module === "ad_campaign_daily" || module === "ad_sku_daily") {
+      const result = await api("/api/performance/statistics/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({shop_id: state.shop, date_from: syncRange.start, date_to: syncRange.end, module})
+      });
+      const saved = result[module === "ad_campaign_daily" ? "campaign_daily" : "sku"]?.inserted_or_updated ?? result.inserted_or_updated;
+      toast(`${syncNames[module]}同步完成：${num(saved, 0)} 条`);
       await loadSync(true);
     } else {
       const task = await api(`/api/sync/${module}?shop_id=${state.shop}`, {

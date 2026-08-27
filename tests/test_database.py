@@ -20,7 +20,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
         self.assertIn("idx_auto_sync_once", indexes)
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
         self.assertEqual(settings, (1, 0, "09:00", "1,2,3,4,5,6,7", DEFAULT_DAILY_TEMPLATE))
-        self.assertEqual(auto, 6)
+        self.assertEqual(auto, 10)
         self.assertEqual(item_pk, ["shop_id", "posting_number", "sku"])
 
     def test_repeated_init_keeps_version_and_schema(self):
@@ -32,7 +32,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
         self.assertEqual(before, after)
-        self.assertEqual(after[0], 3)
+        self.assertEqual(after[0], 5)
 
     def test_nonempty_old_database_is_rejected(self):
         old_path = Path(self.temp.name) / "old.db"
@@ -57,10 +57,14 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
         db.init_db()
         with db.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 3)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
             self.assertEqual(connection.execute(
                 "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
             self.assertIsNotNone(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ozon_webhook_events'").fetchone())
             self.assertIsNotNone(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_campaigns'").fetchone())
+            self.assertIsNotNone(connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_campaign_daily'").fetchone())
+            self.assertIsNotNone(connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_sku_daily'").fetchone())
