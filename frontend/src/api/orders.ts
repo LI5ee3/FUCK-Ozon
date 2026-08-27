@@ -1,15 +1,15 @@
 import { request } from "./client";
-import type { OrderListResponse, ShopSelection } from "../types/api";
+import type { Channel, OrderListResponse, OrderStatusFilter, ShopSelection } from "../types/api";
 
 export interface OrderQuery {
   shopId?: ShopSelection;
-  channel?: string;
+  channel?: Channel;
   search?: string;
   page?: number;
   size?: number;
   from?: string;
   to?: string;
-  status?: string;
+  status?: Exclude<OrderStatusFilter, "">;
 }
 
 export function listOrders(queryValues: OrderQuery = {}): Promise<OrderListResponse> {

@@ -6,7 +6,13 @@ import { navigationItems } from "./navigation";
 const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({
   path: item.path === "/" ? "" : item.path.slice(1),
   name: item.name,
-  component: item.name === "overview" ? () => import("../views/DashboardView.vue") : PlaceholderView,
+  component: item.name === "overview"
+    ? () => import("../views/DashboardView.vue")
+    : item.name === "orders"
+      ? () => import("../views/OrdersView.vue")
+      : item.name === "inventory"
+        ? () => import("../views/InventoryView.vue")
+        : PlaceholderView,
   meta: { title: item.label, icon: item.icon, description: item.description },
 }));
 
