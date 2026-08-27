@@ -1,6 +1,6 @@
 # oPanel
 
-oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与纯原生现代前端（零构建工具、零外部网络依赖）开发，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
+oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与原生 Macaron 前端开发，现处于新 Vue 前端逐页迁移准备阶段，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
 
 ## 主要功能
 
@@ -33,11 +33,24 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 ```text
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
 static/           纯原生前端页面（Macaron UI 体系、Tabler 矢量图标、物理形变组件）
+frontend/         新 Vue 3 + TypeScript + Vite 前端（迁移阶段，仅含基础 Shell 与占位路由）
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板
 docs/             部署与业务口径文档
 ```
+
+## 新前端开发（迁移阶段）
+
+`static/` 继续作为现有生产前端；`frontend/` 独立开发，当前不迁移业务页面。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产仍使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel，入口尚未切换到 `frontend/dist/`。
 
 ## macOS + Apple Silicon 部署
 
