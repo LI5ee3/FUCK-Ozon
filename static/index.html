@@ -1375,8 +1375,8 @@
         <div class="panel stock-panel">
           <div class="panel-title">
             <div>
-              <h2><morph-icon icon="stock" size="18" stroke-width="1.8"></morph-icon> 销量与备货决策矩阵</h2>
-              <span class="muted">销量参考：FBP＋realFBS｜库存基准：FBP现货｜全局应用主货号合并</span>
+              <h2><morph-icon icon="stock" size="18" stroke-width="1.8"></morph-icon> 库存预测与补货建议</h2>
+              <span class="muted">销量截至昨日完整自然日｜预测按 SKU 计算｜“全部”视图按 FBP 库存判断，未计入在途库存</span>
             </div>
             <span class="muted" id="stockUpdated"></span>
           </div>
@@ -1393,6 +1393,26 @@
               <morph-icon icon="package" size="15" stroke-width="1.8"></morph-icon>
               <input id="stockProduct" type="search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称">
             </div>
+            <label class="stock-filter-select"><span>履约模式</span>
+              <select id="stockChannel" aria-label="库存预测履约模式">
+                <option value="">全部（按 FBP 预测）</option>
+                <option value="FBP">FBP</option>
+                <option value="realFBS">realFBS</option>
+                <option value="WHD">WHD</option>
+              </select>
+            </label>
+            <label class="stock-filter-select"><span>风险</span>
+              <select id="stockRisk" aria-label="库存预测风险筛选">
+                <option value="attention">需要关注</option>
+                <option value="">全部风险</option>
+                <option value="out_of_stock">缺货</option>
+                <option value="urgent_replenishment">紧急补货</option>
+                <option value="replenish">需要补货</option>
+                <option value="sufficient">库存充足</option>
+                <option value="overstock">库存偏高</option>
+                <option value="no_recent_sales">无近期销量</option>
+              </select>
+            </label>
             <div class="stock-filter-actions">
               <button class="primary" type="submit"><morph-icon icon="search" size="13" stroke-width="2"></morph-icon><span>查询</span></button>
               <button id="stockClear" type="button"><morph-icon icon="rotateCcw" size="13" stroke-width="2"></morph-icon><span>重置</span></button>
@@ -1402,13 +1422,15 @@
             <table class="stock-table">
               <thead>
                 <tr>
-                  <th style="width:26%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>商品信息</span></div></th>
-                  <th style="width:11%;" class="text-right" data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp"><span class="th-channel-tag fbp">FBP 现货</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:10%;" class="text-right" data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs"><span class="th-channel-tag fbs">realFBS</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:10%;" class="text-right" data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd"><span class="th-channel-tag whd">WHD</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:14%;" class="text-right"><div class="th-wrap end"><morph-icon icon="trendingUp" size="13" stroke-width="2"></morph-icon><span>近期有效销量</span></div></th>
-                  <th style="width:12%;" class="text-right" data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast"><span>综合预测</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:17%;" class="text-center" data-stock-sort-column="replenishment"><button type="button" class="stock-sort center" data-stock-sort="replenishment"><span>FBP 备货决策</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:22%;"><div class="th-wrap"><morph-icon icon="package" size="13" stroke-width="2"></morph-icon><span>商品 / SKU</span></div></th>
+                  <th style="width:8%;" class="text-right" data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp"><span class="th-channel-tag fbp">FBP</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:8%;" class="text-right" data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs"><span class="th-channel-tag fbs">realFBS</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:8%;" class="text-right" data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd"><span class="th-channel-tag whd">WHD</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:9%;" class="text-right"><div class="th-wrap end"><span>有效库存</span></div></th>
+                  <th style="width:13%;" class="text-right"><div class="th-wrap end"><morph-icon icon="trendingUp" size="13" stroke-width="2"></morph-icon><span>7 / 15 / 30 天销量</span></div></th>
+                  <th style="width:13%;" class="text-right" data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast"><span>预测日销 / 可售天数</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:12%;" class="text-right"><div class="th-wrap end"><span>缺货日期 / 到货库存</span></div></th>
+                  <th style="width:15%;" class="text-center" data-stock-sort-column="replenishment"><button type="button" class="stock-sort center" data-stock-sort="replenishment"><span>风险 / 建议补货</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
                 </tr>
               </thead>
               <tbody id="stockRows"></tbody>

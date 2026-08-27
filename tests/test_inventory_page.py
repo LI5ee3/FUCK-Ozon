@@ -54,10 +54,10 @@ class InventoryPageTest(DatabaseTestCase):
         self.assertEqual(real_only["daily_sales"], 2)
         self.assertEqual((real_only["fbp_present"], real_only["days_available"],
                           real_only["replenishment"]), (0, 0, 120))
-        self.assertEqual(real_only["risk_status"], "FBP无库存，建议备货")
+        self.assertEqual(real_only["risk_status"], "缺货")
         self.assertEqual(real_only["display_name"], "SKU短名")
         self.assertEqual(items["S-W"]["daily_sales"], 0)
-        self.assertIsNone(items["S-W"]["replenishment"])
+        self.assertEqual(items["S-W"]["replenishment"], 0)
         self.assertEqual(items["S-C"]["daily_sales"], 0)
         mixed = items["S-M"]
         self.assertEqual((mixed["sales_7"], mixed["sales_15"], mixed["sales_30"]), (10, 14, 14))
@@ -82,9 +82,9 @@ class InventoryPageTest(DatabaseTestCase):
                             now - timedelta(days=1))
                 self._snapshot(connection, 1, sku, f"O-{sku}", [("fbp", stock_value, 0)], now)
         items = {item["sku"]: item for item in stock(1, size=100)["items"]}
-        self.assertEqual(items["LOW"]["risk_status"], "预计到货前缺货")
-        self.assertEqual(items["WARN"]["risk_status"], "建议FBP备货")
-        self.assertEqual(items["SAFE"]["risk_status"], "暂不需要FBP备货")
+        self.assertEqual(items["LOW"]["risk_status"], "紧急补货")
+        self.assertEqual(items["WARN"]["risk_status"], "紧急补货")
+        self.assertEqual(items["SAFE"]["risk_status"], "库存充足")
         self.assertIsInstance(items["LOW"]["replenishment"], int)
 
     def test_numeric_sorting_happens_before_paging(self):

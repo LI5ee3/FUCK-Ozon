@@ -5,7 +5,7 @@ let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
 let pushSubscriptionState={},pushSubscriptionLoadToken=0;
-const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",adOverview:"广告总览",adCampaigns:"广告活动",adSkus:"SKU广告分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"销量与备货建议",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",adOverview:"广告总览",adCampaigns:"广告活动",adSkus:"SKU广告分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"库存预测与补货",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
 const profitCalculator = window.ProfitCalculator;
 const profitCostLabels = {purchase_cost:"采购成本",hunchun_shipping:"发往珲春物流费",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_transport_contract_service:"国际运输组织合同的签订服务",bank_acquiring_fee:"银行收单手续费",packing:"打包成本",other_cost:"其他费用"};
 const profitPathLabels = {FBP:"FBP",realFBS_hongkong:"realFBS · 香港",realFBS_shenzhen:"realFBS · 深圳"};
@@ -1708,7 +1708,7 @@ async function loadReceivedDisputes(){
 }
 const loadExceptionComplaints=()=>Promise.all([loadShippingComplaints(),loadReceivedDisputes()]);
 async function loadStock() {
-  $("#stockRows").innerHTML = '<tr><td colspan="7" class="stock-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>库存数据加载中…</span></td></tr>';
+  $("#stockRows").innerHTML = '<tr><td colspan="9" class="stock-empty"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>库存预测加载中…</span></td></tr>';
   try {
     const query = new URLSearchParams({
       shop_id: state.shop,
@@ -1716,6 +1716,8 @@ async function loadStock() {
       sku: $("#stockSku").value,
       offer_id: $("#stockOffer").value,
       product_name: $("#stockProduct").value,
+      channel: $("#stockChannel").value,
+      risk: $("#stockRisk").value,
       sort_by: state.stockSort.key,
       sort_order: state.stockSort.order
     });
@@ -1729,55 +1731,66 @@ async function loadStock() {
     const s = data.summary;
     $("#stockSummary").innerHTML = renderAnalysisCards([
       {
-        icon: "package",
-        label: "在售与备货 SKU",
-        count: `${num(s.active_skus, 0)} 款`,
+        icon: "alertTriangle",
+        label: "需要补货 SKU",
+        count: `${num(s.need_replenishment_skus, 0)} 款`,
         rate: null,
-        tone: "azure",
-        note: "当前筛选条件下的全部商品"
-      },
-      {
-        icon: "box",
-        label: "FBP 可售现货",
-        count: `${num(s.fbp_present, 0)} 件`,
-        rate: null,
-        tone: "safe",
-        note: "FBP 仓库当前可售现货总数"
+        tone: (s.need_replenishment_skus || 0) > 0 ? "warning" : "safe",
+        note: "缺货、紧急补货或需要补货"
       },
       {
         icon: "clock",
-        label: "FBP 锁定预留",
-        count: `${num(s.fbp_reserved, 0)} 件`,
+        label: "到货前可能缺货",
+        count: `${num(s.stockout_before_arrival_skus, 0)} 款`,
         rate: null,
-        tone: "lavender",
-        note: "买家下单已占用的预留库存"
+        tone: (s.stockout_before_arrival_skus || 0) > 0 ? "danger" : "safe",
+        note: "可售天数小于 22 天"
+      },
+      {
+        icon: "calendar",
+        label: "预计缺货 SKU",
+        count: `${num(s.expected_stockout_skus, 0)} 款`,
+        rate: null,
+        tone: (s.expected_stockout_skus || 0) > 0 ? "warning" : "safe",
+        note: "有正预测日销且能计算缺货日期"
       },
       {
         icon: "shoppingBag",
-        label: "建议备货 SKU",
-        count: `${num(s.replenishment_skus, 0)} 款`,
+        label: "建议补货总件数",
+        count: `${num(s.recommended_replenishment_total, 0)} 件`,
         rate: null,
-        tone: (s.replenishment_skus || 0) > 0 ? "warning" : "safe",
-        note: "可售天数 < 90 天，建议启动备货"
+        tone: (s.recommended_replenishment_total || 0) > 0 ? "azure" : "safe",
+        note: "按到货后覆盖 60 天计算"
       },
       {
-        icon: "alertTriangle",
-        label: "预计缺货预警",
-        count: `${num(s.shortage_skus, 0)} 款`,
+        icon: "box",
+        label: "预测基准有效库存",
+        count: `${num(s.effective_stock, 0)} 件`,
         rate: null,
-        tone: (s.shortage_skus || 0) > 0 ? "danger" : "safe",
-        note: "可售天数 < 30 天或零库存严重缺货"
+        tone: "safe",
+        note: `${data.summary.forecast_channel || "FBP"} present（预留单独展示）`
       }
     ]);
-    $("#stockUpdated").textContent = `库存更新至 ${bj(data.data_through)}｜销量更新至 ${bj(data.sales_through)}`;
+    $("#stockUpdated").textContent = `库存更新至 ${bj(data.data_through)}｜销量截至 ${data.sales_window_end || "昨日"}（完整自然日）`;
+    const show = (value, digits = 2) => value == null ? "—" : num(value, digits);
+    const showDate = value => value || "—";
     const inventory = (c, cls) => `
       <div class="stock-channel-box ${cls}">
         <strong class="stock-qty-val ${c.present > 0 ? '' : 'zero'}">${num(c.present, 0)}</strong>
         <small class="stock-qty-sub">预留 <b>${num(c.reserved, 0)}</b></small>
       </div>`;
     $("#stockRows").innerHTML = data.items.map(r => {
-      const riskTone = r.daily_sales <= 0 ? "neutral" : r.days_available < 30 ? "peach" : r.days_available < 90 ? "butter" : "mint";
-      const riskIcon = r.daily_sales <= 0 ? "helpCircle" : r.days_available < 30 ? "alertTriangle" : r.days_available < 90 ? "clock" : "check";
+      const riskTone = {out_of_stock: "peach", urgent_replenishment: "peach", replenish: "butter", sufficient: "mint", overstock: "butter", no_recent_sales: "neutral"}[r.risk_code] || "neutral";
+      const riskIcon = {out_of_stock: "alertTriangle", urgent_replenishment: "alertTriangle", replenish: "shoppingBag", sufficient: "check", overstock: "clock", no_recent_sales: "helpCircle"}[r.risk_code] || "helpCircle";
+      const forecastText = r.risk_code === "no_recent_sales" ? "—" : `${show(r.forecast_daily)} <small>件/天</small>`;
+      const detail = `
+        <details class="stock-forecast-details">
+          <summary>查看计算</summary>
+          <div>7日均销 ${show(r.daily_7)} · 15日均销 ${show(r.daily_15)} · 30日均销 ${show(r.daily_30)}</div>
+          <div>使用窗口：${(r.forecast_windows_used || []).join(" / ") || "无"} 天${r.forecast_adjusted_for_stockout ? " · 已按确认缺货日修正" : " · 未确认全天缺货，不修正"}</div>
+          <div>到货前需求 ${show(r.forecast_daily == null ? null : r.forecast_daily * r.lead_time_days)} · 到货后60天需求 ${show(r.target_stock_after_arrival)}</div>
+          <div>广告订单占比 ${r.ad_order_share == null ? "—" : `${show(r.ad_order_share * 100, 1)}%`}</div>
+        </details>`;
       return `<tr>
         <td class="stock-product-cell" data-label="商品信息">
           <strong class="stock-product-name" title="${esc(r.display_name)}">${esc(r.display_name)}</strong>
@@ -1787,35 +1800,48 @@ async function loadStock() {
             <span class="stock-meta-chip"><span class="sub-label">SKU</span> <span class="copyable" data-copy="${esc(r.sku)}" title="点击复制 SKU"><b>${esc(r.sku)}</b></span></span>
             <span class="stock-meta-chip"><span class="sub-label">货号</span> <span class="copyable" data-copy="${esc(r.offer_id)}" title="点击复制货号"><b>${esc(r.offer_id || "暂无")}</b></span></span>
           </div>
+          ${detail}
         </td>
         <td class="text-right" data-label="FBP 现货">${inventory(r.channels[0], "fbp")}</td>
         <td class="text-right" data-label="realFBS 现货">${inventory(r.channels[1], "fbs")}</td>
         <td class="text-right" data-label="WHD 现货">${inventory(r.channels[2], "whd")}</td>
-        <td class="text-right" data-label="近期有效销量">
+        <td class="text-right" data-label="有效库存">
+          <div class="stock-forecast-box">
+            <strong class="stock-daily-val">${num(r.current_stock, 0)}</strong>
+            <small class="stock-days-sub">预留 ${num(r.reserved_stock, 0)} · ${esc(r.forecast_channel)} 基准</small>
+          </div>
+        </td>
+        <td class="text-right" data-label="7 / 15 / 30 天销量">
           <div class="stock-sales-list">
             <span>7天 <b>${num(r.sales_7, 0)}</b> 件</span>
             <span>15天 <b>${num(r.sales_15, 0)}</b> 件</span>
             <span>30天 <b>${num(r.sales_30, 0)}</b> 件</span>
           </div>
         </td>
-        <td class="text-right" data-label="综合预测">
+        <td class="text-right" data-label="预测日销 / 可售天数">
           <div class="stock-forecast-box">
-            <strong class="stock-daily-val">${r.daily_sales ? `${num(r.daily_sales, 2)} <small>件/天</small>` : "无法估算"}</strong>
-            <small class="stock-days-sub ${r.days_available != null && r.days_available < 30 ? 'is-danger' : r.days_available != null && r.days_available < 90 ? 'is-warning' : ''}">FBP可售 ${r.days_available == null ? "—" : `<b>${num(r.days_available, 1)}</b> 天`}</small>
+            <strong class="stock-daily-val">${forecastText}</strong>
+            <small class="stock-days-sub ${r.days_cover != null && r.days_cover < r.lead_time_days ? 'is-danger' : r.days_cover != null && r.days_cover < 90 ? 'is-warning' : ''}">可售 ${show(r.days_cover, 1)} 天</small>
           </div>
         </td>
-        <td class="text-center" data-label="FBP备货决策">
+        <td class="text-right" data-label="缺货日期 / 到货库存">
+          <div class="stock-forecast-box">
+            <strong class="stock-daily-val">${showDate(r.expected_stockout_date)}</strong>
+            <small class="stock-days-sub">到货时 ${show(r.projected_stock_at_arrival)} 件</small>
+          </div>
+        </td>
+        <td class="text-center" data-label="风险 / 建议补货">
           <div class="stock-decision-cell">
             <span class="stock-decision-pill tone-${riskTone}"><morph-icon icon="${riskIcon}" size="12" stroke-width="2.2"></morph-icon><span>${esc(r.risk_status)}</span></span>
-            <div class="stock-replenish-val">${r.replenishment == null ? '<span class="muted">—</span>' : `建议备货 <b>${num(r.replenishment, 0)}</b> 件`}</div>
+            <div class="stock-replenish-val">建议补货 <b>${num(r.recommended_replenishment, 0)}</b> 件</div>
             <small class="stock-time-sub">更新：${bj(r.observed_at)}</small>
           </div>
         </td>
       </tr>`;
-    }).join("") || '<tr><td colspan="7" class="stock-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选条件下没有库存或近期有效销量记录</span></td></tr>';
+    }).join("") || '<tr><td colspan="9" class="stock-empty"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选条件下没有库存或近期销量记录</span></td></tr>';
     pager("stock", data, loadStock);
   } catch (error) {
-    $("#stockRows").innerHTML = `<tr><td colspan="7" class="stock-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>${esc(error.message)}</span></td></tr>`;
+    $("#stockRows").innerHTML = `<tr><td colspan="9" class="stock-empty error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8"></morph-icon><span>${esc(error.message)}</span></td></tr>`;
     throw error;
   }
 }
@@ -2302,6 +2328,8 @@ $("#timelinessFilterForm").addEventListener("submit",e=>{e.preventDefault();stat
 $("#timelinessClear").onclick=()=>{$("#timelinessSearch").value="";state.pages.timeliness=1;loadTimeliness().catch(err=>toast(err.message,true))};
 $("#stockFilterForm").onsubmit=e=>{e.preventDefault();state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))};
 $("#stockClear").onclick=()=>{$("#stockFilterForm").reset();state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))};
+$("#stockChannel")?.addEventListener("change",()=>{state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))});
+$("#stockRisk")?.addEventListener("change",()=>{state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))});
 document.querySelectorAll("[data-stock-sort]").forEach(button=>button.onclick=()=>{const key=button.dataset.stockSort;state.stockSort.order=state.stockSort.key===key&&state.stockSort.order==="desc"?"asc":"desc";state.stockSort.key=key;state.pages.stock=1;document.querySelectorAll("[data-stock-sort]").forEach(btn=>{const morph=btn.querySelector("morph-icon");if(!morph)return;if(btn.dataset.stockSort===state.stockSort.key){morph.morphTo(state.stockSort.order==="asc"?"arrowUp":"arrowDown","snappy")}else{morph.morphTo("sortUpDown","snappy")}});loadStock().catch(err=>toast(err.message,true))});
 $("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(tab)activateReturnTab(tab)};
 $("#returnTabs").onkeydown=e=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(e.key))return;e.preventDefault();const tabs=[...$("#returnTabs").querySelectorAll("[role=tab]")],current=tabs.indexOf(document.activeElement),index=e.key==="Home"?0:e.key==="End"?tabs.length-1:(current+(e.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;activateReturnTab(tabs[index].dataset.returnTab,true)};

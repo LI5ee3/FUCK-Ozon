@@ -3948,6 +3948,23 @@ td.rule-empty-cell span {
 .stock-search-wide input {
   width: 100%;
 }
+.stock-filter-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.stock-filter-select select {
+  height: 36px;
+  padding: 0 28px 0 10px;
+  border-radius: var(--radius-input);
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12.5px;
+}
 .stock-filter-actions {
   display: flex;
   align-items: center;
@@ -3979,7 +3996,7 @@ td.rule-empty-cell span {
 }
 .stock-table {
   width: 100%;
-  min-width: 1050px;
+  min-width: 1420px;
   table-layout: fixed;
   border-collapse: collapse;
   text-align: left;
@@ -4239,6 +4256,20 @@ th.text-right .stock-sort {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+}
+.stock-forecast-details {
+  margin-top: 7px;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.stock-forecast-details summary {
+  color: var(--primary);
+  cursor: pointer;
+  user-select: none;
+}
+.stock-forecast-details div {
+  margin-top: 2px;
 }
 
 .pager {
