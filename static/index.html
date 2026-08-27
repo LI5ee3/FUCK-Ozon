@@ -1414,7 +1414,7 @@
           <div class="panel-title">
             <div>
               <h2><morph-icon icon="stock" size="18" stroke-width="1.8"></morph-icon> 库存预测与补货建议</h2>
-              <span class="muted">销量截至昨日完整自然日｜预测按 SKU 计算｜“全部”视图按 FBP 库存判断，未计入在途库存</span>
+              <span class="muted">预测销量 = FBP + realFBS；补货库存仅使用 FBP；WHD 不参与预测｜销量截至昨日完整自然日｜未计入在途库存</span>
             </div>
             <span class="muted" id="stockUpdated"></span>
           </div>
@@ -1431,12 +1431,12 @@
               <morph-icon icon="package" size="15" stroke-width="1.8"></morph-icon>
               <input id="stockProduct" type="search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称">
             </div>
-            <label class="stock-filter-select"><span>履约模式</span>
-              <select id="stockChannel" aria-label="库存预测履约模式">
-                <option value="">全部（按 FBP 预测）</option>
-                <option value="FBP">FBP</option>
-                <option value="realFBS">realFBS</option>
-                <option value="WHD">WHD</option>
+            <label class="stock-filter-select"><span>库存参考筛选</span>
+              <select id="stockChannel" aria-label="库存参考筛选">
+                <option value="">全部（FBP补货口径）</option>
+                <option value="FBP">仅看 FBP 库存</option>
+                <option value="realFBS">仅看 realFBS 库存</option>
+                <option value="WHD">仅看 WHD 库存</option>
               </select>
             </label>
             <label class="stock-filter-select"><span>风险</span>
@@ -1464,11 +1464,11 @@
                   <th style="width:8%;" class="text-right" data-stock-sort-column="fbp"><button type="button" class="stock-sort" data-stock-sort="fbp"><span class="th-channel-tag fbp">FBP</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
                   <th style="width:8%;" class="text-right" data-stock-sort-column="realfbs"><button type="button" class="stock-sort" data-stock-sort="realfbs"><span class="th-channel-tag fbs">realFBS</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
                   <th style="width:8%;" class="text-right" data-stock-sort-column="whd"><button type="button" class="stock-sort" data-stock-sort="whd"><span class="th-channel-tag whd">WHD</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:9%;" class="text-right"><div class="th-wrap end"><span>有效库存</span></div></th>
+                  <th style="width:9%;" class="text-right"><div class="th-wrap end"><span>FBP有效库存</span></div></th>
                   <th style="width:13%;" class="text-right"><div class="th-wrap end"><morph-icon icon="trendingUp" size="13" stroke-width="2"></morph-icon><span>7 / 15 / 30 天销量</span></div></th>
-                  <th style="width:13%;" class="text-right" data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast"><span>预测日销 / 可售天数</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
-                  <th style="width:12%;" class="text-right"><div class="th-wrap end"><span>缺货日期 / 到货库存</span></div></th>
-                  <th style="width:15%;" class="text-center" data-stock-sort-column="replenishment"><button type="button" class="stock-sort center" data-stock-sort="replenishment"><span>风险 / 建议补货</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:13%;" class="text-right" data-stock-sort-column="forecast"><button type="button" class="stock-sort" data-stock-sort="forecast"><span>预测日销 / FBP可售天数</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
+                  <th style="width:12%;" class="text-right"><div class="th-wrap end"><span>FBP预计缺货 / 到货时FBP库存</span></div></th>
+                  <th style="width:15%;" class="text-center" data-stock-sort-column="replenishment"><button type="button" class="stock-sort center" data-stock-sort="replenishment"><span>FBP风险 / FBP建议补货</span><morph-icon icon="sortUpDown" size="13" spring="snappy" stroke-width="1.5"></morph-icon></button></th>
                 </tr>
               </thead>
               <tbody id="stockRows"></tbody>

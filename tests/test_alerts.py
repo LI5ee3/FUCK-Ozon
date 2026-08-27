@@ -71,6 +71,12 @@ class AlertTest(DatabaseTestCase):
             "+00:00", "Z"), {"offer_id": f"O-{sku}", "stocks": [
                 {"sku": sku, "type": "fbp", "present": present, "reserved": reserved}]})
 
+    def stock_channels(self, connection, shop_id, sku, values):
+        add_stock_snapshot(connection, shop_id, sku, self.now.astimezone(timezone.utc).isoformat().replace(
+            "+00:00", "Z"), {"offer_id": f"O-{sku}", "stocks": [
+                {"sku": sku, "type": channel, "present": present, "reserved": reserved}
+                for channel, present, reserved in values]})
+
     def evaluate(self, shop_id, rule_key, configured=False):
         with patch("app.alerts.dingtalk_configured", return_value=configured), \
                 patch("app.alerts.send_text") as sender:
@@ -187,6 +193,29 @@ class AlertTest(DatabaseTestCase):
         self.assertEqual(result["triggered"], 0)
         self.assertTrue(any(item["rule_key"] == "sales_drop" for item in result["skipped"]))
 
+    def test_sales_drop_excludes_whd_and_uses_core_channels(self):
+        with db.transaction() as connection:
+            for offset in range(1, 8):
+                self.sale(connection, 1, f"W-BASE-{offset}", "W-ONLY",
+                          self.target - timedelta(days=offset), 10, channel="WHD")
+                self.sale(connection, 2, f"F-BASE-{offset}", "CORE",
+                          self.target - timedelta(days=offset), 10)
+                self.sale(connection, 2, f"W-BASE-2-{offset}", "CORE",
+                          self.target - timedelta(days=offset), 100, channel="WHD")
+            self.sale(connection, 2, "W-CURRENT", "CORE", self.target, 100, channel="WHD")
+        self.sync_run(1, "orders")
+        self.sync_run(2, "orders")
+        whd_only, _ = self.evaluate(1, "sales_drop")
+        core_drop, _ = self.evaluate(2, "sales_drop")
+        self.assertEqual(whd_only["triggered"], 0)
+        self.assertEqual(core_drop["triggered"], 1)
+        with db.connect() as connection:
+            message = connection.execute(
+                "SELECT message FROM alert_events WHERE shop_id=2 AND rule_key='sales_drop'"
+            ).fetchone()[0]
+        self.assertIn("FBP + realFBS", message)
+        self.assertIn("不包含WHD", message)
+
     def test_sales_drop_skips_when_order_sync_does_not_cover_baseline(self):
         with db.transaction() as connection:
             for offset in range(1, 8):
@@ -221,6 +250,26 @@ class AlertTest(DatabaseTestCase):
         self.assertEqual(values["OUT"], "critical")
         self.assertEqual(values["URGENT"], "high")
         self.assertNotIn("SAFE", values)
+
+    def test_inventory_alert_is_based_on_fbp_stock_only(self):
+        with db.transaction() as connection:
+            self.sale(connection, 1, "SALE-FBP-OUT", "OUT", self.target, 10)
+            self.sale(connection, 1, "SALE-FBP-SAFE", "SAFE", self.target, 10)
+            self.stock_channels(connection, 1, "OUT", [
+                ("fbp", 0, 0), ("rfbs", 500, 0), ("fbo", 500, 0)])
+            self.stock_channels(connection, 1, "SAFE", [
+                ("fbp", 1000, 0), ("rfbs", 0, 0), ("fbo", 0, 0)])
+        self.sync_run(1, "stock", finished=self.now.astimezone(timezone.utc))
+        result, _ = self.evaluate(1, "inventory_risk")
+        self.assertEqual(result["triggered"], 1)
+        with db.connect() as connection:
+            rows = {row["sku"]: row for row in connection.execute(
+                "SELECT json_extract(metric_json,'$.sku') sku,severity,message FROM alert_events")}
+        self.assertEqual(rows["OUT"]["severity"], "critical")
+        self.assertIn("FBP库存预警", rows["OUT"]["message"])
+        self.assertIn("FBP有效库存", rows["OUT"]["message"])
+        self.assertNotIn("WHD", rows["OUT"]["message"])
+        self.assertNotIn("SAFE", rows)
 
     def test_missing_ad_target_is_skipped_and_not_resolved_as_zero(self):
         with db.transaction() as connection:

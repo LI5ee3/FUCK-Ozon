@@ -798,8 +798,8 @@ function alertMetricLine(row){
     ad_drr_high:`花费 ${alertNum(m.spend_window_rub??m.spend_3d)} RUB · 销售 ${alertNum(m.revenue_window_rub??m.revenue_3d)} RUB · DRR ${alertNum(m.drr,1)}% / ${alertNum(m.threshold_drr,1)}%`,
     ad_clicks_no_orders:`点击 ${alertNum(m.clicks,0)} · 花费 ${alertNum(m.spend_rub)} RUB · 订单 0`,
     ad_orders_drop:`当日 ${alertNum(m.current_orders,0)} 单 · 基准 ${alertNum(m.baseline_orders_per_day)} 单/天 · 下降 ${alertNum(m.drop_percent,1)}%`,
-    inventory_risk:`有效库存 ${alertNum(m.effective_stock,0)} · 日销 ${alertNum(m.forecast_daily)} · 可售 ${alertNum(m.days_cover)} 天`,
-    sales_drop:`昨日 ${alertNum(m.current_units,0)} 件 · 基准 ${alertNum(m.baseline_units_per_day)} 件/天 · 下降 ${alertNum(m.drop_percent,1)}%`
+    inventory_risk:`FBP有效库存 ${alertNum(m.effective_stock,0)} · 预测日销（FBP+realFBS） ${alertNum(m.forecast_daily)} · FBP可售 ${alertNum(m.days_cover)} 天`,
+    sales_drop:`核心渠道昨日 ${alertNum(m.current_units,0)} 件 · 基准 ${alertNum(m.baseline_units_per_day)} 件/天 · 下降 ${alertNum(m.drop_percent,1)}%`
   };
   return lines[row.rule_key]||"—";
 }
@@ -1813,19 +1813,19 @@ async function loadStock() {
       },
       {
         icon: "shoppingBag",
-        label: "建议补货总件数",
+        label: "FBP建议补货总件数",
         count: `${num(s.recommended_replenishment_total, 0)} 件`,
         rate: null,
         tone: (s.recommended_replenishment_total || 0) > 0 ? "azure" : "safe",
-        note: "按到货后覆盖 60 天计算"
+        note: "按 FBP 库存、到货后覆盖 60 天计算"
       },
       {
         icon: "box",
-        label: "预测基准有效库存",
+        label: "FBP有效库存",
         count: `${num(s.effective_stock, 0)} 件`,
         rate: null,
         tone: "safe",
-        note: `${data.summary.forecast_channel || "FBP"} present（预留单独展示）`
+        note: "仅用于补货计算；预留单独展示"
       }
     ]);
     $("#stockUpdated").textContent = `库存更新至 ${bj(data.data_through)}｜销量截至 ${data.sales_window_end || "昨日"}（完整自然日）`;
@@ -1862,10 +1862,10 @@ async function loadStock() {
         <td class="text-right" data-label="FBP 现货">${inventory(r.channels[0], "fbp")}</td>
         <td class="text-right" data-label="realFBS 现货">${inventory(r.channels[1], "fbs")}</td>
         <td class="text-right" data-label="WHD 现货">${inventory(r.channels[2], "whd")}</td>
-        <td class="text-right" data-label="有效库存">
+        <td class="text-right" data-label="FBP有效库存">
           <div class="stock-forecast-box">
             <strong class="stock-daily-val">${num(r.current_stock, 0)}</strong>
-            <small class="stock-days-sub">预留 ${num(r.reserved_stock, 0)} · ${esc(r.forecast_channel)} 基准</small>
+            <small class="stock-days-sub">预留 ${num(r.reserved_stock, 0)} · FBP补货基准</small>
           </div>
         </td>
         <td class="text-right" data-label="7 / 15 / 30 天销量">
@@ -1875,22 +1875,22 @@ async function loadStock() {
             <span>30天 <b>${num(r.sales_30, 0)}</b> 件</span>
           </div>
         </td>
-        <td class="text-right" data-label="预测日销 / 可售天数">
+        <td class="text-right" data-label="预测日销 / FBP可售天数">
           <div class="stock-forecast-box">
             <strong class="stock-daily-val">${forecastText}</strong>
-            <small class="stock-days-sub ${r.days_cover != null && r.days_cover < r.lead_time_days ? 'is-danger' : r.days_cover != null && r.days_cover < 90 ? 'is-warning' : ''}">可售 ${show(r.days_cover, 1)} 天</small>
+            <small class="stock-days-sub ${r.days_cover != null && r.days_cover < r.lead_time_days ? 'is-danger' : r.days_cover != null && r.days_cover < 90 ? 'is-warning' : ''}">FBP可售 ${show(r.days_cover, 1)} 天</small>
           </div>
         </td>
-        <td class="text-right" data-label="缺货日期 / 到货库存">
+        <td class="text-right" data-label="FBP预计缺货 / 到货时FBP库存">
           <div class="stock-forecast-box">
             <strong class="stock-daily-val">${showDate(r.expected_stockout_date)}</strong>
-            <small class="stock-days-sub">到货时 ${show(r.projected_stock_at_arrival)} 件</small>
+            <small class="stock-days-sub">到货时 FBP ${show(r.projected_stock_at_arrival)} 件</small>
           </div>
         </td>
-        <td class="text-center" data-label="风险 / 建议补货">
+        <td class="text-center" data-label="FBP风险 / FBP建议补货">
           <div class="stock-decision-cell">
             <span class="stock-decision-pill tone-${riskTone}"><morph-icon icon="${riskIcon}" size="12" stroke-width="2.2"></morph-icon><span>${esc(r.risk_status)}</span></span>
-            <div class="stock-replenish-val">建议补货 <b>${num(r.recommended_replenishment, 0)}</b> 件</div>
+            <div class="stock-replenish-val">FBP建议补货 <b>${num(r.recommended_replenishment, 0)}</b> 件</div>
             <small class="stock-time-sub">更新：${bj(r.observed_at)}</small>
           </div>
         </td>

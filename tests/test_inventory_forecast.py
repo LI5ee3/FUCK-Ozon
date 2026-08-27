@@ -118,17 +118,47 @@ class InventoryForecastTest(DatabaseTestCase):
         self.assertEqual(item["forecast_channel"], "FBP")
         self.assertEqual(item["channels"][1]["present"], 100)
 
-    def test_channel_filter_does_not_add_fulfillment_modes(self):
+    def test_forecast_always_uses_core_sales_and_fbp_stock(self):
         today = datetime.now(BEIJING).date()
         with db.transaction() as connection:
-            self.add_sale(connection, 1, "S", "FBP", "SKU", 10, today - timedelta(days=1))
-            self.add_snapshot(connection, 1, "SKU", [("fbp", 5, 0), ("rfbs", 100, 0)], today)
-        all_view = stock(1, size=100, sku="SKU")["items"][0]
-        real_view = stock(1, size=100, sku="SKU", channel="realFBS")["items"][0]
-        self.assertEqual(all_view["current_stock"], 5)
-        self.assertEqual(all_view["forecast_channel"], "FBP")
-        self.assertEqual(real_view["current_stock"], 100)
-        self.assertEqual(real_view["forecast_channel"], "realFBS")
+            day = today - timedelta(days=1)
+            self.add_sale(connection, 1, "FBP-SALE", "FBP", "SKU", 10, day)
+            self.add_sale(connection, 1, "RFBS-SALE", "realFBS", "SKU", 10, day)
+            self.add_sale(connection, 1, "WHD-SALE", "WHD", "SKU", 100, day)
+            self.add_snapshot(connection, 1, "SKU", [("fbp", 10, 0), ("rfbs", 100, 0), ("fbo", 100, 0)], today)
+        views = [stock(1, size=100, sku="SKU", channel=channel)["items"][0]
+                 for channel in ("", "FBP", "realFBS", "WHD")]
+        self.assertTrue(all(view["sales_7"] == 20 for view in views))
+        self.assertTrue(all(view["forecast_daily"] == 20 for view in views))
+        self.assertTrue(all(view["current_stock"] == 10 for view in views))
+        self.assertTrue(all(view["effective_stock"] == 10 for view in views))
+        self.assertTrue(all(view["forecast_channel"] == "FBP" for view in views))
+        self.assertTrue(all(view["replenishment_stock_source"] == "FBP" for view in views))
+        for field in ("days_cover", "expected_stockout_date", "projected_stock_at_arrival",
+                      "recommended_replenishment", "risk_code"):
+            self.assertTrue(all(view[field] == views[0][field] for view in views), field)
+        self.assertEqual(views[0]["channels"][1]["present"], 100)
+        self.assertEqual(views[0]["channels"][2]["present"], 100)
+
+    def test_fbp_is_the_only_replenishment_stock_and_risk_base(self):
+        today = datetime.now(BEIJING).date()
+        day = today - timedelta(days=1)
+        with db.transaction() as connection:
+            for sku, quantity in (("OUT", 10), ("SAFE", 10)):
+                self.add_sale(connection, 1, f"FBP-{sku}", "FBP", sku, quantity, day)
+                self.add_snapshot(connection, 1, sku, (
+                    [("fbp", 0, 0), ("rfbs", 500, 0), ("fbo", 500, 0)]
+                    if sku == "OUT" else
+                    [("fbp", 1000, 0), ("rfbs", 0, 0), ("fbo", 0, 0)]
+                ), today)
+        out = stock(1, size=100, sku="OUT", channel="WHD")["items"][0]
+        safe = stock(1, size=100, sku="SAFE", channel="realFBS")["items"][0]
+        self.assertEqual((out["current_stock"], out["effective_stock"], out["risk_code"]),
+                         (0, 0, "out_of_stock"))
+        self.assertEqual((safe["current_stock"], safe["effective_stock"]), (1000, 1000))
+        self.assertNotEqual(safe["risk_code"], "out_of_stock")
+        self.assertEqual(out["channels"][1]["present"], 500)
+        self.assertEqual(out["channels"][2]["present"], 500)
 
     def test_shop_isolation_and_ad_orders_are_not_added_to_sales(self):
         today = datetime.now(BEIJING).date()

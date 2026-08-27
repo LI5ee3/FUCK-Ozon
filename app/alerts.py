@@ -17,8 +17,8 @@ RULE_LABELS = {
     "ad_drr_high": "广告成本率过高",
     "ad_clicks_no_orders": "大量点击无订单",
     "ad_orders_drop": "广告订单下降",
-    "inventory_risk": "库存风险",
-    "sales_drop": "全店销量下降",
+    "inventory_risk": "FBP库存风险",
+    "sales_drop": "核心渠道销量下降",
 }
 RULE_CATEGORIES = {
     "ad_spend_spike": "advertising", "ad_drr_high": "advertising",
@@ -466,7 +466,7 @@ def _inventory_risk(db, shop_id, config, now):
         rows, page, size = [], 1, 100
         # ponytail: page through the existing forecast endpoint; extract its SQL only if this becomes measurable.
         while True:
-            result = stock(shop_id=shop_id, page=page, size=size)
+            result = stock(shop_id=shop_id, channel="FBP", page=page, size=size)
             rows.extend(result.get("items") or [])
             if page * size >= int(result.get("total") or 0):
                 break
@@ -486,10 +486,10 @@ def _inventory_risk(db, shop_id, config, now):
                    "recommended_replenishment": row.get("recommended_replenishment"),
                    "stockout_before_arrival": bool(row.get("stockout_before_arrival"))}
         shop = row.get("shop_name") or f"店铺{shop_id}"
-        lines = ["【oPanel 库存预警】", f"店铺：{shop}", f"商品：{metrics['product_name']}", f"SKU：{sku}",
-                 f"有效库存：{_fmt(metrics['effective_stock'], 0)}", f"预测日销：{_fmt(metrics['forecast_daily'])}",
-                 f"预计可售：{_fmt(metrics['days_cover'])} 天", f"预计缺货：{metrics['expected_stockout_date'] or '—'}",
-                 f"建议补货：{_fmt(metrics['recommended_replenishment'], 0)}",
+        lines = ["【oPanel FBP库存预警】", f"店铺：{shop}", f"商品：{metrics['product_name']}", f"SKU：{sku}",
+                 f"FBP有效库存：{_fmt(metrics['effective_stock'], 0)}", f"预测日销（FBP+realFBS需求）：{_fmt(metrics['forecast_daily'])}",
+                 f"FBP预计可售：{_fmt(metrics['days_cover'])} 天", f"FBP预计缺货：{metrics['expected_stockout_date'] or '—'}",
+                 f"FBP建议补货：{_fmt(metrics['recommended_replenishment'], 0)}",
                  "当前库存无法覆盖22天补货交期。" if risk == "urgent_replenishment" else "当前已缺货。"]
         item = _event("inventory_risk", shop_id, "sku", sku, metrics, "\n".join(lines))
         item["severity"] = severity
@@ -522,9 +522,10 @@ def _sales_drop(db, shop_id, config, now):
     metrics = {"target_date": target.isoformat(), "current_units": current, "baseline_units_per_day": baseline_units,
                "baseline_days": baseline_days, "drop_percent": (1 - current / baseline_units) * 100}
     return [_event("sales_drop", shop_id, "shop", f"shop:{shop_id}", metrics,
-                   f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：全店销量下降\n"
+                   f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：核心渠道销量下降\n"
                    f"昨日销量：{_fmt(current, 0)} 件\n前{baseline_days}日均销量：{_fmt(baseline_units)} 件\n"
-                   f"下降：{_fmt(metrics['drop_percent'], 1)}%\n数据日期：{target.isoformat()}")], "", {f"shop:{shop_id}"}
+                   f"下降：{_fmt(metrics['drop_percent'], 1)}%\n统计口径：FBP + realFBS，不包含WHD\n"
+                   f"数据日期：{target.isoformat()}")], "", {f"shop:{shop_id}"}
 
 
 DETECTORS = {

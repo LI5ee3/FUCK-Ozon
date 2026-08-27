@@ -1861,7 +1861,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
     channel = {"all": "", "fbp": "FBP", "realfbs": "realFBS", "whd": "WHD"}.get(channel, channel)
     if channel not in ("", "FBP", "realFBS", "WHD"):
         raise HTTPException(400, "未知履约模式")
-    selected_channel = channel or "FBP"
+    reference_channel = channel or "FBP"
     risk = {"需要关注": "attention", "缺货": "out_of_stock", "紧急补货": "urgent_replenishment",
             "需要补货": "replenish", "库存充足": "sufficient", "库存偏高": "overstock",
             "无近期销量": "no_recent_sales"}.get(risk, risk)
@@ -1999,7 +1999,11 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
         group["sales_7"] = int(sold.get("sales_7") or 0)
         group["sales_15"] = int(sold.get("sales_15") or 0)
         group["sales_30"] = int(sold.get("sales_30") or 0)
-        forecast_channel = selected_channel
+        # Replenishment policy:
+        # demand = FBP + realFBS sales
+        # replenishment stock = FBP only
+        # WHD does not participate in demand or replenishment calculations.
+        forecast_channel = "FBP"
         base = next(value for value in channels if value["channel"] == forecast_channel)
         stockout_days = _confirmed_stockout_days(history_index, group["shop_id"], group["sku"],
                                                   forecast_channel, sales_end)
@@ -2036,6 +2040,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             "ad_orders_30": ad_orders, "ad_order_share": ad_orders / group["sales_30"]
                 if ad_orders is not None and group["sales_30"] else None,
             "fbp_present": channels[0]["present"], "fbp_reserved": channels[0]["reserved"],
+            "fbp_effective_stock": channels[0]["effective_stock"], "replenishment_stock_source": "FBP",
         })
         group["observed_at"] = max((value["observed_at"] or "" for value in channels), default="") or None
         filters = ((sku, group["sku"]), (offer_id, " ".join(group["offer_members"])),
@@ -2080,12 +2085,13 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
                "recommended_replenishment_total": sum(item["recommended_replenishment"] for item in cards),
                "effective_stock": sum(item["effective_stock"] for item in cards),
                "reserved_stock": sum(item["reserved_stock"] for item in cards),
-               "forecast_channel": selected_channel, "inbound_included": False}
+               "forecast_channel": "FBP", "reference_channel": reference_channel,
+               "replenishment_stock_source": "FBP", "inbound_included": False}
     return {"summary": summary, "items": cards[start:start + size],
             "total": total, "page": page, "size": size, "data_through": through,
             "sales_through": sales_through,
             "sales_window_end": sales_end.isoformat(), "inventory_business_date": today.isoformat(),
-            "formula": "预测日销=7/15/30日均销按50%/30%/20%加权；补货=ceil(max(预测日销×60-到货时库存,0))；lead time=22天；未计入在途库存"}
+            "formula": "预测日销=FBP+realFBS销量的7/15/30日均销按50%/30%/20%加权；补货库存=FBP；补货=ceil(max(预测日销×60-到货时库存,0))；lead time=22天；未计入在途库存"}
 
 
 @app.get("/api/inventory/forecast")
