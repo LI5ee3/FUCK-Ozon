@@ -1,14 +1,32 @@
 import os
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 
 {{店铺明细}}"""
+DEFAULT_ALERT_RULE_CONFIGS = {
+    "ad_spend_spike": {
+        "baseline_days": 7, "minimum_baseline_days": 4,
+        "increase_percent": 50, "minimum_current_spend_rub": 500,
+    },
+    "ad_drr_high": {"window_days": 3, "threshold_drr": 30, "minimum_spend_rub": 500},
+    "ad_clicks_no_orders": {"window_days": 3, "minimum_clicks": 30, "minimum_spend_rub": 300},
+    "ad_orders_drop": {
+        "baseline_days": 7, "minimum_baseline_days": 4, "drop_percent": 50,
+        "minimum_baseline_orders_per_day": 2, "minimum_spend_ratio": .70,
+    },
+    "inventory_risk": {},
+    "sales_drop": {
+        "baseline_days": 7, "minimum_baseline_days": 4, "drop_percent": 50,
+        "minimum_baseline_units_per_day": 5,
+    },
+}
 
 
 @contextmanager
@@ -107,6 +125,38 @@ def _create_ad_statistics(db):
     """)
 
 
+def _create_alert_tables(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS alert_rules (
+      shop_id INTEGER NOT NULL REFERENCES shops(id), rule_key TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+      notify_dingtalk INTEGER NOT NULL DEFAULT 1 CHECK(notify_dingtalk IN (0,1)),
+      config_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+      PRIMARY KEY(shop_id,rule_key));
+    CREATE TABLE IF NOT EXISTS alert_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL REFERENCES shops(id), rule_key TEXT NOT NULL,
+      entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK(severity IN ('critical','high','warning')),
+      title TEXT NOT NULL, message TEXT NOT NULL, metric_json TEXT NOT NULL DEFAULT '{}',
+      first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, resolved_at TEXT,
+      acknowledged_at TEXT, last_notified_at TEXT, last_notify_error TEXT);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_events_open
+      ON alert_events(shop_id,rule_key,entity_type,entity_id) WHERE resolved_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_alert_events_status
+      ON alert_events(shop_id,resolved_at,last_seen_at);
+    CREATE INDEX IF NOT EXISTS idx_alert_events_severity
+      ON alert_events(shop_id,severity,resolved_at,last_seen_at);
+    CREATE INDEX IF NOT EXISTS idx_alert_events_rule
+      ON alert_events(shop_id,rule_key,resolved_at);
+    """)
+    rows = [(shop_id, rule_key, json.dumps(config, ensure_ascii=False))
+            for shop_id in (1, 2) for rule_key, config in DEFAULT_ALERT_RULE_CONFIGS.items()]
+    db.executemany("""INSERT OR IGNORE INTO alert_rules(shop_id,rule_key,config_json)
+      VALUES(?,?,?)""", rows)
+
+
 def _migrate_auto_sync_settings(db):
     if db.execute("SELECT 1 FROM shop_auto_sync_settings WHERE module='ad_campaign_daily' LIMIT 1").fetchone():
         return
@@ -145,6 +195,11 @@ def _migrate_v4_to_v5(db):
     db.execute("PRAGMA user_version=5")
 
 
+def _migrate_v5_to_v6(db):
+    _create_alert_tables(db)
+    db.execute("PRAGMA user_version=6")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -163,6 +218,9 @@ def init_db():
             if version == 4:
                 _migrate_v4_to_v5(db)
                 version = 5
+            if version == 5:
+                _migrate_v5_to_v6(db)
+                version = 6
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -320,3 +378,4 @@ def init_db():
         PRAGMA optimize;
         """)
         _create_ad_statistics(db)
+        _create_alert_tables(db)

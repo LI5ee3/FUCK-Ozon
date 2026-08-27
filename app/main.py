@@ -19,6 +19,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+from .alerts import (acknowledge_alert, alert_summary, evaluate_alerts, get_alert_rules,
+                     list_alert_events, update_alert_rule)
 from .db import DATA_DIR, connect, init_db, transaction
 from .dingtalk import (configured as dingtalk_configured, next_push_time,
                        send_sync_failure, start_scheduler, stop_scheduler)
@@ -386,6 +388,67 @@ def _dingtalk_settings():
 @app.get("/api/dingtalk/settings")
 def dingtalk_settings():
     return _dingtalk_settings()
+
+
+def _alert_shop_id(value=0):
+    try:
+        shop_id = int(value)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(400, "shop_id无效") from error
+    if shop_id not in (0, 1, 2):
+        raise HTTPException(400, "未知店铺")
+    return shop_id
+
+
+@app.get("/api/alerts")
+def alerts(shop_id: int = 0, status: str = "open", severity: str = "", rule_key: str = "",
+           category: str = "", q: str = "", page: int = 1, size: int = 50):
+    try:
+        return list_alert_events(_alert_shop_id(shop_id), status, severity, rule_key, q, page, size, category)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.get("/api/alerts/summary")
+def alerts_summary(shop_id: int = 0):
+    try:
+        return alert_summary(_alert_shop_id(shop_id))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.post("/api/alerts/evaluate")
+async def alerts_evaluate(request: Request):
+    body = await request.json()
+    try:
+        shop_id = _alert_shop_id((body or {}).get("shop_id", 0))
+        return await run_in_threadpool(evaluate_alerts, shop_id)
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.post("/api/alerts/{alert_id}/acknowledge")
+def alert_acknowledge(alert_id: int):
+    try:
+        return acknowledge_alert(alert_id)
+    except (LookupError, ValueError) as error:
+        raise HTTPException(404 if isinstance(error, LookupError) else 400, str(error)) from error
+
+
+@app.get("/api/alert-rules")
+def alert_rules(shop_id: int = 0):
+    try:
+        return get_alert_rules(_alert_shop_id(shop_id))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@app.put("/api/alert-rules/{rule_key}")
+async def alert_rule_update(rule_key: str, request: Request):
+    try:
+        return update_alert_rule(rule_key, await request.json())
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
 
 
 @app.put("/api/dingtalk/settings")
@@ -2115,6 +2178,23 @@ def _run_performance_campaign_sync(shop_id):
     return result
 
 
+def _evaluate_alerts_after_sync(shop_id, module):
+    rule_keys = {
+        "orders": ("sales_drop", "inventory_risk"),
+        "stock": ("inventory_risk",),
+        "ad_campaign_daily": ("ad_spend_spike", "ad_drr_high", "ad_orders_drop"),
+        "ad_sku_daily": ("ad_clicks_no_orders",),
+        "ad_statistics": ("ad_spend_spike", "ad_drr_high", "ad_orders_drop", "ad_clicks_no_orders"),
+    }.get(module)
+    if not rule_keys:
+        return
+    try:
+        evaluate_alerts(shop_id, rule_keys=rule_keys)
+    except Exception:
+        # Alert delivery is best effort; a sync that succeeded must stay successful.
+        pass
+
+
 @app.post("/api/performance/test")
 async def performance_test(request: Request):
     shop_id = _performance_shop_id((await request.json()).get("shop_id"))
@@ -2371,6 +2451,7 @@ def _run_performance_statistics_sync(shop_id, start, end, module="all"):
           records=?,data_through=? WHERE id=?""",
                    (finished_at, records, result.get("date_to"), run_id))
         _trim_sync_runs(db)
+    _evaluate_alerts_after_sync(shop_id, run_module)
     result = dict(result)
     result["run_id"] = run_id
     return result
@@ -2507,6 +2588,7 @@ def _run_sync_job(run_id, module, shop_id, ranges):
           data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
                    (_utc_text(ranges[-1][1]), run_id))
         _trim_sync_runs(db)
+    _evaluate_alerts_after_sync(shop_id, module)
 
 
 def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_slot=None, now=None):

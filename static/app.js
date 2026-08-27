@@ -1,11 +1,11 @@
 const $ = (s) => document.querySelector(s);
-const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1,analyticsData:1,productQueries:1,productQueryDetails:1,adCampaigns:1,adSkus:1}};
+const state = {shop: 0, page: 1, total: 0, shops: [], csrf:"", overviewGranularity:"week", orderStatus:"", stockSort:{key:"",order:"desc"}, alertRulesShop:1, pages: {timeliness:1,returns:1,rfbsReturns:1,shippingComplaints:1,receivedDisputes:1,stock:1,analyticsData:1,productQueries:1,productQueryDetails:1,adCampaigns:1,adSkus:1,alerts:1}};
 let riskItems = [];
 let shippingComplaintItems=[],receivedDisputeItems=[];
 let riskHighOnly = false;
 let ruleData=null,mergeMemberIndex=0;
 let pushSubscriptionState={},pushSubscriptionLoadToken=0;
-const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",adOverview:"广告总览",adCampaigns:"广告活动",adSkus:"SKU广告分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",complaintPlaceholder:"异常订单投诉",stock:"库存预测与补货",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
+const titles = {overview:"总览",orders:"订单",analytics:"流量与搜索分析",adOverview:"广告总览",adCampaigns:"广告活动",adSkus:"SKU广告分析",risk:"订单取消分析",timeliness:"发货与配送时效",returns:"异常订单明细",alerts:"异常预警",complaintPlaceholder:"异常订单投诉",stock:"库存预测与补货",profit:"利润测算",transfer:"数据导入/导出",sync:"数据同步中心",rules:"商品匹配规则",pushSubscriptions:"推送订阅管理",dingtalk:"钉钉机器人",settings:"系统设置"};
 const profitCalculator = window.ProfitCalculator;
 const profitCostLabels = {purchase_cost:"采购成本",hunchun_shipping:"发往珲春物流费",cross_border_shipping:"跨境运费",last_mile_shipping:"末端运费",warehouse_fee:"仓库处理费",commission:"平台佣金",advertising:"广告费用",international_transport_contract_service:"国际运输组织合同的签订服务",bank_acquiring_fee:"银行收单手续费",packing:"打包成本",other_cost:"其他费用"};
 const profitPathLabels = {FBP:"FBP",realFBS_hongkong:"realFBS · 香港",realFBS_shenzhen:"realFBS · 深圳"};
@@ -785,6 +785,63 @@ async function loadAdSkus() {
   $("#adSkuRows").innerHTML=rows.length?rows.map(row=>`<tr><td><div class="ad-campaign-cell"><strong>${esc(row.shop_name)}</strong><small class="copyable" data-copy="${esc(row.sku)}" title="点击复制 SKU">SKU ${esc(row.sku)}</small></div></td><td>${esc(row.product_name||"—")}</td><td class="text-right">${num(row.campaign_count,0)}</td><td class="text-right">${num(row.impressions,0)}</td><td class="text-right">${num(row.clicks,0)}</td><td class="text-right">${adRate(row.ctr)}</td><td class="text-right">${adMoney(row.spend_rub)}</td><td class="text-right">${adMoney(row.avg_cpc_rub)}</td><td class="text-right">${num(row.orders,0)}</td><td class="text-right">${adMoney(row.revenue_rub)}</td><td class="text-right">${adRate(row.drr)}</td><td class="text-right">${adRatio(row.roas)}</td></tr>`).join(""):'<tr><td colspan="12" class="ad-table-message"><morph-icon icon="tag" size="20" stroke-width="1.8"></morph-icon><span>所选范围暂无 SKU 广告数据</span></td></tr>';
   pager("adSkus",data,loadAdSkus);
 }
+const alertRuleFieldLabels={baseline_days:"基准周期",minimum_baseline_days:"最少基准天数",increase_percent:"增长超过",minimum_current_spend_rub:"最低当前花费",window_days:"统计周期",threshold_drr:"DRR阈值",minimum_spend_rub:"最低花费",minimum_clicks:"最低点击数",drop_percent:"下降超过",minimum_baseline_orders_per_day:"最低基准订单/天",minimum_spend_ratio:"最低花费比例",minimum_baseline_units_per_day:"最低基准销量/天"};
+const alertRuleFieldUnits={baseline_days:"天",minimum_baseline_days:"天",increase_percent:"%",minimum_current_spend_rub:"RUB",window_days:"天",threshold_drr:"%",minimum_spend_rub:"RUB",minimum_clicks:"次",drop_percent:"%",minimum_baseline_orders_per_day:"单/天",minimum_spend_ratio:"倍",minimum_baseline_units_per_day:"件/天"};
+const alertRuleFieldSteps={baseline_days:1,minimum_baseline_days:1,window_days:1,minimum_clicks:1};
+const alertCategoryLabels={advertising:"广告",inventory:"库存",sales:"销售"};
+const alertSeverityLabels={critical:"Critical",high:"High",warning:"Warning"};
+const alertNum=(value,digits=2)=>value==null?"—":num(value,digits);
+function alertMetricLine(row){
+  const m=row.metrics||{};
+  const lines={
+    ad_spend_spike:`当前 ${alertNum(m.current_spend_rub)} RUB · 基准 ${alertNum(m.baseline_spend_rub)} RUB · 增幅 ${alertNum(m.increase_percent,1)}%`,
+    ad_drr_high:`花费 ${alertNum(m.spend_window_rub??m.spend_3d)} RUB · 销售 ${alertNum(m.revenue_window_rub??m.revenue_3d)} RUB · DRR ${alertNum(m.drr,1)}% / ${alertNum(m.threshold_drr,1)}%`,
+    ad_clicks_no_orders:`点击 ${alertNum(m.clicks,0)} · 花费 ${alertNum(m.spend_rub)} RUB · 订单 0`,
+    ad_orders_drop:`当日 ${alertNum(m.current_orders,0)} 单 · 基准 ${alertNum(m.baseline_orders_per_day)} 单/天 · 下降 ${alertNum(m.drop_percent,1)}%`,
+    inventory_risk:`有效库存 ${alertNum(m.effective_stock,0)} · 日销 ${alertNum(m.forecast_daily)} · 可售 ${alertNum(m.days_cover)} 天`,
+    sales_drop:`昨日 ${alertNum(m.current_units,0)} 件 · 基准 ${alertNum(m.baseline_units_per_day)} 件/天 · 下降 ${alertNum(m.drop_percent,1)}%`
+  };
+  return lines[row.rule_key]||"—";
+}
+async function loadAlertSummary(){
+  const data=await api(`/api/alerts/summary?shop_id=${state.shop}`);
+  $("#alertSummary").innerHTML=renderAnalysisCards([
+    {icon:"alertTriangle",label:"活动预警",count:num(data.active,0),tone:data.active?"warning":"safe",note:"当前尚未自动恢复的异常"},
+    {icon:"shieldAlert",label:"严重 / 高风险",count:num(Number(data.critical||0)+Number(data.high||0),0),tone:(data.critical||data.high)?"danger":"safe",note:`Critical ${num(data.critical,0)} · High ${num(data.high,0)}`},
+    {icon:"activity",label:"广告异常",count:num(data.advertising,0),tone:data.advertising?"peach":"safe",note:"花费、DRR、点击与订单规则"},
+    {icon:"stock",label:"库存 / 销售异常",count:num(Number(data.inventory||0)+Number(data.sales||0),0),tone:(data.inventory||data.sales)?"lavender":"safe",note:`库存 ${num(data.inventory,0)} · 销售 ${num(data.sales,0)}`}
+  ]);
+}
+async function loadAlerts(){
+  const body=$("#alertRows");
+  body.innerHTML='<tr><td colspan="9" class="alert-table-message"><morph-icon icon="sync" size="18" class="ozon-pulse" stroke-width="1.8"></morph-icon><span>预警加载中…</span></td></tr>';
+  const query=new URLSearchParams({shop_id:state.shop,status:$("#alertStatus").value,severity:$("#alertSeverity").value,category:$("#alertCategory").value,q:$("#alertQuery").value.trim(),page:state.pages.alerts,size:50});
+  const data=await api(`/api/alerts?${query}`),rows=data.items||[];
+  body.innerHTML=rows.length?rows.map(row=>`<tr>
+    <td><span class="alert-severity ${esc(row.severity)}">${esc(alertSeverityLabels[row.severity]||row.severity)}</span></td>
+    <td><div class="alert-object-cell"><strong>${esc(row.rule_label)}</strong><small>${esc(row.object_name||row.entity_id)}</small></div></td>
+    <td><span class="shop-tag">${esc(row.shop_name)}</span></td>
+    <td><div class="alert-reason-cell"><span>${esc(row.message||"").replaceAll("\n","<br>")}</span></div></td>
+    <td><small class="alert-metric-line">${esc(alertMetricLine(row))}</small></td>
+    <td>${bj(row.first_seen_at)}</td><td>${bj(row.last_seen_at)}</td>
+    <td><span class="alert-status ${row.status==="open"?"is-open":"is-resolved"}">${row.status==="open"?"活动":"已恢复"}${row.acknowledged_at?" · 已读":""}</span>${row.last_notify_error?`<small class="alert-notify-error">${esc(row.last_notify_error)}</small>`:""}</td>
+    <td>${row.status==="open"&&!row.acknowledged_at?`<button type="button" class="rule-act-btn" data-alert-ack="${row.id}"><morph-icon icon="check" size="12" stroke-width="2"></morph-icon>已读</button>`:"—"}</td>
+  </tr>`).join(""):'<tr><td colspan="9" class="alert-table-message"><morph-icon icon="checkCircle" size="20" stroke-width="1.8"></morph-icon><span>当前筛选范围内暂无预警</span></td></tr>';
+  pager("alerts",data,loadAlerts);
+}
+function renderAlertRules(rows){
+  const current=rows.filter(row=>Number(row.shop_id)===state.alertRulesShop);
+  $("#alertRules").innerHTML=current.map(row=>{
+    const fields=Object.keys(row.config||{});
+    const controls=fields.length?`<div class="alert-rule-fields">${fields.map(key=>`<label><span>${esc(alertRuleFieldLabels[key]||key)}</span><div><input type="number" min="0" step="${alertRuleFieldSteps[key]||"0.01"}" data-alert-config="${esc(key)}" value="${esc(row.config[key])}"><small>${esc(alertRuleFieldUnits[key]||"")}</small></div></label>`).join("")}</div>`:'<p class="alert-rule-note">复用库存预测结果：仅提醒缺货与到货前缺货风险。</p>';
+    return `<article class="alert-rule-card" data-alert-rule-card="${esc(row.rule_key)}"><div class="alert-rule-head"><div><strong>${esc(row.label)}</strong><span class="alert-rule-category">${esc(alertCategoryLabels[row.category]||row.category)}</span></div><div class="alert-rule-switches"><label><input type="checkbox" data-alert-enabled ${row.enabled?"checked":""}>启用</label><label><input type="checkbox" data-alert-notify ${row.notify_dingtalk?"checked":""}>钉钉</label></div></div><form data-alert-rule-form="${esc(row.rule_key)}">${controls}<div class="alert-rule-foot"><span class="muted">${row.notify_dingtalk?"未配置钉钉时仍保留站内预警":"当前不发送钉钉"}</span><button class="primary" type="submit">保存</button></div></form></article>`;
+  }).join("")||'<div class="alert-rule-empty">暂无规则配置</div>';
+}
+async function loadAlertRules(){
+  const rows=await api(`/api/alert-rules?shop_id=0`);renderAlertRules(rows);
+  document.querySelectorAll("[data-alert-rules-shop]").forEach(button=>button.classList.toggle("active",Number(button.dataset.alertRulesShop)===state.alertRulesShop));
+}
+async function loadAlertsPage(){return Promise.all([loadAlertSummary(),loadAlerts(),loadAlertRules()]);}
 let analyticsTab="traffic", analyticsDetail=null, productQueryItems=[];
 const analyticsRate=(value,denominator)=>denominator?`${(Number(value)/Number(denominator)*100).toFixed(2)}%`:"—";
 const analyticsApiRate=value=>value==null?"—":`${num(value)}%`;
@@ -2271,13 +2328,13 @@ function probeResult(result={}){
 async function loadPage(page) {
   if(page==="overview") return Promise.all([loadOverview(),loadTrend()]); if(page==="orders") return loadOrders();
   if(page==="analytics") return loadAnalyticsPage();
-  if(page==="adOverview") return loadAdOverview(); if(page==="adCampaigns") return loadAdCampaigns(); if(page==="adSkus") return loadAdSkus();
+  if(page==="adOverview") return loadAdOverview(); if(page==="adCampaigns") return loadAdCampaigns(); if(page==="adSkus") return loadAdSkus(); if(page==="alerts") return loadAlertsPage();
   if(page==="risk") return loadRisk();
   const loaders={timeliness:loadTimeliness,returns:loadReturnPage,complaintPlaceholder:loadExceptionComplaints,stock:loadStock,profit:loadProfitPage};
   if(loaders[page]) return loaders[page](); if(page==="transfer") return loadImports(); if(page==="sync") return Promise.all([loadSync(),loadAutoSync(),loadExchangeRates()]); if(page==="rules") return loadRules(); if(page==="pushSubscriptions") return loadPushSubscriptions(); if(page==="dingtalk") return loadDingtalk(); if(page==="settings") return loadSettings();
 }
 function morphConfirm(morph,canonicalIcon,duration=300){if(!morph)return;clearTimeout(morph._confirmTimer);morph.morphTo("check","snappy");morph._confirmTimer=setTimeout(()=>{morph.morphTo(canonicalIcon,"snappy")},duration)}
-const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",adOverview:"activity",adCampaigns:"layers",adSkus:"tag",risk:"risk",timeliness:"delivery",returns:"returns",complaintPlaceholder:"messageSquareAlert",stock:"stock",profit:"trendingUp",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
+const navIconMap={overview:"dashboard",orders:"orders",analytics:"search",adOverview:"activity",adCampaigns:"layers",adSkus:"tag",risk:"risk",timeliness:"delivery",returns:"returns",alerts:"alertTriangle",complaintPlaceholder:"messageSquareAlert",stock:"stock",profit:"trendingUp",transfer:"transfer",sync:"sync",rules:"rules",pushSubscriptions:"zap",dingtalk:"dingtalk"};
 const pageDateRangeMap={overview:"#overviewDateRange",orders:"#orderDateRange",analytics:"#analyticsDateRange",adOverview:"#adOverviewDateRange",adCampaigns:"#adCampaignsDateRange",adSkus:"#adSkusDateRange",risk:"#riskDateRange",timeliness:"#timelinessDateRange",returns:"#returnsDateRange",complaintPlaceholder:"#complaintDateRange",transfer:"#exportDateRange",sync:"#syncDateRange"};
 function openPage(page) {
   document.querySelectorAll(".page").forEach(e=>e.classList.toggle("active",e.id===page));
@@ -2331,6 +2388,14 @@ $("#stockClear").onclick=()=>{$("#stockFilterForm").reset();state.pages.stock=1;
 $("#stockChannel")?.addEventListener("change",()=>{state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))});
 $("#stockRisk")?.addEventListener("change",()=>{state.pages.stock=1;loadStock().catch(err=>toast(err.message,true))});
 document.querySelectorAll("[data-stock-sort]").forEach(button=>button.onclick=()=>{const key=button.dataset.stockSort;state.stockSort.order=state.stockSort.key===key&&state.stockSort.order==="desc"?"asc":"desc";state.stockSort.key=key;state.pages.stock=1;document.querySelectorAll("[data-stock-sort]").forEach(btn=>{const morph=btn.querySelector("morph-icon");if(!morph)return;if(btn.dataset.stockSort===state.stockSort.key){morph.morphTo(state.stockSort.order==="asc"?"arrowUp":"arrowDown","snappy")}else{morph.morphTo("sortUpDown","snappy")}});loadStock().catch(err=>toast(err.message,true))});
+$("#alertFilterForm")?.addEventListener("submit",e=>{e.preventDefault();state.pages.alerts=1;loadAlerts().catch(err=>toast(err.message,true))});
+$("#alertStatus")?.addEventListener("change",()=>{state.pages.alerts=1;loadAlerts().catch(err=>toast(err.message,true))});
+$("#alertSeverity")?.addEventListener("change",()=>{state.pages.alerts=1;loadAlerts().catch(err=>toast(err.message,true))});
+$("#alertCategory")?.addEventListener("change",()=>{state.pages.alerts=1;loadAlerts().catch(err=>toast(err.message,true))});
+$("#alertRows")?.addEventListener("click",async e=>{const button=e.target.closest("[data-alert-ack]");if(!button)return;button.disabled=true;try{await api(`/api/alerts/${button.dataset.alertAck}/acknowledge`,{method:"POST"});toast("预警已标记为已读");await Promise.all([loadAlertSummary(),loadAlerts()])}catch(error){toast(error.message,true);button.disabled=false}});
+$("#alertEvaluate")?.addEventListener("click",async()=>{const button=$("#alertEvaluate"),original=button.innerHTML;button.disabled=true;button.innerHTML='<morph-icon icon="sync" size="14" class="ozon-pulse" stroke-width="2"></morph-icon><span>检查中…</span>';try{const result=await api("/api/alerts/evaluate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({shop_id:state.shop})});toast(`检查完成：新增 ${num(result.triggered,0)} 条，恢复 ${num(result.resolved,0)} 条`);await loadAlertsPage()}catch(error){toast(error.message,true)}finally{button.disabled=false;button.innerHTML=original}});
+document.querySelectorAll("[data-alert-rules-shop]").forEach(button=>button.addEventListener("click",()=>{state.alertRulesShop=Number(button.dataset.alertRulesShop);loadAlertRules().catch(error=>toast(error.message,true))}));
+$("#alertRules")?.addEventListener("submit",async e=>{const form=e.target.closest("[data-alert-rule-form]");if(!form)return;e.preventDefault();const card=form.closest("[data-alert-rule-card]"),config={};form.querySelectorAll("[data-alert-config]").forEach(input=>{config[input.dataset.alertConfig]=Number(input.value)});const body={shop_id:state.alertRulesShop,enabled:card.querySelector("[data-alert-enabled]").checked,notify_dingtalk:card.querySelector("[data-alert-notify]").checked,config};const button=form.querySelector("button[type=submit]"),original=button.innerHTML;button.disabled=true;button.textContent="保存中…";try{await api(`/api/alert-rules/${form.dataset.alertRuleForm}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});toast("预警规则已保存");await loadAlertRules()}catch(error){toast(error.message,true)}finally{button.disabled=false;button.innerHTML=original}});
 $("#returnTabs").onclick=e=>{const tab=e.target.closest("[data-return-tab]")?.dataset.returnTab;if(tab)activateReturnTab(tab)};
 $("#returnTabs").onkeydown=e=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(e.key))return;e.preventDefault();const tabs=[...$("#returnTabs").querySelectorAll("[role=tab]")],current=tabs.indexOf(document.activeElement),index=e.key==="Home"?0:e.key==="End"?tabs.length-1:(current+(e.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;activateReturnTab(tabs[index].dataset.returnTab,true)};
 $("#returnsSearch").onsubmit=e=>{e.preventDefault();state.pages.returns=1;loadReturns().catch(err=>toast(err.message,true))};

@@ -69,6 +69,10 @@
             <morph-icon class="nav-icon" data-nav-morph="returns" icon="returns" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
             <span>异常订单明细</span>
           </button>
+          <button data-page="alerts">
+            <morph-icon class="nav-icon" data-nav-morph="alerts" icon="alertTriangle" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
+            <span>异常预警</span>
+          </button>
           <button data-page="complaintPlaceholder">
             <morph-icon class="nav-icon" data-nav-morph="complaintPlaceholder" icon="messageSquareAlert" size="18" spring="snappy" stroke-width="1.8"></morph-icon>
             <span>异常订单投诉</span>
@@ -359,6 +363,40 @@
           <div class="pager"><button id="adSkusPrev">上一页</button><span id="adSkusInfo"></span><button id="adSkusNext">下一页</button></div>
         </section>
         <p class="ad-data-note">当前未显示总订单、总销售额和广告占比：项目尚无可靠的按 SKU Seller Analytics 历史落库。</p>
+      </section>
+
+      <section id="alerts" class="page">
+        <div id="alertSummary" class="cards alert-summary"></div>
+        <section class="panel alert-list-panel">
+          <div class="panel-title">
+            <div>
+              <h2><morph-icon icon="alertTriangle" size="18" stroke-width="1.8"></morph-icon> 异常预警</h2>
+              <span class="muted">只基于已同步到本地 SQLite 的数据；数据过期时会跳过判断</span>
+            </div>
+            <button id="alertEvaluate" class="primary" type="button"><morph-icon icon="refreshCw" size="14" stroke-width="2"></morph-icon><span>立即检查</span></button>
+          </div>
+          <form id="alertFilterForm" class="alert-filter" role="search">
+            <div class="stock-search-wrap alert-search-wrap"><morph-icon icon="search" size="15" stroke-width="1.8"></morph-icon><input id="alertQuery" type="search" placeholder="搜索 Campaign、SKU 或商品名称…" aria-label="搜索预警"></div>
+            <label>状态<select id="alertStatus"><option value="open">活动</option><option value="resolved">已恢复</option><option value="all">全部</option></select></label>
+            <label>等级<select id="alertSeverity"><option value="">全部等级</option><option value="critical">Critical</option><option value="high">High</option><option value="warning">Warning</option></select></label>
+            <label>类型<select id="alertCategory"><option value="">全部类型</option><option value="advertising">广告</option><option value="inventory">库存</option><option value="sales">销售</option></select></label>
+            <button class="primary" type="submit"><morph-icon icon="search" size="13" stroke-width="2"></morph-icon><span>查询</span></button>
+          </form>
+          <div class="table-wrap alert-table-wrap">
+            <table class="alert-table">
+              <thead><tr><th>等级</th><th>类型 / 对象</th><th>店铺</th><th>触发原因</th><th>当前值 / 阈值</th><th>首次发现</th><th>最近发现</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="alertRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><button id="alertsPrev">上一页</button><span id="alertsInfo"></span><button id="alertsNext">下一页</button></div>
+        </section>
+        <section class="panel alert-rules-panel">
+          <div class="panel-title">
+            <div><h2><morph-icon icon="sliders" size="18" stroke-width="1.8"></morph-icon> 预警规则</h2><span class="muted">两个店铺分别设置；保存后仅影响后续检查</span></div>
+            <div class="alert-rule-shop-tabs" role="tablist"><button type="button" data-alert-rules-shop="1" class="active">Shop 1</button><button type="button" data-alert-rules-shop="2">Shop 2</button></div>
+          </div>
+          <div id="alertRules" class="alert-rules-list"></div>
+        </section>
       </section>
 
       <section id="orders" class="page">

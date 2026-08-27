@@ -32,7 +32,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
         self.assertEqual(before, after)
-        self.assertEqual(after[0], 5)
+        self.assertEqual(after[0], 6)
 
     def test_nonempty_old_database_is_rejected(self):
         old_path = Path(self.temp.name) / "old.db"
@@ -57,7 +57,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
         db.init_db()
         with db.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 5)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 6)
             self.assertEqual(connection.execute(
                 "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
             self.assertIsNotNone(connection.execute(
