@@ -58,7 +58,7 @@ PERFORMANCE_SYNC_MODULE = "ad_campaigns"
 AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
 FORECAST_WINDOWS = (7, 15, 30)
 FORECAST_WEIGHTS = {7: .50, 15: .30, 30: .20}
-FORECAST_LEAD_TIME_DAYS = 30
+FORECAST_LEAD_TIME_DAYS = 25
 FORECAST_TARGET_COVER_DAYS = 60
 FORECAST_OVERSTOCK_DAYS = 90
 FORECAST_RISK_LABELS = {
@@ -2091,7 +2091,7 @@ def stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             "total": total, "page": page, "size": size, "data_through": through,
             "sales_through": sales_through,
             "sales_window_end": sales_end.isoformat(), "inventory_business_date": today.isoformat(),
-            "formula": "预测日销=FBP+realFBS销量的7/15/30日均销按50%/30%/20%加权；补货库存=FBP；补货=ceil(max(预测日销×60-到货时库存,0))；lead time=30天；未计入在途库存"}
+            "formula": "预测日销=FBP+realFBS销量的7/15/30日均销按50%/30%/20%加权；补货库存=FBP；补货=ceil(max(预测日销×60-到货时库存,0))；lead time=25天；未计入在途库存"}
 
 
 @app.get("/api/inventory/forecast")

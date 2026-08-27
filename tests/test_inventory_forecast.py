@@ -82,7 +82,7 @@ class InventoryForecastTest(DatabaseTestCase):
                                   local_timestamp(end - timedelta(days=30)), None, end)
         daily = result["forecast"]
         effective = 10
-        projected = max(effective - daily * 30, 0)
+        projected = max(effective - daily * 25, 0)
         recommended = max(daily * 60 - projected, 0)
         self.assertGreaterEqual(recommended, 0)
         self.assertEqual(_forecast_risk(0, daily, 0, 1), "out_of_stock")
@@ -90,10 +90,10 @@ class InventoryForecastTest(DatabaseTestCase):
         self.assertEqual(_forecast_risk(1000, daily, 200, 0), "overstock")
         self.assertEqual(_forecast_risk(10, 0, None, 0), "no_recent_sales")
 
-    def test_replenishment_policy_uses_30_60_and_strict_90_day_boundaries(self):
+    def test_replenishment_policy_uses_25_60_and_strict_90_day_boundaries(self):
         today = datetime.now(BEIJING).date()
         sales_end = today - timedelta(days=1)
-        stocks = {"POLICY-LEAD": (25, 1), "POLICY-89": (89, 1), "POLICY-90": (90, 1),
+        stocks = {"POLICY-LEAD": (24, 1), "POLICY-ARRIVAL": (26, 1), "POLICY-89": (89, 1), "POLICY-90": (90, 1),
                   "POLICY-90.01": (9001, 100), "POLICY-120": (120, 1)}
         with db.transaction() as connection:
             for sku, (present, quantity) in stocks.items():
@@ -103,11 +103,14 @@ class InventoryForecastTest(DatabaseTestCase):
                 self.add_snapshot(connection, 1, sku, [("fbp", present, 0)], today)
         items = {item["sku"]: item for item in stock(1, size=100, sku="POLICY")["items"]}
         lead = items["POLICY-LEAD"]
-        self.assertEqual((lead["forecast_daily"], lead["lead_time_days"], lead["target_cover_days"]), (1, 30, 60))
+        self.assertEqual((lead["forecast_daily"], lead["lead_time_days"], lead["target_cover_days"]), (1, 25, 60))
         self.assertEqual((lead["projected_stock_at_arrival"], lead["target_stock_after_arrival"],
                           lead["recommended_replenishment"]), (0, 60, 60))
         self.assertTrue(lead["stockout_before_arrival"])
-        self.assertEqual(items["POLICY-89"]["risk_code"], "replenish")
+        arrival = items["POLICY-ARRIVAL"]
+        self.assertEqual((arrival["projected_stock_at_arrival"], arrival["recommended_replenishment"],
+                          arrival["risk_code"]), (1, 59, "replenish"))
+        self.assertEqual(items["POLICY-89"]["risk_code"], "sufficient")
         self.assertEqual(items["POLICY-90"]["risk_code"], "sufficient")
         self.assertAlmostEqual(items["POLICY-90.01"]["days_cover"], 90.01)
         self.assertEqual(items["POLICY-90.01"]["risk_code"], "overstock")
@@ -121,7 +124,7 @@ class InventoryForecastTest(DatabaseTestCase):
         self.assertLess(result["forecast"], result["daily"][30])
         self.assertEqual(result["trend"], "下降")
         daily = result["forecast"]
-        self.assertEqual(max(daily * 60 - max(200 - daily * 30, 0), 0), 0)
+        self.assertEqual(max(daily * 60 - max(200 - daily * 25, 0), 0), 0)
 
     def test_endpoint_uses_complete_natural_days_and_stock_semantics(self):
         today = datetime.now(BEIJING).date()

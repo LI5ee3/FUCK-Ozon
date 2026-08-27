@@ -249,7 +249,7 @@ class AlertTest(DatabaseTestCase):
                 "SELECT json_extract(metric_json,'$.sku') sku,severity,message FROM alert_events")}
         self.assertEqual(values["OUT"]["severity"], "critical")
         self.assertEqual(values["URGENT"]["severity"], "high")
-        self.assertIn("当前库存无法覆盖30天补货交期。", values["URGENT"]["message"])
+        self.assertIn("当前库存无法覆盖25天补货交期。", values["URGENT"]["message"])
         self.assertNotIn("SAFE", values)
 
     def test_inventory_alert_is_based_on_fbp_stock_only(self):
