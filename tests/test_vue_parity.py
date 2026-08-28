@@ -83,6 +83,19 @@ class VueParityTest(unittest.TestCase):
         self.assertIn("row.target_cover_days", self.inventory)
         self.assertNotIn("FORECAST_LEAD_TIME_DAYS", self.inventory)
 
+    def test_frozen_vue_profit_parity_sample(self):
+        profit = (FRONTEND / "utils/profit.ts").read_text()
+        self.assertIn("purchasePriceUsd * rate", profit)
+        self.assertIn("value: 10, status: \"implemented\"", profit)
+        self.assertIn("price.price_cny * 0.0033", profit)
+        self.assertIn("price.price_cny * 0.01", profit)
+
+        revenue = 100 * 7.2
+        total_cost = 50 * 7.2 + 10 + revenue * 0.0033 + revenue * 0.01
+        self.assertAlmostEqual(total_cost, 379.576, places=9)
+        self.assertAlmostEqual(revenue - total_cost, 340.424, places=9)
+        self.assertAlmostEqual((revenue - total_cost) / revenue, 0.4728111111111111, places=12)
+
     def test_frontend_does_not_contain_server_credentials(self):
         for secret_name in (
             "ADMIN_PASSWORD",
