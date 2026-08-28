@@ -1,13 +1,21 @@
 export type DateRange = [string, string];
 
-export function beijingToday(now = new Date()): string {
+function todayInTimeZone(timeZone: string, now: Date): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Shanghai",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(now).map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function beijingToday(now = new Date()): string {
+  return todayInTimeZone("Asia/Shanghai", now);
+}
+
+export function moscowToday(now = new Date()): string {
+  return todayInTimeZone("Europe/Moscow", now);
 }
 
 export function dateParts(value: string): [number, number, number] {

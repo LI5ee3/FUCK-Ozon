@@ -33,7 +33,7 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 ```text
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
 static/           纯原生前端页面（Macaron UI 体系、Tabler 矢量图标、物理形变组件）
-frontend/         新 Vue 3 + TypeScript + Vite 前端（逐页迁移阶段，已迁移总览、订单、库存与备货建议、流量与搜索分析、广告总览、广告活动、SKU 广告分析、发货与配送时效、取消风险、异常订单明细、异常订单投诉、异常预警、利润测算）
+frontend/         新 Vue 3 + TypeScript + Vite 前端（逐页迁移阶段，已迁移总览、订单、库存与备货建议、流量与搜索分析、广告总览、广告活动、SKU 广告分析、发货与配送时效、取消风险、异常订单明细、异常订单投诉、异常预警、利润测算、数据导入导出、数据同步中心）
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板
@@ -58,8 +58,9 @@ docs/             部署与业务口径文档
 - Alerts / 异常预警
 - Profit / 利润测算
 - Transfer / 数据导入导出
+- Sync / 数据同步中心
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成；Phase 16B Rules、Phase 16C Push、Phase 16D DingTalk、Phase 16E Settings：未开始；Phase 16 尚未整体完成。其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend
@@ -141,7 +142,7 @@ POST /api/ozon/notifications/delete
 1. 使用安装脚本生成的管理员密码登录。
 2. 在“系统设置”中修改两个店铺的显示名称。
 3. 在右上角选择单个店铺或合并查看。
-4. 进入“数据同步中心”，选择日期范围后分别拉取所需模块。页面默认为近三个月；长时段按自然月串行执行并显示进度，库存只拉取一次当前快照。也可按“店铺+模块”分别设置订单、退货和库存的每日自动同步，自定义北京时间及最近 1–365 天范围，同日成功任务不重复创建。
+4. 进入“数据同步中心”，选择日期范围后分别拉取所需模块。手动同步默认为近 7 天，长时段按自然月串行执行并显示进度，库存只拉取一次当前快照；汇率同步范围独立默认为近三个月。也可按“店铺+模块”分别设置订单、退货、库存及广告统计的 1–24 小时自动同步频率与最近 1–365 天范围，库存固定为实时快照，同槽位成功或运行中的任务不重复创建。
 5. 如需补充历史数据，在“数据导入/导出”中选择店铺和数据类型后上传文件。
 
 支持的导入文件：
