@@ -146,14 +146,14 @@ const lastSuccess = computed(() => syncRuns.value.find((row) => row.status === "
 const summaryCards = computed(() => [
   {
     icon: "sync",
-    label: "自动同步",
+    label: "自动拉取配置",
     value: `${enabledCount.value} / 10 项启用`,
-    note: "两店铺 × 五模块",
+    note: "两店铺五大模块独立定时调度",
     tone: "azure" as SummaryTone,
   },
   {
     icon: "checkCircle",
-    label: "最近成功",
+    label: "最近成功拉取",
     value: lastSuccess.value ? `${formatInteger(lastSuccess.value.records)} 条记录` : "暂无记录",
     note: lastSuccess.value
       ? `${lastSuccess.value.shop_name} · ${moduleLabel(lastSuccess.value.module)} · ${formatBeijingDateTime(lastSuccess.value.started_at)}`
@@ -162,16 +162,16 @@ const summaryCards = computed(() => [
   },
   {
     icon: "trendingUp",
-    label: "官方汇率",
+    label: "Ozon 官方基础汇率",
     value: `${rateValue("USD")} USD/RUB`,
     note: `CNY/RUB ${rateValue("CNY")}`,
     tone: "lavender" as SummaryTone,
   },
   {
     icon: failedCount.value > 0 ? "alertTriangle" : "shieldCheck",
-    label: "失败任务",
+    label: "同步异常与告警",
     value: failedCount.value > 0 ? `${failedCount.value} 次失败` : "运行健康",
-    note: failedCount.value > 0 ? "请查看下方错误详情" : "最近 10 条记录中无失败",
+    note: failedCount.value > 0 ? "发生同步异常时自动推送钉钉告警" : "最近 10 次拉取任务运行正常",
     tone: failedCount.value > 0 ? "peach" as SummaryTone : "azure" as SummaryTone,
   },
 ]);
