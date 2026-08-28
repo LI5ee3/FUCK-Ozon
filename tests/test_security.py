@@ -3,10 +3,10 @@ from http.cookies import SimpleCookie
 import unittest
 from unittest.mock import patch
 
-from fastapi import Response
+from fastapi import HTTPException, Response
 
 from app import db, main
-from app.main import login, logout, protect_api, session
+from app.main import _client_ip, login, logout, protect_api, session
 from app.security import (clear_login_failures, login_limited, password_hash,
                           password_matches, record_login_failure)
 from tests.support import DatabaseTestCase
@@ -57,6 +57,43 @@ class SecurityTest(DatabaseTestCase):
         with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}), \
              patch("app.main._token", return_value="token"):
             self.assertEqual(asyncio.run(login(Request(), Response())), {"ok": True})
+
+    def test_login_rate_limit_uses_forwarded_client_ip(self):
+        class Request:
+            url = type("URL", (), {"scheme": "https"})()
+
+            def __init__(self, headers, host="127.0.0.1"):
+                self.headers = headers
+                self.client = type("Client", (), {"host": host})()
+
+            async def json(self):
+                return {"password": "wrong"}
+
+        requests = [
+            (Request({"CF-Connecting-IP": " 198.51.100.7 "}), "198.51.100.7"),
+            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "1.2.3.4"),
+            (Request({}, "192.0.2.9"), "192.0.2.9"),
+        ]
+        self.assertEqual([_client_ip(request) for request, _ in requests], [expected for _, expected in requests])
+        with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \
+             patch("app.main.login_limited", return_value=False), \
+             patch("app.main.password_matches", return_value=False), \
+             patch("app.main.record_login_failure") as record:
+            for request, _ in requests:
+                with self.assertRaises(HTTPException) as raised:
+                    asyncio.run(login(request, Response()))
+                self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual([call.args[0] for call in record.call_args_list], [expected for _, expected in requests])
+
+        first, second = (expected for _, expected in requests[:2])
+        clear_login_failures(first)
+        clear_login_failures(second)
+        for _ in range(5):
+            record_login_failure(first, 100)
+        self.assertTrue(login_limited(first, 101))
+        self.assertFalse(login_limited(second, 101))
+        clear_login_failures(first)
+        clear_login_failures(second)
 
     def test_logout_clears_authenticated_session_cookie(self):
         main.DATA_DIR = db.DATA_DIR

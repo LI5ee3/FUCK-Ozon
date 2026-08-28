@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 from app import db, ozon
 from app.importer import _shipping, import_csv
 from app.main import export_orders, upload
-from app.ozon import (_cursor_pages, _post, _product_price, sync_module, sync_orders,
-                      sync_returns)
+from app.ozon import (_cursor_pages, _post, _product_price, _sync_stock_snapshot,
+                      sync_module, sync_orders, sync_returns)
 from tests.support import DatabaseTestCase, table_fingerprints
 
 
@@ -48,6 +48,17 @@ class ImportRegressionTest(DatabaseTestCase):
             records = _cursor_pages(1, "/stocks", {"limit": 1}, "items")
         self.assertEqual([row["id"] for row in records], [1, 2])
         self.assertEqual(post.call_args_list[1].args[2]["cursor"], "next")
+
+    def test_returns_cursor_uses_last_return_id(self):
+        pages = [
+            {"returns": [{"id": "100"}, {"id": "101"}], "has_next": True},
+            {"returns": [{"id": "102"}], "has_next": False},
+        ]
+        with patch("app.ozon._post", side_effect=pages) as post:
+            records = _cursor_pages(1, "/v1/returns/list", {"limit": 100}, "returns", "last_id", "")
+        self.assertEqual([row["id"] for row in records], ["100", "101", "102"])
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(post.call_args_list[1].args[2]["last_id"], "101")
 
     def test_network_wait_does_not_hold_rate_limit_lock(self):
         entered, release = threading.Event(), threading.Event()
@@ -315,6 +326,50 @@ class ImportRegressionTest(DatabaseTestCase):
             quantity = connection.execute(
                 "SELECT quantity FROM order_items WHERE shop_id=1 AND posting_number='P-1' AND sku='SKU-1'").fetchone()[0]
         self.assertEqual(quantity, 4)
+
+    def test_api_duplicate_sku_rows_are_aggregated_idempotently(self):
+        posting = {"posting_number": "P-API", "integration_type_flow": "FBP", "status": "delivering",
+                   "products": [{"sku": "A", "offer_id": "OA", "name": "商品A", "quantity": 1, "price": "10"},
+                                {"sku": "A", "offer_id": "OA", "name": "商品A", "quantity": 2, "price": "20"},
+                                {"sku": "B", "offer_id": "OB", "name": "商品B", "quantity": 1, "price": "3"}]}
+        with patch("app.ozon._cursor_pages", side_effect=[[posting], [], [posting], []]):
+            sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
+            sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
+        with db.connect() as connection:
+            items = connection.execute("""SELECT sku,quantity FROM order_items
+              WHERE shop_id=1 AND posting_number='P-API' ORDER BY sku""").fetchall()
+            amount = connection.execute("""SELECT amount_original FROM orders
+              WHERE shop_id=1 AND posting_number='P-API'""").fetchone()[0]
+        self.assertEqual([tuple(row) for row in items], [("A", 3), ("B", 1)])
+        self.assertEqual(amount, 53.0)
+
+    def test_api_stock_history_keeps_each_observation_and_latest_snapshot(self):
+        record = {"product_id": 1, "offer_id": "O-1",
+                  "stocks": [{"sku": "S-1", "type": "fbs", "present": 10, "reserved": 0}]}
+        responses = [
+            {**record, "stocks": [{**record["stocks"][0], "present": 10}]},
+            {**record, "stocks": [{**record["stocks"][0], "present": 0}]},
+            {**record, "stocks": [{**record["stocks"][0], "present": 20}]},
+            {**record, "stocks": [{**record["stocks"][0], "present": 20}]},
+        ]
+        with patch("app.ozon._cursor_pages", side_effect=([response] for response in responses)), \
+             patch("app.ozon._stamp", side_effect=["2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z",
+                                                     "2026-08-03T00:00:00Z", "2026-08-03T00:00:00Z"]):
+            for _ in responses:
+                _sync_stock_snapshot(1)
+        with db.connect() as connection:
+            snapshot = connection.execute("""SELECT observed_at,payload FROM stock_snapshots
+              WHERE shop_id=1 AND record_key='1'""").fetchone()
+            history = connection.execute("""SELECT source,occurred_at,present,event_key FROM stock_history
+              WHERE shop_id=1 AND sku='S-1' ORDER BY occurred_at""").fetchall()
+        self.assertEqual(snapshot[0], "2026-08-03T00:00:00Z")
+        self.assertEqual(json.loads(snapshot[1])["stocks"][0]["present"], 20)
+        self.assertEqual([(row[0], row[1], row[2]) for row in history], [
+            ("api", "2026-08-01T00:00:00Z", 10),
+            ("api", "2026-08-02T00:00:00Z", 0),
+            ("api", "2026-08-03T00:00:00Z", 20),
+        ])
+        self.assertTrue(all(row[3].endswith(":fbs") for row in history))
 
     def test_export_excludes_cancelled_before_shipping(self):
         header = "订单号;发货号码;状态;SKU;数量;已创建\n"

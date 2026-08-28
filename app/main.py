@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import hashlib
 import hmac
+import ipaddress
 import json
 import math
 import secrets
@@ -174,13 +175,25 @@ def session(request: Request):
     return {"authenticated": authenticated, "csrf_token": csrf}
 
 
+def _client_ip(request):
+    headers = {str(key).lower(): value for key, value in request.headers.items()}
+    for header in ("cf-connecting-ip", "x-forwarded-for"):
+        for value in str(headers.get(header) or "").split(","):
+            try:
+                return str(ipaddress.ip_address(value.strip()))
+            except ValueError:
+                continue
+    host = request.client.host if request.client else None
+    return str(host).strip() if host else "unknown"
+
+
 @app.post("/api/login")
 async def login(request: Request, response: Response):
     values = _env()
     salt, expected = values.get("ADMIN_PASSWORD_SALT"), values.get("ADMIN_PASSWORD_HASH")
     if not salt or not expected:
         raise HTTPException(503, "服务器尚未设置管理员密码哈希")
-    key = request.client.host if request.client else "unknown"
+    key = _client_ip(request)
     if login_limited(key):
         raise HTTPException(429, "登录失败次数过多，请5分钟后重试")
     body = await request.json()

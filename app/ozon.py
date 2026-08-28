@@ -404,10 +404,17 @@ def _save_order(db, shop_id, posting, channel=None, source="api", updated_at=Non
           status_changed_at, source, fetched))
     db.execute("UPDATE order_items SET channel=? WHERE shop_id=? AND posting_number=?",
                (channel, shop_id, number))
+    products_by_sku = {}
     for product, price in zip(products, prices):
         sku = str(product.get("sku") or "")
         if not sku:
             continue
+        item = products_by_sku.setdefault(sku, [dict(product), price, 0])
+        item[0]["offer_id"] = product.get("offer_id") or item[0].get("offer_id")
+        item[0]["name"] = product.get("name") or item[0].get("name")
+        item[1] = price
+        item[2] += int(product.get("quantity") or 1)
+    for sku, (product, price, quantity) in products_by_sku.items():
         db.execute("""
           INSERT INTO order_items(shop_id,channel,posting_number,sku,offer_id,product_name_raw,
             quantity,unit_price,price_currency,source)
@@ -417,7 +424,7 @@ def _save_order(db, shop_id, posting, channel=None, source="api", updated_at=Non
             quantity=excluded.quantity,unit_price=COALESCE(excluded.unit_price,order_items.unit_price),
             price_currency=COALESCE(NULLIF(excluded.price_currency,''),order_items.price_currency),source=excluded.source
         """, (shop_id, channel, number, sku, product.get("offer_id"), product.get("name") or "",
-              int(product.get("quantity") or 1), price[0], price[1], source))
+              quantity, price[0], price[1], source))
     _apply_pending_webhook_events(db, shop_id, number)
     return channel
 
@@ -575,13 +582,14 @@ def _sync_stock_snapshot(shop_id):
                 observed_at=excluded.observed_at,payload=excluded.payload""",
                        (shop_id, record_key, observed, _json(record)))
             for value in record.get("stocks") or []:
+                stock_type = str(value.get("type") or "")
                 db.execute("""INSERT OR IGNORE INTO stock_history(
                   shop_id,source,warehouse_id,sku,present,reserved,occurred_at,event_key,payload_json)
                   VALUES(?,?,?,?,?,?,?,?,?)""",
                   (shop_id, "api", ",".join(map(str, value.get("warehouse_ids") or [])),
                    str(value.get("sku") or record.get("product_id") or ""),
                    int(value.get("present") or 0), int(value.get("reserved") or 0), observed,
-                   record_key + ":" + str(value.get("type") or ""), _json(record)))
+                   record_key + ":" + observed + ":" + stock_type, _json(record)))
     return {"records": len(records), "snapshot_at": observed}
 
 
