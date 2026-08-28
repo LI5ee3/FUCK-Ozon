@@ -15,6 +15,7 @@
   --opanel-radius-card: 18px;
   --opanel-radius-input: 10px;
   --opanel-radius-sm: 8px;
+  --opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --opanel-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
   --opanel-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
   color-scheme: light;
@@ -81,7 +82,7 @@ morph-icon {
 }
 
 .opanel-shell {
-  min-height: 100vh;
+  height: 100vh;
   background: var(--opanel-bg);
 }
 
@@ -92,19 +93,28 @@ morph-icon {
   -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
+/* Stack sider content so the footer pins to the bottom of short viewports. */
+.opanel-sider .n-layout-sider-scroll-container {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.opanel-sider .n-layout-sider-scroll-container > * {
+  flex-shrink: 0;
+}
+
 .opanel-brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 76px;
-  padding: 18px 20px;
+  padding: 20px 16px 12px 24px;
   user-select: none;
 }
 
 .opanel-logo {
-  width: 32px;
-  height: 32px;
-  filter: drop-shadow(0 2px 5px rgba(0, 102, 204, 0.18));
+  width: 24px;
+  height: 24px;
 }
 
 .opanel-brand-copy {
@@ -114,59 +124,128 @@ morph-icon {
 }
 
 .opanel-brand-name {
-  font-size: 17px;
+  color: var(--opanel-text);
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
 }
 
 .opanel-brand-pill {
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--opanel-primary) 18%, transparent);
+  padding: 2px 7px;
   border-radius: 9999px;
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  background: color-mix(in srgb, var(--opanel-text) 5%, transparent);
+  color: var(--opanel-muted);
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: -0.002em;
 }
 
-.opanel-menu {
-  padding: 4px 10px;
+.opanel-menu.n-menu {
+  padding: 0 8px 8px;
 }
 
-.opanel-menu .n-menu-item-content {
-  min-height: 36px;
-  margin: 2px 0;
-  border-radius: var(--opanel-radius-sm);
+.opanel-menu.n-menu .n-menu-item {
+  height: 40px;
+  margin-top: 0;
+}
+
+.opanel-menu.n-menu .n-menu-item-content {
   color: var(--opanel-muted);
   font-weight: 500;
+  letter-spacing: -0.006em;
+  transition: color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
 }
 
-.opanel-menu .n-menu-item-content:hover {
-  background: color-mix(in srgb, var(--opanel-text) 5%, transparent);
+.opanel-menu.n-menu .n-menu-item-content::before {
+  border-radius: var(--opanel-radius-sm);
+  transition: background-color .16s var(--opanel-ease-fluid);
+}
+
+.opanel-menu.n-menu .n-menu-item-content:active {
+  transform: scale(0.97);
+}
+
+.opanel-menu.n-menu .n-menu-item-content__icon,
+.opanel-menu.n-menu .n-menu-item-content-header {
+  color: var(--opanel-muted);
+  transition: color .16s var(--opanel-ease-fluid);
+}
+
+.opanel-menu.n-menu .n-menu-item-content:hover::before,
+.opanel-menu.n-menu .n-menu-item-content--hover::before {
+  background-color: color-mix(in srgb, var(--opanel-text) 5%, transparent);
+}
+
+.opanel-menu.n-menu .n-menu-item-content:hover .n-menu-item-content__icon,
+.opanel-menu.n-menu .n-menu-item-content--hover .n-menu-item-content__icon,
+.opanel-menu.n-menu .n-menu-item-content:hover .n-menu-item-content-header,
+.opanel-menu.n-menu .n-menu-item-content--hover .n-menu-item-content-header {
   color: var(--opanel-text);
 }
 
-.opanel-menu .n-menu-item-content--selected {
-  background: var(--opanel-primary-soft);
+.opanel-menu.n-menu .n-menu-item-content--selected::before,
+.opanel-menu.n-menu .n-menu-item-content--selected:hover::before,
+.opanel-menu.n-menu .n-menu-item-content--selected.n-menu-item-content--hover::before {
+  background-color: color-mix(in srgb, var(--opanel-primary) 12%, transparent);
+}
+
+.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content__icon,
+.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content-header {
   color: var(--opanel-primary);
+}
+
+.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content-header {
   font-weight: 650;
 }
 
-.opanel-menu .n-menu-item-content__icon {
-  color: currentColor;
+.opanel-menu.n-menu .n-menu-item-group .n-menu-item-group-title {
+  height: 28px;
+  margin-top: 16px;
+  padding-left: 24px !important;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.002em;
 }
 
 .opanel-sider-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 16px 16px;
+  gap: 4px;
+  margin-top: auto;
+  padding: 8px 16px 8px 24px;
   border-top: 1px solid var(--opanel-line);
+  background: var(--opanel-panel);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.opanel-sider-footer .n-button {
   color: var(--opanel-muted);
-  font-size: 12px;
+  transition: color .16s var(--opanel-ease-fluid), background-color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
+}
+
+.opanel-sider-footer .n-button:hover {
+  color: var(--opanel-text);
+  background-color: color-mix(in srgb, var(--opanel-text) 5%, transparent);
+}
+
+.opanel-sider-footer .n-button:active {
+  transform: scale(0.95);
+}
+
+.opanel-sider .n-layout-toggle-bar .n-layout-toggle-bar__top,
+.opanel-sider .n-layout-toggle-bar .n-layout-toggle-bar__bottom {
+  background-color: var(--opanel-line);
+}
+
+.opanel-sider .n-layout-toggle-bar:hover .n-layout-toggle-bar__top,
+.opanel-sider .n-layout-toggle-bar:hover .n-layout-toggle-bar__bottom {
+  background-color: var(--opanel-muted);
+  transform: none;
 }
 
 .opanel-header {

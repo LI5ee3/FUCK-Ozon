@@ -116,6 +116,7 @@ onMounted(async () => {
         :value="route.path"
         :options="menuOptions"
         :collapsed="collapsed"
+        :indent="16"
         class="opanel-menu"
         @update:value="navigate"
       />
