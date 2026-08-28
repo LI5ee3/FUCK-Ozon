@@ -707,6 +707,38 @@ export interface AnalyticsProductQueryDetailRow {
 
 export type AnalyticsProductQueryDetailResponse = AnalyticsPagedResponse<AnalyticsProductQueryDetailRow>;
 
+export interface AdsSummary {
+  impressions: number;
+  clicks: number;
+  cart_adds: number;
+  spend_rub: number;
+  orders: number;
+  revenue_rub: number;
+  ctr: number | null;
+  avg_cpc_rub: number | null;
+  drr: number | null;
+  roas: number | null;
+}
+
+export interface AdsTrendPoint extends AdsSummary {
+  date: string;
+}
+
+export interface AdsShopSummary extends AdsSummary {
+  shop_id: ShopId;
+  shop_name: string;
+}
+
+export interface AdsOverviewResponse extends AdsSummary {
+  shop_id: ShopSelection;
+  date_from: string;
+  date_to: string;
+  summary: AdsSummary;
+  trend: AdsTrendPoint[];
+  shops: AdsShopSummary[];
+  data_through: string | null;
+}
+
 export interface RiskStats {
   valid: number;
   cancelled: number;
