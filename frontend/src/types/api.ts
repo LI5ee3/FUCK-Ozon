@@ -778,6 +778,27 @@ export interface AdCampaignStatsResponse {
   data_through: string | null;
 }
 
+export type AdSkuSort = "spend_rub" | "revenue_rub" | "drr" | "roas" | "orders" | "clicks";
+
+export interface AdSkuItem extends AdsSummary {
+  shop_id: ShopId;
+  shop_name: string;
+  sku: string;
+  product_name: string | null;
+  campaign_count: number;
+  data_through: string | null;
+}
+
+export interface AdSkuStatsResponse {
+  items: AdSkuItem[];
+  total: number;
+  page: number;
+  size: number;
+  date_from: string;
+  date_to: string;
+  data_through: string | null;
+}
+
 export interface RiskStats {
   valid: number;
   cancelled: number;

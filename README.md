@@ -50,13 +50,14 @@ docs/             部署与业务口径文档
 - Analytics / 流量与搜索分析
 - Ads Overview / 广告总览
 - Ad Campaigns / 广告活动
+- SKU Ads Analysis / SKU 广告分析
 - Timeliness / 发货与配送时效
 - Risk / 订单取消分析
 - Returns / 异常订单明细
 - Complaints / 异常订单投诉
 - Alerts / 异常预警
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）和 Phase 14B（Ad Campaigns）已完成；Phase 14C（SKU Ads Analysis）尚未开始，其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend

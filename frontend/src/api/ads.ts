@@ -3,6 +3,8 @@ import type {
   AdCampaignSort,
   AdCampaignState,
   AdCampaignStatsResponse,
+  AdSkuSort,
+  AdSkuStatsResponse,
   AdsOverviewResponse,
   ShopSelection,
 } from "../types/api";
@@ -34,4 +36,28 @@ export function getAdCampaignStats(values: AdCampaignStatsQuery): Promise<AdCamp
     size: String(values.size),
   });
   return request<AdCampaignStatsResponse>(`/api/performance/campaign-stats?${query}`);
+}
+
+export interface AdSkuStatsQuery {
+  shopId: ShopSelection;
+  q: string;
+  from: string;
+  to: string;
+  sort: AdSkuSort;
+  page: number;
+  size: number;
+}
+
+export function getAdSkuStats(values: AdSkuStatsQuery): Promise<AdSkuStatsResponse> {
+  const query = new URLSearchParams({
+    shop_id: String(values.shopId),
+    from: values.from,
+    to: values.to,
+    q: values.q,
+    sort: values.sort,
+    order: "desc",
+    page: String(values.page),
+    size: String(values.size),
+  });
+  return request<AdSkuStatsResponse>(`/api/performance/sku-stats?${query}`);
 }
