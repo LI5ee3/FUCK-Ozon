@@ -19,6 +19,7 @@ const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
   profit: () => import("../views/ProfitView.vue"),
   transfer: () => import("../views/TransferView.vue"),
   sync: () => import("../views/SyncView.vue"),
+  rules: () => import("../views/RulesView.vue"),
 };
 
 const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({
