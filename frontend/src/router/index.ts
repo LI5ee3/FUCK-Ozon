@@ -16,6 +16,7 @@ const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
   advertising: () => import("../views/AdsView.vue"),
   "ad-campaigns": () => import("../views/AdCampaignsView.vue"),
   "ad-skus": () => import("../views/AdSkusView.vue"),
+  profit: () => import("../views/ProfitView.vue"),
 };
 
 const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({

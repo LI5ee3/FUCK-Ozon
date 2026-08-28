@@ -33,7 +33,7 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 ```text
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
 static/           纯原生前端页面（Macaron UI 体系、Tabler 矢量图标、物理形变组件）
-frontend/         新 Vue 3 + TypeScript + Vite 前端（逐页迁移阶段，已迁移总览、订单、库存与备货建议、流量与搜索分析、广告总览、广告活动、发货与配送时效、取消风险、异常订单明细、异常订单投诉、异常预警）
+frontend/         新 Vue 3 + TypeScript + Vite 前端（逐页迁移阶段，已迁移总览、订单、库存与备货建议、流量与搜索分析、广告总览、广告活动、SKU 广告分析、发货与配送时效、取消风险、异常订单明细、异常订单投诉、异常预警、利润测算）
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板
@@ -56,8 +56,9 @@ docs/             部署与业务口径文档
 - Returns / 异常订单明细
 - Complaints / 异常订单投诉
 - Alerts / 异常预警
+- Profit / 利润测算
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：未开始；Phase 15 尚未整体完成；其他未迁移页面仍使用 Placeholder 或旧前端。`static/` 仍是当前生产前端，生产入口尚未切换到 `frontend/dist/`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend

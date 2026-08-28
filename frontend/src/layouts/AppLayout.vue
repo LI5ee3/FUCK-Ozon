@@ -139,6 +139,7 @@ onMounted(async () => {
         </div>
         <div class="opanel-header-actions">
           <NSelect
+            v-if="route.name !== 'profit'"
             :value="selectedShopId"
             :options="shopOptions"
             class="opanel-shop-select"
