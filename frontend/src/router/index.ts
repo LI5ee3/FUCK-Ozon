@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 import AppLayout from "../layouts/AppLayout.vue";
-import PlaceholderView from "../views/PlaceholderView.vue";
 import { navigationItems } from "./navigation";
 
 const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
@@ -24,10 +23,16 @@ const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
   dingtalk: () => import("../views/DingTalkView.vue"),
 };
 
+function componentFor(name: string): NonNullable<RouteRecordRaw["component"]> {
+  const component = migratedViews[name];
+  if (!component) throw new Error(`Missing migrated Vue view: ${name}`);
+  return component;
+}
+
 const pageRoutes: RouteRecordRaw[] = navigationItems.map((item) => ({
   path: item.path === "/" ? "" : item.path.slice(1),
   name: item.name,
-  component: migratedViews[item.name] ?? PlaceholderView,
+  component: componentFor(item.name),
   meta: { title: item.label, icon: item.icon, description: item.description },
 }));
 

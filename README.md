@@ -64,7 +64,7 @@ docs/             部署与业务口径文档
 - DingTalk / 钉钉机器人
 - Settings / 系统设置
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成。当前计划内页面已完成 Vue 逐页迁移，但 `static/` 仍是当前生产前端，生产入口尚未切换 `frontend/dist`。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成。当前计划内页面已完成 Vue 逐页迁移，Login / App Shell / Router 入口也已完成最终化，但 `static/` 仍是当前生产前端，生产入口尚未切换 `frontend/dist`。Phase 18：全站 Parity / Full QA：未开始；Phase 19：FastAPI 生产入口切换 `frontend/dist`：未开始；Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend

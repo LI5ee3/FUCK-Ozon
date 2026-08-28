@@ -236,76 +236,6 @@ morph-icon {
   padding: 0 32px 48px;
 }
 
-.placeholder-view {
-  max-width: 960px;
-  padding-top: 8px;
-}
-
-.placeholder-card {
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  background: var(--opanel-panel) !important;
-  box-shadow: var(--opanel-shadow);
-}
-
-.placeholder-card .n-card__content {
-  padding: 40px;
-}
-
-.placeholder-body {
-  display: flex;
-  align-items: flex-start;
-  gap: 24px;
-}
-
-.placeholder-mark {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: var(--opanel-radius-card);
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
-}
-
-.placeholder-copy h2 {
-  margin: 14px 0 8px;
-  font-size: 20px;
-  letter-spacing: -0.015em;
-}
-
-.placeholder-copy p {
-  max-width: 620px;
-  margin: 0;
-  color: var(--opanel-muted);
-}
-
-.placeholder-note {
-  margin-top: 8px !important;
-}
-
-.placeholder-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 24px;
-  color: var(--opanel-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.placeholder-status .status-ok {
-  color: var(--opanel-success);
-}
-
-.placeholder-status .separator {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--opanel-line);
-}
-
 .login-page {
   min-height: 100vh;
   display: grid;
@@ -391,14 +321,8 @@ morph-icon {
     flex: 1 1 180px;
   }
 
-  .placeholder-card .n-card__content,
   .login-card .n-card__content {
     padding: 24px;
-  }
-
-  .placeholder-body {
-    flex-direction: column;
-    gap: 16px;
   }
 }
 
