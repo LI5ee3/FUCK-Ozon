@@ -1,6 +1,11 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { getSession, login as loginRequest } from "../api/auth";
-import { getErrorMessage, setCsrfToken, UNAUTHORIZED_EVENT } from "../api/client";
+import {
+  getErrorMessage,
+  LOGOUT_EVENT,
+  setCsrfToken,
+  UNAUTHORIZED_EVENT,
+} from "../api/client";
 
 export function useAuth() {
   const authenticated = ref(false);
@@ -55,8 +60,20 @@ export function useAuth() {
     error.value = "登录状态已失效，请重新登录";
   };
 
-  onMounted(() => window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized));
-  onBeforeUnmount(() => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized));
+  const handleLogout = (): void => {
+    authenticated.value = false;
+    setCsrfToken("");
+    error.value = "";
+  };
+
+  onMounted(() => {
+    window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    window.addEventListener(LOGOUT_EVENT, handleLogout);
+  });
+  onBeforeUnmount(() => {
+    window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized);
+    window.removeEventListener(LOGOUT_EVENT, handleLogout);
+  });
 
   return { authenticated, ready, loading, error, restoreSession, login };
 }

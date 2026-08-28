@@ -1,4 +1,5 @@
 export const UNAUTHORIZED_EVENT = "opanel:unauthorized";
+export const LOGOUT_EVENT = "opanel:logout";
 
 let csrfToken = "";
 

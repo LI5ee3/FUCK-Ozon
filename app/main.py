@@ -185,6 +185,12 @@ async def login(request: Request, response: Response):
     return {"ok": True}
 
 
+@app.post("/api/logout")
+def logout(response: Response):
+    response.delete_cookie("session", path="/", httponly=True, samesite="strict")
+    return {"ok": True}
+
+
 @app.get("/api/shops")
 def shops():
     with connect() as db:

@@ -14,7 +14,8 @@ import {
   useNotification,
 } from "naive-ui";
 import { RouterView, useRoute, useRouter } from "vue-router";
-import { getErrorMessage } from "../api/client";
+import { logout as logoutRequest } from "../api/auth";
+import { ApiError, getErrorMessage, LOGOUT_EVENT } from "../api/client";
 import { useShop } from "../composables/useShop";
 import { useTheme } from "../composables/useTheme";
 import { menuOptions } from "../router/navigation";
@@ -30,6 +31,7 @@ const { isDark, toggle: toggleTheme } = useTheme();
 const pageTitle = computed(() => String(route.meta.title ?? "oPanel"));
 const pageIcon = computed(() => String(route.meta.icon ?? "dashboard"));
 const collapsed = ref(false);
+const loggingOut = ref(false);
 const logoSrc = "/static/logo.svg";
 const userMenuOptions = [{ label: "退出", key: "logout" }];
 
@@ -37,16 +39,40 @@ function navigate(path: string): void {
   void router.push(path);
 }
 
-function showLogoutNotice(): void {
-  dialog.info({
+function showLogoutDialog(): void {
+  let dialogInstance: ReturnType<typeof dialog.warning> | undefined;
+  dialogInstance = dialog.warning({
     title: "退出登录",
-    content: "当前后端只提供登录与 Session 查询接口，尚未提供退出接口。",
-    positiveText: "知道了",
+    content: "确定要退出当前登录吗？",
+    positiveText: "退出",
+    negativeText: "取消",
+    onPositiveClick: async () => {
+      if (loggingOut.value) return false;
+      loggingOut.value = true;
+      if (dialogInstance) dialogInstance.loading = true;
+      try {
+        await logoutRequest();
+        window.dispatchEvent(new Event(LOGOUT_EVENT));
+        return true;
+      } catch (cause) {
+        if (!(cause instanceof ApiError) || cause.status !== 401) {
+          notification.error({
+            title: "退出登录失败",
+            content: getErrorMessage(cause),
+            duration: 4500,
+          });
+        }
+        return false;
+      } finally {
+        loggingOut.value = false;
+        if (dialogInstance) dialogInstance.loading = false;
+      }
+    },
   });
 }
 
 function handleUserMenu(key: string | number): void {
-  if (key === "logout") showLogoutNotice();
+  if (key === "logout") showLogoutDialog();
 }
 
 onMounted(async () => {
