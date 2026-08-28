@@ -16,7 +16,6 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": { target: apiTarget },
-      "/static": { target: apiTarget },
     },
   },
 });

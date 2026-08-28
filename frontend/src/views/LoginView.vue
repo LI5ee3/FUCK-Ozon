@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const password = ref("");
 const message = useMessage();
-const logoSrc = "/static/logo.svg";
+const logoSrc = "/assets/logo.svg";
 
 async function submit(): Promise<void> {
   const success = await props.login(password.value);

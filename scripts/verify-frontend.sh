@@ -48,6 +48,13 @@ fi
 [ "$status" = 200 ] || fail "unknown browser route 返回 HTTP $status。"
 cmp -s "$ROOT_BODY" "$TEMP_DIR/status-body" || fail 'unknown browser route 没有返回 Vue index。'
 
+for path in /assets/logo.svg /assets/morphicons.js /assets/TABLER_ICONS_LICENSE; do
+  if ! status=$(status_for "$path"); then
+    fail "current asset $path 请求失败。"
+  fi
+  [ "$status" = 200 ] || fail "current asset $path 返回 HTTP $status。"
+done
+
 for path in /static/logo.svg /static/morphicons.js; do
   if ! status=$(status_for "$path"); then
     fail "legacy asset $path 请求失败。"

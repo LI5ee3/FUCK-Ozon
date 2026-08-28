@@ -32,7 +32,7 @@ const pageTitle = computed(() => String(route.meta.title ?? "oPanel"));
 const pageIcon = computed(() => String(route.meta.icon ?? "dashboard"));
 const collapsed = ref(false);
 const loggingOut = ref(false);
-const logoSrc = "/static/logo.svg";
+const logoSrc = "/assets/logo.svg";
 const userMenuOptions = [{ label: "退出", key: "logout" }];
 
 function navigate(path: string): void {

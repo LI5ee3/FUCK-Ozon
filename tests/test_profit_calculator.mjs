@@ -1,10 +1,10 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const {
-  COST_KEYS,
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  PROFIT_COST_KEYS,
+  calculateProfit,
   normalizeProfitPrice,
-  calculateProfit
-} = require("../static/profit-calculator.js");
+} from "../frontend/src/utils/profit.ts";
 
 function assertClose(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} is not close to ${expected}`);
@@ -15,7 +15,7 @@ test("店铺1将 USD 售价标准化为 USD/CNY", () => {
     price_original: 100,
     price_currency: "USD",
     price_usd: 100,
-    price_cny: 720
+    price_cny: 720,
   });
 });
 
@@ -24,14 +24,14 @@ test("店铺2将 CNY 售价标准化为 USD/CNY", () => {
     price_original: 720,
     price_currency: "CNY",
     price_usd: 100,
-    price_cny: 720
+    price_cny: 720,
   });
 });
 
 test("费用 key 完整重命名", () => {
-  assert.ok(COST_KEYS.includes("international_transport_contract_service"));
-  assert.ok(COST_KEYS.includes("bank_acquiring_fee"));
-  assert.equal(COST_KEYS.includes(["insur", "ance"].join("")), false);
+  assert.ok(PROFIT_COST_KEYS.includes("international_transport_contract_service"));
+  assert.ok(PROFIT_COST_KEYS.includes("bank_acquiring_fee"));
+  assert.equal(PROFIT_COST_KEYS.includes(["insur", "ance"].join("")), false);
 });
 
 test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流", () => {
@@ -40,7 +40,7 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
     priceOriginal: 100,
     purchasePriceUsd: 40,
     usdCnyRate: 7.2,
-    fulfillmentMode: "FBP"
+    fulfillmentMode: "FBP",
   });
   assert.equal(fbp.costs.purchase_cost.value, 288);
   assert.equal(fbp.costs.hunchun_shipping.value, 10);
@@ -60,10 +60,10 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
     priceOriginal: 100,
     purchasePriceUsd: 40,
     usdCnyRate: 7.2,
-    fulfillmentMode: "realFBS"
+    fulfillmentMode: "realFBS",
   };
-  const hongKong = calculateProfit({...realFbsInput, realFbsChannel: "hongkong"});
-  const shenzhen = calculateProfit({...realFbsInput, realFbsChannel: "shenzhen"});
+  const hongKong = calculateProfit({ ...realFbsInput, realFbsChannel: "hongkong" });
+  const shenzhen = calculateProfit({ ...realFbsInput, realFbsChannel: "shenzhen" });
   assert.equal(hongKong.fulfillment_path, "realFBS_hongkong");
   assert.equal(hongKong.costs.hunchun_shipping.value, null);
   assert.equal(hongKong.costs.hunchun_shipping.status, "not_applicable");
@@ -90,15 +90,15 @@ test("店铺2使用 price_cny，缺少人民币售价时不返回 0", () => {
     priceOriginal: 720,
     purchasePriceUsd: 40,
     usdCnyRate: 7.2,
-    fulfillmentMode: "FBP"
+    fulfillmentMode: "FBP",
   });
   assert.equal(shop2.price_cny, 720);
   assertClose(shop2.costs.international_transport_contract_service.value, 2.376);
   assertClose(shop2.costs.bank_acquiring_fee.value, 7.2);
   assertClose(shop2.total_cost_cny, 307.576);
 
-  const missingPrice = calculateProfit({shopId: 1, usdCnyRate: 7.2, fulfillmentMode: "FBP"});
-  const missingRate = calculateProfit({shopId: 1, priceOriginal: 100, usdCnyRate: 0, fulfillmentMode: "FBP"});
+  const missingPrice = calculateProfit({ shopId: 1, usdCnyRate: 7.2, fulfillmentMode: "FBP" });
+  const missingRate = calculateProfit({ shopId: 1, priceOriginal: 100, usdCnyRate: 0, fulfillmentMode: "FBP" });
   for (const result of [missingPrice, missingRate]) {
     assert.equal(result.costs.international_transport_contract_service.value, null);
     assert.equal(result.costs.international_transport_contract_service.status, "missing_input");
