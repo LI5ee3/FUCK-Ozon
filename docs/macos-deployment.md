@@ -18,6 +18,8 @@ http://127.0.0.1:38652
 
 不使用备用端口，不监听 `0.0.0.0`。安装脚本不会自动配置 Cloudflare，也不会让 oPanel 管理 `cloudflared` 的生命周期。
 
+当前生产状态：Phase 19 Production Cutover 已完成。FastAPI 从 `frontend/dist/` 提供 Vue SPA，`/static/` 继续挂载供 Legacy/shared assets 使用；Phase 20 Static Cleanup 尚未开始。
+
 ## 1. 安装 oPanel
 
 准备 macOS、Python 3.14（优先）或 Python 3.12+，以及 Node.js 22.18.x 或 >=24.11.0 和 npm，并确保可以访问 Ozon API：
@@ -126,7 +128,7 @@ start service
 验证 root、19 deep links、assets、API isolation
 ```
 
-构建、type-check、Vite artifact verification 任一失败，或存在运行中的同步任务时，脚本不会停止/重启当前生产服务。验证失败会在服务停止期间恢复 `frontend/dist.previous`，新产物保留为 `frontend/dist.failed/` 供排查。脚本不执行 reset、clean，不覆盖 `.env`，不删除 `data/`。
+构建、type-check、Vite artifact verification 任一失败，或存在运行中的同步任务时，脚本不会停止/重启当前生产服务。验证失败会在服务停止期间恢复 `frontend/dist.previous`，新产物保留为 `frontend/dist.failed/` 供排查。脚本不执行 reset、clean，不覆盖 `.env`，不删除 `data/`。当前生产切换已通过该流程完成。
 
 `frontend/dist.next/`、`frontend/dist.previous/` 和 `frontend/dist.failed/` 都是本地产物目录，不提交 Git。
 

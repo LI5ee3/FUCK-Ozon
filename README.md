@@ -42,7 +42,7 @@ docs/             部署与业务口径文档
 
 ## Vue 前端与生产入口
 
-`frontend/dist/` 是 Phase 19 要切换的正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 将从这里返回 SPA index。`static/` 继续挂载，仅保留 `/static/logo.svg`、`/static/morphicons.js` 及 Phase 20 前尚未清理的 Legacy assets。
+`frontend/dist/` 是正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 从这里返回 SPA index。`static/` 不再作为根前端，但继续挂载，仅保留 `/static/logo.svg`、`/static/morphicons.js` 及 Phase 20 前尚未清理的 Legacy assets。
 
 - Dashboard / 总览
 - Orders / 订单
@@ -64,7 +64,7 @@ docs/             部署与业务口径文档
 - DingTalk / 钉钉机器人
 - Settings / 系统设置
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 19：implementation ready / production cutover pending；Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成；Phase 19 Production Cutover：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend
@@ -72,7 +72,7 @@ npm ci
 npm run dev
 ```
 
-后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产仍使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel；生产切换由 `scripts/update.sh` 完成并通过 serving gate 验证。
+后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产入口现为 `frontend/dist/`，继续使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel。
 
 ## macOS + Apple Silicon 部署
 

@@ -4,7 +4,7 @@
 
 **Phase 18：COMPLETE / PASS。**
 
-静态代码、API 契约、认证/CSRF、隔离数据库读写、自动化检查以及真实 Browser QA 均已执行。官方 In-app Browser runtime 已恢复，本轮完成 19 个 route 的认证 Legacy/Vue 对照、1440×900 Desktop Light/Dark、390×844 Narrow、Console、Network 和真实交互验收。Phase 19 当前为 implementation ready / production cutover pending。
+静态代码、API 契约、认证/CSRF、隔离数据库读写、自动化检查以及真实 Browser QA 均已执行。官方 In-app Browser runtime 已恢复，本轮完成 19 个 route 的认证 Legacy/Vue 对照、1440×900 Desktop Light/Dark、390×844 Narrow、Console、Network 和真实交互验收。Phase 19 Production Cutover 已完成。
 
 Browser QA 完成后没有未解决的 P0/P1/P2 parity defect。
 
@@ -211,7 +211,7 @@ Build produced all 19 lazy route chunks: `Ads 48.57 kB`、`Dashboard 49.60 kB`�
 - Temporary Backend and Vite QA process were stopped; no QA service was left running.
 - Temporary QA root, SQLite backup DB, temporary password file, session artifacts, screenshots, CSV fixture and download artifacts were deleted or discarded.
 - `app/`、`static/`、production `.env`、production DB、launchd、Cloudflare Tunnel、38652 production service均未修改。
-- Phase 19 serving implementation 已就绪；production cutover 尚待真实 38652 gate。`static/` 在切换确认前仍是生产前端，Phase 20 未开始。
+- Phase 19 serving implementation 与真实 38652 production cutover 均已通过；`frontend/dist` 是生产前端，`static/` 仍保留并挂载，Phase 20 未开始。
 
 ## Phase 18 release gate
 
@@ -226,6 +226,6 @@ Build produced all 19 lazy route chunks: `Ads 48.57 kB`、`Dashboard 49.60 kB`�
 | Profit 50 USD frozen sample | PASS |
 | P0/P1/P2 unresolved defects | None |
 | Phase 18 overall | **COMPLETE / PASS** |
-| Phase 19 cutover | IMPLEMENTATION READY / PENDING PRODUCTION GATE |
+| Phase 19 cutover | **COMPLETE / PASS** |
 
-Phase 19 的 serving implementation 已完成，但真实生产切换尚未确认；在 production gate 通过前不执行 Phase 20 Static Cleanup。
+Phase 19 的 serving implementation 与真实生产切换均已完成；Phase 20 Static Cleanup 尚未执行。
