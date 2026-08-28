@@ -7,7 +7,7 @@ from tests.support import (DatabaseTestCase, add_item, add_order,
                            add_stock_snapshot)
 
 
-class InventoryPageTest(DatabaseTestCase):
+class InventoryTest(DatabaseTestCase):
     def setUp(self):
         super().setUp()
         now = datetime.now(timezone.utc)

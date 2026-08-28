@@ -1,6 +1,7 @@
 import json
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi import HTTPException
 
@@ -243,6 +244,20 @@ class InventoryForecastTest(DatabaseTestCase):
             stock(1, channel="other")
         with self.assertRaises(HTTPException):
             stock(1, risk="other")
+
+    def test_inventory_policy_remains_backend_owned(self):
+        root = Path(__file__).parents[1]
+        backend = (root / "app/main.py").read_text()
+        inventory = (root / "frontend/src/views/InventoryView.vue").read_text()
+        self.assertIn("FORECAST_LEAD_TIME_DAYS = 25", backend)
+        self.assertIn("FORECAST_TARGET_COVER_DAYS = 60", backend)
+        self.assertIn("FORECAST_OVERSTOCK_DAYS = 90", backend)
+        self.assertIn('"inbound_included": False', backend)
+        self.assertIn("demand = FBP + realFBS sales", backend)
+        self.assertIn("replenishment stock = FBP only", backend)
+        self.assertIn("row.lead_time_days", inventory)
+        self.assertIn("row.target_cover_days", inventory)
+        self.assertNotIn("FORECAST_LEAD_TIME_DAYS", inventory)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ async def rows(response):
     return [json.loads(line) async for line in response.body_iterator]
 
 
-class TransferPageTest(DatabaseTestCase):
+class TransferTest(DatabaseTestCase):
     def test_export_range_uses_beijing_day_and_rejects_reverse_dates(self):
         value = _export_range("2026-08-01", "2026-08-01")
         self.assertEqual(value[2:5], ("2026-07-31T16:00:00Z", "2026-08-01T16:00:00Z", True))

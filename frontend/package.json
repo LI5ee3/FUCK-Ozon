@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "type-check": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json",
+    "test:profit": "node --test ../tests/test_profit_calculator.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

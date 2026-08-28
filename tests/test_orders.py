@@ -7,7 +7,7 @@ from app.main import orders
 from tests.support import DatabaseTestCase
 
 
-class OrdersPageTest(DatabaseTestCase):
+class OrdersTest(DatabaseTestCase):
     def setUp(self):
         super().setUp()
         with db.transaction() as connection:
