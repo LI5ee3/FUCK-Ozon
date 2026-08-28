@@ -1,6 +1,6 @@
 # oPanel
 
-oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与原生 Macaron 前端开发，现处于新 Vue 前端逐页迁移阶段，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
+oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与 Vue 3 + TypeScript + Vite 前端，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
 
 ## 主要功能
 
@@ -43,7 +43,9 @@ docs/             部署与业务口径文档
 
 ## Vue 前端与生产入口
 
-`frontend/dist/` 是正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 从这里返回 SPA index。Phase 20 cleanup implementation 已完成，production cleanup pending。
+`frontend/dist/` 是正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 从这里返回 SPA index。Legacy static frontend 已完成清理，生产前端完全由 `frontend/dist` 提供。
+
+生产路由约定：`/` 与 deep links 返回 Vue，`/assets/*` 提供构建资产，`/api/*` 进入后端，`/static/*` 明确返回 404。
 
 - Dashboard / 总览
 - Orders / 订单
@@ -65,7 +67,7 @@ docs/             部署与业务口径文档
 - DingTalk / 钉钉机器人
 - Settings / 系统设置
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成；Phase 19 Production Cutover：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 20：cleanup implementation ready / production cleanup pending。Vite 默认将 `/api` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成；Phase 19 Production Cutover：完成；Phase 20 Static Cleanup：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Vite 默认将 `/api` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend

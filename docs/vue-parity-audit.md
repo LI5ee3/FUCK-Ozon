@@ -229,3 +229,9 @@ Build produced all 19 lazy route chunks: `Ads 48.57 kB`、`Dashboard 49.60 kB`�
 | Phase 19 cutover | **COMPLETE / PASS** |
 
 Phase 19 的 serving implementation 与真实生产切换均已完成；Phase 20 Static Cleanup 尚未执行。
+
+## Phase 20 completion note
+
+Phase 20 Static Cleanup 已完成。Stage A 先将 Logo、Morphicons 和 Tabler Icons License 迁移到 `frontend/public/assets/`，并让 active Vue dist 完全脱离 `/static/*`；Stage B 随后删除 Legacy `static/`、移除 FastAPI `/static` mount、保留 SPA 的 `static` namespace 404 阻断，并完成 38652 production cutover。
+
+本文件上文对 `static/index.html`、`static/app.js` 及相关 Legacy 行为的引用，是 Phase 18 parity baseline 的历史事实，不代表当前仓库或生产运行时仍提供这些文件；旧实现可通过 Git history 查看。Legacy Profit 5 条回归已迁移到当前 `frontend/src/utils/profit.ts`，当前 runtime 仅使用 Vue frontend 与 `frontend/dist`。

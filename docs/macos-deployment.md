@@ -18,7 +18,7 @@ http://127.0.0.1:38652
 
 不使用备用端口，不监听 `0.0.0.0`。安装脚本不会自动配置 Cloudflare，也不会让 oPanel 管理 `cloudflared` 的生命周期。
 
-当前生产状态：Phase 19 Production Cutover 已完成。FastAPI 从 `frontend/dist/` 提供 Vue SPA，`/static/` 继续挂载供 Legacy/shared assets 使用；Phase 20 Static Cleanup 尚未开始。
+当前生产状态：Phase 20 Static Cleanup 已完成。FastAPI 从 `frontend/dist/` 提供 Vue SPA，`/assets/` 提供构建资产，`/static/*` 明确返回 404。
 
 ## 1. 安装 oPanel
 
@@ -41,7 +41,7 @@ cd oPanel
 7. 使用现有 `app.security.migrate_env_password` 迁移旧版 `ADMIN_PASSWORD`。
 8. 使用现有 `app.security.password_hash` 生成缺失的 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`。首次自动生成的管理员密码只在终端显示一次，请立即安全保存。
 9. 将 launchd 配置安装到 `~/Library/LaunchAgents/com.opanel.app.plist`，在启动前把 staged build 激活为 `frontend/dist/`，创建 `logs/` 并启动服务。
-10. 使用 `scripts/verify-frontend.sh` 请求 `http://127.0.0.1:38652/`、19 个 Vue deep links、Vite/Legacy assets 和 API isolation。
+10. 使用 `scripts/verify-frontend.sh` 请求 `http://127.0.0.1:38652/`、19 个 Vue deep links、`/assets/` 当前资产、`/static/*` 404 和 API isolation。
 
 安装不需要 `sudo`。脚本不会覆盖已有 `.env`，也不会删除 `data/`。
 
@@ -134,9 +134,9 @@ start service
 
 ## 2.1 Production serving
 
-FastAPI 正式从 `frontend/dist/index.html` 提供 `/` 和 Vue history deep links；`/assets/*` 提供 Vite hashed assets，并对 index 设置 `Cache-Control: no-cache`。`/static/*` 继续挂载，用于 `/static/logo.svg`、`/static/morphicons.js` 以及 Phase 20 前保留的 Legacy assets。
+FastAPI 正式从 `frontend/dist/index.html` 提供 `/` 和 Vue history deep links；`/assets/*` 提供 Vite hashed assets，并对 index 设置 `Cache-Control: no-cache`。Legacy static frontend 已删除，`/static/*` 明确返回 404。
 
-`/api/*`、`/static/*` 和 `/assets/*` 不进入 SPA fallback；未知 API 继续返回认证/404 语义，缺失 asset 返回 404。生产入口仍为 `127.0.0.1:38652`，Cloudflare Tunnel Origin 不变。
+`/api/*`、`/static/*` 和 `/assets/*` 不进入 SPA fallback；`/static/*` 不会返回 Vue index，未知 API 继续返回认证/404 语义，缺失 asset 返回 404。生产入口仍为 `127.0.0.1:38652`，Cloudflare Tunnel Origin 不变。
 
 ## 3. 安装 Cloudflare Tunnel
 
