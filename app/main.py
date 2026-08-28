@@ -42,7 +42,6 @@ from .security import (clear_login_failures, login_limited, migrate_env_password
                        password_matches, record_login_failure)
 
 ROOT = Path(__file__).resolve().parent.parent
-STATIC = ROOT / "static"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
@@ -105,7 +104,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
 app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
 
 

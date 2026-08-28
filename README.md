@@ -32,8 +32,9 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 
 ```text
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
-static/           Phase 20 前暂时保留的 Legacy frontend / shared legacy assets
 frontend/         正式 Vue 3 + TypeScript + Vite production frontend source（构建输出为 frontend/dist）
+frontend/public/assets/
+                  Vue public assets、Morphicons 与第三方 License
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板
@@ -42,7 +43,7 @@ docs/             部署与业务口径文档
 
 ## Vue 前端与生产入口
 
-`frontend/dist/` 是正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 从这里返回 SPA index。`static/` 不再作为根前端，但继续挂载，仅保留 `/static/logo.svg`、`/static/morphicons.js` 及 Phase 20 前尚未清理的 Legacy assets。
+`frontend/dist/` 是正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 从这里返回 SPA index。Phase 20 cleanup implementation 已完成，production cleanup pending。
 
 - Dashboard / 总览
 - Orders / 订单
@@ -64,7 +65,7 @@ docs/             部署与业务口径文档
 - DingTalk / 钉钉机器人
 - Settings / 系统设置
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成；Phase 19 Production Cutover：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成；Phase 19 Production Cutover：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 20：cleanup implementation ready / production cleanup pending。Vite 默认将 `/api` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend
@@ -228,5 +229,5 @@ tail -f logs/opanel.stderr.log
 
 本项目前端交互与图标体系引用并改进了以下优秀的开源项目：
 
-- **[Tabler Icons](https://tabler.io/icons)** (by [Paweł Kuna](https://github.com/codecalm))：全站统一采用其 24×24 规范矢量图标定义，遵循 **[MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)**（见 [`static/TABLER_ICONS_LICENSE`](static/TABLER_ICONS_LICENSE)）。
-- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：基于其 Apple Spring 弹簧物理形变与几何重采样算法，为本项目定制封装了零外部依赖、自包含内置 52 款图标的纯原生 `<morph-icon>` Web Component（见 [`static/morphicons.js`](static/morphicons.js)），遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。
+- **[Tabler Icons](https://tabler.io/icons)** (by [Paweł Kuna](https://github.com/codecalm))：全站统一采用其 24×24 规范矢量图标定义，遵循 **[MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)**（见 [`frontend/public/assets/TABLER_ICONS_LICENSE`](frontend/public/assets/TABLER_ICONS_LICENSE)）。
+- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：基于其 Apple Spring 弹簧物理形变与几何重采样算法，为本项目定制封装了零外部依赖、自包含内置 52 款图标的纯原生 `<morph-icon>` Web Component（见 [`frontend/public/assets/morphicons.js`](frontend/public/assets/morphicons.js)），遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。

@@ -87,9 +87,10 @@ class AnalyticsApiTest(DatabaseTestCase):
         self.assertIn("unavailable", raised.exception.detail)
 
     def test_page_loads_details_only_from_click_handler(self):
-        script = (Path(__file__).parents[1] / "static" / "app.js").read_text()
-        self.assertIn('$("#productQueryRows").onclick', script)
-        self.assertNotIn("loadProductQueryDetails()", script[script.index("async function loadProductQueries"):script.index("async function loadProductQueryDetails")])
+        view = (Path(__file__).parents[1] / "frontend/src/views/AnalyticsView.vue").read_text()
+        self.assertIn("onClick: () => { void loadDetails(row); }", view)
+        rows_loader = view[view.index("async function loadProductQueryRows"):view.index("async function loadDetails")]
+        self.assertNotIn("getProductQueryDetails", rows_loader)
 
 
 class RiskPageTest(DatabaseTestCase):

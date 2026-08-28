@@ -55,21 +55,29 @@ for path in /assets/logo.svg /assets/morphicons.js /assets/TABLER_ICONS_LICENSE;
   [ "$status" = 200 ] || fail "current asset $path 返回 HTTP $status。"
 done
 
-for path in /static/logo.svg /static/morphicons.js; do
-  if ! status=$(status_for "$path"); then
+for path in /static/logo.svg /static/morphicons.js /static/TABLER_ICONS_LICENSE \
+            /static/app.js /static/index.html /static/macaron.css /static/profit-calculator.js; do
+  LEGACY_HEADERS="$TEMP_DIR/legacy.headers"
+  if ! status=$(curl --noproxy '*' -sS --max-time 10 -D "$LEGACY_HEADERS" \
+    -o "$TEMP_DIR/status-body" -w '%{http_code}' "$BASE_URL$path"); then
     fail "legacy asset $path 请求失败。"
   fi
-  [ "$status" = 200 ] || fail "legacy asset $path 返回 HTTP $status。"
+  [ "$status" = 404 ] || fail "legacy asset $path 返回 HTTP $status。"
+  if grep -Eiq '^content-type:[[:space:]]*text/html' "$LEGACY_HEADERS"; then
+    fail "legacy asset $path 返回了 HTML，而不是 404。"
+  fi
+  grep -q '<div id="app"></div>' "$TEMP_DIR/status-body" && fail "legacy asset $path 返回了 Vue index。"
 done
 
 if ! status=$(status_for /assets/does-not-exist.js); then
   fail 'missing Vite asset 请求失败。'
 fi
-[ "$status" = 404 ] || fail "missing Vite asset 返回 HTTP $status。"
+[ "$status" = "404" ] || fail "missing Vite asset 返回 HTTP $status。"
+
 if ! status=$(status_for /static/does-not-exist.js); then
   fail 'missing legacy asset 请求失败。'
 fi
-[ "$status" = 404 ] || fail "missing legacy asset 返回 HTTP $status。"
+[ "$status" = "404" ] || fail "missing legacy asset 返回 HTTP $status。"
 
 SESSION_HEADERS="$TEMP_DIR/session.headers"
 SESSION_BODY="$TEMP_DIR/session.json"
@@ -77,7 +85,7 @@ if ! status=$(curl --noproxy '*' -sS --max-time 10 -D "$SESSION_HEADERS" -o "$SE
   -w '%{http_code}' "$BASE_URL/api/session"); then
   fail '/api/session 请求失败。'
 fi
-[ "$status" = 200 ] || fail "/api/session 返回 HTTP $status。"
+[ "$status" = "200" ] || fail "/api/session 返回 HTTP $status。"
 grep -Eiq '^content-type:[[:space:]]*application/json' "$SESSION_HEADERS" || fail '/api/session 不是 JSON。'
 grep -q '"authenticated":false' "$SESSION_BODY" || fail '/api/session 未认证契约异常。'
 
@@ -86,13 +94,13 @@ if ! status=$(curl --noproxy '*' -sS --max-time 10 -D "$PROTECTED_HEADERS" -o /d
   -w '%{http_code}' "$BASE_URL/api/shops"); then
   fail '/api/shops 请求失败。'
 fi
-[ "$status" = 401 ] || fail "/api/shops 未认证时返回 HTTP $status。"
+[ "$status" = "401" ] || fail "/api/shops 未认证时返回 HTTP $status。"
 grep -Eiq '^content-type:[[:space:]]*application/json' "$PROTECTED_HEADERS" || fail '/api/shops 未认证响应不是 JSON。'
 
 if ! status=$(status_for /api/does-not-exist); then
   fail 'unknown API 请求失败。'
 fi
-[ "$status" = 401 ] || fail "unknown API 未认证时返回 HTTP $status。"
+[ "$status" = "401" ] || fail "unknown API 未认证时返回 HTTP $status。"
 
 if ! status=$(curl --noproxy '*' -sS --max-time 10 -X POST -o /dev/null -w '%{http_code}' \
   "$BASE_URL/this-route-does-not-exist"); then
@@ -104,3 +112,4 @@ case "$status" in
 esac
 
 printf 'Vue production serving verification passed：%s\n' "$BASE_URL"
+exit 0

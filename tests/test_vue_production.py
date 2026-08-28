@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class VueProductionTest(unittest.TestCase):
-    def test_fastapi_uses_vue_dist_and_keeps_legacy_mount(self):
+    def test_fastapi_uses_vue_dist_and_only_vue_assets_mount(self):
         self.assertEqual(main.FRONTEND_DIST, ROOT / "frontend/dist")
         mounts = {route.path: route for route in main.app.routes if isinstance(route, Mount)}
-        self.assertIn("/static", mounts)
+        self.assertNotIn("/static", mounts)
         self.assertIn("/assets", mounts)
         self.assertEqual(mounts["/assets"].name, "frontend-assets")
 
