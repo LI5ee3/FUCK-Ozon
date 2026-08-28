@@ -739,6 +739,45 @@ export interface AdsOverviewResponse extends AdsSummary {
   data_through: string | null;
 }
 
+export type AdCampaignState =
+  | ""
+  | "CAMPAIGN_STATE_RUNNING"
+  | "CAMPAIGN_STATE_INACTIVE"
+  | "CAMPAIGN_STATE_ARCHIVED"
+  | "CAMPAIGN_STATE_STOPPED";
+
+export type AdCampaignSort =
+  | "spend_rub"
+  | "revenue_rub"
+  | "orders"
+  | "drr"
+  | "roas"
+  | "impressions"
+  | "clicks";
+
+export interface AdCampaignItem extends AdsSummary {
+  shop_id: ShopId;
+  shop_name: string;
+  campaign_id: string;
+  name: string;
+  state: string;
+  payment_type: string | null;
+  adv_object_type: string | null;
+  placement: string | null;
+  weekly_budget: number | null;
+  data_through: string | null;
+}
+
+export interface AdCampaignStatsResponse {
+  items: AdCampaignItem[];
+  total: number;
+  page: number;
+  size: number;
+  date_from: string;
+  date_to: string;
+  data_through: string | null;
+}
+
 export interface RiskStats {
   valid: number;
   cancelled: number;
