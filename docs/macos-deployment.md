@@ -2,7 +2,7 @@
 
 ## 部署约定
 
-生产环境为 Mac mini M4 / Apple Silicon macOS、原生 Python venv、用户级 launchd、SQLite 和 Cloudflare Tunnel。
+生产环境为 Mac mini M4 / Apple Silicon macOS、原生 Python venv、Node.js/npm、用户级 launchd、SQLite 和 Cloudflare Tunnel。
 
 oPanel 固定监听：
 
@@ -20,7 +20,7 @@ http://127.0.0.1:38652
 
 ## 1. 安装 oPanel
 
-准备 macOS、Python 3.14（优先）或 Python 3.12+，并确保可以访问 Ozon API：
+准备 macOS、Python 3.14（优先）或 Python 3.12+，以及 Node.js 22.18.x 或 >=24.11.0 和 npm，并确保可以访问 Ozon API：
 
 ```sh
 git clone https://github.com/LI5ee3/oPanel.git
@@ -32,12 +32,14 @@ cd oPanel
 
 1. 确认当前系统为 macOS，并检查 `38652` 是否已被监听。
 2. 优先选择 `python3.14`，否则选择可用的 Python 3.12+。
-3. 在项目根目录创建或更新 `.venv`，安装 `requirements.txt`。
-4. 创建或检查 `.env`，并执行 `chmod 600 .env`。
-5. 使用现有 `app.security.migrate_env_password` 迁移旧版 `ADMIN_PASSWORD`。
-6. 使用现有 `app.security.password_hash` 生成缺失的 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`。首次自动生成的管理员密码只在终端显示一次，请立即安全保存。
-7. 将 launchd 配置安装到 `~/Library/LaunchAgents/com.opanel.app.plist`，创建 `logs/` 并启动服务。
-8. 请求 `http://127.0.0.1:38652/` 验证服务响应。
+3. 检查 `node --version` 和 `npm --version`；Node.js 必须满足 `^22.18.0 || >=24.11.0`，不满足时直接停止，不自动安装 Homebrew Node。
+4. 在项目根目录创建或更新 `.venv`，安装 `requirements.txt`。
+5. 执行 `scripts/build-frontend.sh`：使用 `npm ci`、Vue type-check 和 Vite build，将完整产物写入 `frontend/dist.next/` 并验证 `index.html`、JS/CSS assets 和 `/assets/` 引用。
+6. 创建或检查 `.env`，并执行 `chmod 600 .env`。
+7. 使用现有 `app.security.migrate_env_password` 迁移旧版 `ADMIN_PASSWORD`。
+8. 使用现有 `app.security.password_hash` 生成缺失的 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`。首次自动生成的管理员密码只在终端显示一次，请立即安全保存。
+9. 将 launchd 配置安装到 `~/Library/LaunchAgents/com.opanel.app.plist`，在启动前把 staged build 激活为 `frontend/dist/`，创建 `logs/` 并启动服务。
+10. 使用 `scripts/verify-frontend.sh` 请求 `http://127.0.0.1:38652/`、19 个 Vue deep links、Vite/Legacy assets 和 API isolation。
 
 安装不需要 `sudo`。脚本不会覆盖已有 `.env`，也不会删除 `data/`。
 
@@ -109,7 +111,30 @@ tail -f logs/opanel.stderr.log
 ./scripts/update.sh
 ```
 
-`update.sh` 使用 `git pull --ff-only`，然后用 `.venv` 更新依赖、重启服务并验证固定地址。更新失败会停止后续流程，不执行 reset、clean，不覆盖 `.env`，不删除 `data/`。
+`update.sh` 使用以下顺序：
+
+```text
+git pull --ff-only
+Python dependency update
+检查当前 launchd / 38652
+staged Vue build（npm ci、type-check、Vite build）
+production SQLite 只读检查 sync_runs.status='running'
+stop service，并等待 LaunchAgent 消失
+frontend/dist → frontend/dist.previous
+frontend/dist.next → frontend/dist
+start service
+验证 root、19 deep links、assets、API isolation
+```
+
+构建、type-check、Vite artifact verification 任一失败，或存在运行中的同步任务时，脚本不会停止/重启当前生产服务。验证失败会在服务停止期间恢复 `frontend/dist.previous`，新产物保留为 `frontend/dist.failed/` 供排查。脚本不执行 reset、clean，不覆盖 `.env`，不删除 `data/`。
+
+`frontend/dist.next/`、`frontend/dist.previous/` 和 `frontend/dist.failed/` 都是本地产物目录，不提交 Git。
+
+## 2.1 Production serving
+
+FastAPI 正式从 `frontend/dist/index.html` 提供 `/` 和 Vue history deep links；`/assets/*` 提供 Vite hashed assets，并对 index 设置 `Cache-Control: no-cache`。`/static/*` 继续挂载，用于 `/static/logo.svg`、`/static/morphicons.js` 以及 Phase 20 前保留的 Legacy assets。
+
+`/api/*`、`/static/*` 和 `/assets/*` 不进入 SPA fallback；未知 API 继续返回认证/404 语义，缺失 asset 返回 404。生产入口仍为 `127.0.0.1:38652`，Cloudflare Tunnel Origin 不变。
 
 ## 3. 安装 Cloudflare Tunnel
 

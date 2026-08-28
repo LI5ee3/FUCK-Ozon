@@ -42,6 +42,9 @@ from .security import (clear_login_failures, login_limited, migrate_env_password
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
+FRONTEND_DIST = ROOT / "frontend" / "dist"
+FRONTEND_ASSETS = FRONTEND_DIST / "assets"
+FRONTEND_INDEX = FRONTEND_DIST / "index.html"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
 BUYER_UNCLAIMED_REASONS = (
     "Покупатель не забрал заказ",
@@ -102,6 +105,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
 
 
 def _secret():
@@ -152,9 +156,15 @@ async def protect_api(request: Request, call_next):
     return await call_next(request)
 
 
+def _frontend_index_response():
+    if not FRONTEND_INDEX.is_file():
+        return Response("前端构建不存在，请先执行 frontend production build", 503, media_type="text/plain")
+    return FileResponse(FRONTEND_INDEX, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return _frontend_index_response()
 
 
 @app.get("/api/session")
@@ -2877,3 +2887,12 @@ def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: s
                     yield json.dumps(value, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
       headers={"Content-Disposition": f"attachment; filename={module}.jsonl"})
+
+
+@app.get("/{path:path}")
+def spa_fallback(path: str):
+    if (path == "api" or path.startswith("api/") or
+            path == "static" or path.startswith("static/") or
+            path == "assets" or path.startswith("assets/")):
+        raise HTTPException(404)
+    return _frontend_index_response()

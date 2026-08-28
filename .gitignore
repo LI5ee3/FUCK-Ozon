@@ -13,3 +13,6 @@ design-qa.md
 .DS_Store
 frontend/node_modules/
 frontend/dist/
+frontend/dist.next/
+frontend/dist.previous/
+frontend/dist.failed/

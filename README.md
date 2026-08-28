@@ -32,17 +32,17 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 
 ```text
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
-static/           纯原生前端页面（Macaron UI 体系、Tabler 矢量图标、物理形变组件）
-frontend/         新 Vue 3 + TypeScript + Vite 前端（逐页迁移阶段，已迁移总览、订单、库存与备货建议、流量与搜索分析、广告总览、广告活动、SKU 广告分析、发货与配送时效、取消风险、异常订单明细、异常订单投诉、异常预警、利润测算、数据导入导出、数据同步中心、商品匹配规则、推送订阅管理、DingTalk / 钉钉机器人、Settings / 系统设置）
+static/           Phase 20 前暂时保留的 Legacy frontend / shared legacy assets
+frontend/         正式 Vue 3 + TypeScript + Vite production frontend source（构建输出为 frontend/dist）
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板
 docs/             部署与业务口径文档
 ```
 
-## 新前端开发（迁移阶段）
+## Vue 前端与生产入口
 
-`static/` 仍是当前生产前端；`frontend/` 独立开发，处于逐页迁移阶段，当前已迁移：
+`frontend/dist/` 是 Phase 19 要切换的正式 Vue production frontend；FastAPI 的 `/` 与 Vue history deep links 将从这里返回 SPA index。`static/` 继续挂载，仅保留 `/static/logo.svg`、`/static/morphicons.js` 及 Phase 20 前尚未清理的 Legacy assets。
 
 - Dashboard / 总览
 - Orders / 订单
@@ -64,19 +64,19 @@ docs/             部署与业务口径文档
 - DingTalk / 钉钉机器人
 - Settings / 系统设置
 
-Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。`static/` 仍是当前生产前端，生产入口尚未切换 `frontend/dist`。Phase 19：FastAPI 生产入口切换 `frontend/dist`：未开始；Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
+Phase 13（Returns、Complaints、Alerts）已完成；Phase 14A（Ads Overview）、Phase 14B（Ad Campaigns）和 Phase 14C（SKU Ads Analysis）已完成，Phase 14 整体完成；Phase 15A Profit：完成；Phase 15B Transfer：完成；Phase 15 整体完成；Phase 16A Sync：完成并通过等价性修复；Phase 16B Rules：完成；Phase 16C Push Subscriptions：完成；Phase 16D DingTalk：完成；Phase 16E Settings：完成；Phase 16：整体完成；Phase 17 Login / App Shell：完成；Phase 18：全站 Parity / Full QA：完成。19 个 Vue 页面已完成隔离认证 Legacy/Vue 浏览器对照、Desktop Light / Dark / Narrow QA。Phase 19：implementation ready / production cutover pending；Phase 20：旧 `static/` 前端清理：未开始。Vite 默认将 `/api` 和 `/static` 代理到稳定的本机 FastAPI 地址 `127.0.0.1:38652`。
 
 ```sh
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产仍使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel，入口尚未切换到 `frontend/dist/`。
+后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产仍使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel；生产切换由 `scripts/update.sh` 完成并通过 serving gate 验证。
 
 ## macOS + Apple Silicon 部署
 
-生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+。
+生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、Node.js/npm、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22.18.x 或 >=24.11.0。
 
 完整部署说明见 [`docs/macos-deployment.md`](docs/macos-deployment.md)。
 
@@ -86,7 +86,7 @@ cd oPanel
 ./scripts/install-macos.sh
 ```
 
-安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），创建 `.venv`、安装 `requirements.txt`、创建或检查 `.env` 并设置权限为 `600`，完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，安装用户级 launchd 服务并验证：
+安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），检查受支持的 Node.js/npm，创建 `.venv`、安装 `requirements.txt`，用 `npm ci`、Vue type-check 和 staged production build 生成并激活 `frontend/dist`，再创建或检查 `.env`、设置权限为 `600`、完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，最后安装用户级 launchd 服务并验证：
 
 ```text
 http://127.0.0.1:38652
@@ -105,7 +105,7 @@ http://127.0.0.1:38652
 ./scripts/update.sh
 ```
 
-`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、重启和固定地址验证；不会覆盖 `.env` 或删除 `data/`。
+`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、production staged Vue build、running-sync 只读检查、服务停止、`dist` 激活、启动和固定地址 serving 验证；前端构建失败或存在运行中同步任务时不会重启现有服务，也不会覆盖 `.env` 或删除 `data/`。
 
 ### 3. Cloudflare Tunnel
 

@@ -58,6 +58,7 @@ fi
 printf '使用 Python：%s\n' "$("$PYTHON" --version 2>&1)"
 "$PYTHON" -m venv "$VENV"
 "$VENV_PYTHON" -m pip install -r "$ROOT/requirements.txt"
+"$ROOT/scripts/build-frontend.sh"
 
 touch "$ENV_FILE"
 chmod 600 "$ENV_FILE"
@@ -103,12 +104,16 @@ Path(sys.argv[2]).write_text(rendered, encoding="utf-8")
 PY
 
 plutil -lint "$PLIST"
-"$ROOT/scripts/start.sh"
-if ! curl -fsS --retry 15 --retry-delay 1 --retry-connrefused --max-time 10 \
-  http://127.0.0.1:38652/ >/dev/null
-then
+"$ROOT/scripts/activate-frontend.sh"
+if ! "$ROOT/scripts/start.sh"; then
   "$ROOT/scripts/stop.sh" || true
-  printf '%s\n' '错误：oPanel 未能在固定地址响应，安装已停止。' >&2
+  printf '%s\n' '错误：oPanel launchd 服务未能启动，安装已停止。' >&2
   exit 1
 fi
+if ! "$ROOT/scripts/verify-frontend.sh"; then
+  "$ROOT/scripts/stop.sh" || true
+  printf '%s\n' '错误：oPanel Vue production 前端验证失败，安装已停止。' >&2
+  exit 1
+fi
+rm -rf "$ROOT/frontend/dist.previous"
 printf '%s\n' 'oPanel 已启动并通过 http://127.0.0.1:38652/ 验证。'
