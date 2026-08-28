@@ -120,9 +120,30 @@ onMounted(async () => {
         @update:value="navigate"
       />
       <div class="opanel-sider-footer">
-        <NButton quaternary circle size="small" class="opanel-theme-button" @click="toggleTheme">
+        <NButton
+          quaternary
+          circle
+          size="small"
+          class="opanel-theme-button"
+          aria-label="切换主题"
+          title="切换主题"
+          @click="toggleTheme"
+        >
           <template #icon>
             <morph-icon :icon="isDark ? 'moon' : 'sun'" size="16" stroke-width="1.8" />
+          </template>
+        </NButton>
+        <NButton
+          quaternary
+          circle
+          size="small"
+          class="opanel-settings-button"
+          aria-label="系统设置"
+          title="系统设置"
+          @click="navigate('/settings')"
+        >
+          <template #icon>
+            <morph-icon icon="settings" size="16" stroke-width="1.8" />
           </template>
         </NButton>
       </div>
@@ -149,6 +170,18 @@ onMounted(async () => {
           <NButton quaternary circle class="opanel-theme-button" aria-label="切换主题" @click="toggleTheme">
             <template #icon>
               <morph-icon :icon="isDark ? 'moon' : 'sun'" size="17" stroke-width="1.8" />
+            </template>
+          </NButton>
+          <NButton
+            quaternary
+            circle
+            class="opanel-settings-button"
+            aria-label="系统设置"
+            title="系统设置"
+            @click="navigate('/settings')"
+          >
+            <template #icon>
+              <morph-icon icon="settings" size="17" stroke-width="1.8" />
             </template>
           </NButton>
           <NDropdown :options="userMenuOptions" trigger="click" @select="handleUserMenu">

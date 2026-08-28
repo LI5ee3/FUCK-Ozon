@@ -40,7 +40,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: "settings",
         name: "settings",
-        component: PlaceholderView,
+        component: () => import("../views/SettingsView.vue"),
         meta: {
           title: "系统设置",
           icon: "settings",

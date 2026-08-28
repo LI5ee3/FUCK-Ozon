@@ -1,6 +1,6 @@
 import { computed, ref } from "vue";
 
-type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark";
 
 const mode = ref<ThemeMode>("system");
 const systemDark = ref(false);
@@ -35,12 +35,21 @@ export function useTheme() {
     applyDocumentTheme(isDark.value);
   }
 
-  function toggle(): void {
-    mode.value = isDark.value ? "light" : "dark";
-    localStorage.setItem("themeFollowSystem", "false");
-    localStorage.setItem("theme", mode.value);
+  function setMode(next: ThemeMode): void {
+    mode.value = next;
+    if (next === "system") {
+      localStorage.setItem("themeFollowSystem", "true");
+      localStorage.removeItem("theme");
+    } else {
+      localStorage.setItem("themeFollowSystem", "false");
+      localStorage.setItem("theme", next);
+    }
     applyDocumentTheme(isDark.value);
   }
 
-  return { isDark, init, toggle };
+  function toggle(): void {
+    setMode(isDark.value ? "light" : "dark");
+  }
+
+  return { mode, isDark, init, toggle, setMode };
 }
