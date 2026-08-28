@@ -3454,3 +3454,497 @@ button.returns-meta-chip:hover {
     align-self: flex-end;
   }
 }
+
+.complaints-view {
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.complaints-toolbar {
+  margin-bottom: 14px;
+}
+
+.complaints-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.complaints-panel {
+  margin-bottom: 18px;
+}
+
+.complaints-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.complaints-panel-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--opanel-text);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.complaints-panel-header h2 morph-icon {
+  color: var(--opanel-primary);
+}
+
+.complaints-panel-header > div > span {
+  display: block;
+  margin-top: 4px;
+  color: var(--opanel-muted);
+  font-size: 12px;
+}
+
+.complaints-filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.complaints-filter .n-input {
+  width: min(100%, 320px);
+}
+
+.complaints-status-select {
+  width: 145px;
+}
+
+.complaints-table {
+  overflow: hidden;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+}
+
+.complaints-table .n-data-table-th {
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.complaints-table .n-data-table-td {
+  vertical-align: top;
+}
+
+.complaints-shop-time,
+.complaints-time-cell,
+.complaints-product-cell,
+.complaints-reason-cell,
+.complaints-state-cell,
+.complaints-amount-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.complaints-shop-badge,
+.complaints-meta-chip {
+  width: fit-content;
+  border: 1px solid var(--opanel-line);
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.complaints-shop-badge {
+  padding: 2px 7px;
+  border-radius: var(--opanel-radius-sm);
+}
+
+.complaints-copy-value {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--opanel-primary);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.complaints-copy-value:hover {
+  color: var(--opanel-primary-focus);
+  text-decoration: underline;
+}
+
+.complaints-order-number,
+.complaints-return-number {
+  color: var(--opanel-text);
+  font-weight: 700;
+}
+
+.complaints-order-sub,
+.complaints-time-cell > span,
+.complaints-muted-line,
+.complaints-state-cell > small {
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.complaints-product-title {
+  overflow: hidden;
+  color: var(--opanel-text);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.complaints-product-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.complaints-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: var(--opanel-radius-sm);
+  font-size: 11px;
+}
+
+.complaints-meta-chip b,
+.complaints-money-value,
+.complaints-muted-line b {
+  color: var(--opanel-text);
+  font-weight: 700;
+}
+
+.complaints-quantity-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.complaints-amount-cell {
+  align-items: flex-end;
+}
+
+.complaints-money-value {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.complaints-reason-chip {
+  color: var(--opanel-text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.complaints-deadline {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--opanel-line);
+  border-radius: 9999px;
+  color: var(--opanel-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.complaints-deadline--overdue {
+  border-color: color-mix(in srgb, var(--opanel-danger) 25%, transparent);
+  background: color-mix(in srgb, var(--opanel-danger) 12%, transparent);
+  color: var(--opanel-danger);
+  font-weight: 700;
+}
+
+.complaints-deadline--due_today,
+.complaints-deadline--due_soon {
+  border-color: color-mix(in srgb, var(--opanel-warning) 25%, transparent);
+  background: color-mix(in srgb, var(--opanel-warning) 12%, transparent);
+  color: var(--opanel-warning);
+  font-weight: 650;
+}
+
+.complaints-deadline b {
+  font-weight: 650;
+}
+
+.complaints-action-cell {
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.complaints-record-list {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.complaints-record-list button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 5px 9px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-sm);
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.complaints-record-list button:hover {
+  border-color: var(--opanel-primary);
+  background: var(--opanel-panel-solid);
+}
+
+.complaints-record-list strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--opanel-primary);
+  font-size: 11.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.complaints-record-list small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--opanel-muted);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.complaints-inline-status {
+  font-size: 10px !important;
+}
+
+.complaints-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-sm);
+  background: transparent;
+  color: var(--opanel-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.complaints-action-button:hover {
+  background: var(--opanel-primary-soft);
+}
+
+.complaints-buyer-details {
+  color: var(--opanel-muted);
+  font-size: 11px;
+}
+
+.complaints-buyer-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--opanel-primary);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.complaints-buyer-details p {
+  margin: 6px 0 0;
+  padding: 7px 9px;
+  border-radius: var(--opanel-radius-sm);
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-text);
+  overflow-wrap: anywhere;
+}
+
+.complaints-pager {
+  margin-top: 14px;
+}
+
+.complaints-modal-subtitle {
+  margin: -8px 0 16px;
+  color: var(--opanel-muted);
+  font-size: 12px;
+}
+
+.complaints-form {
+  min-width: 0;
+}
+
+.complaints-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.complaints-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.complaints-field > .n-input,
+.complaints-field > .n-input-number,
+.complaints-field > .n-base-selection {
+  width: 100%;
+}
+
+.complaints-native-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+  outline: none;
+  background: var(--opanel-panel-solid);
+  color: var(--opanel-text);
+  font-size: 13px;
+}
+
+.complaints-native-input:focus {
+  border-color: var(--opanel-primary);
+  box-shadow: 0 0 0 2px var(--opanel-primary-soft);
+}
+
+.complaints-readonly-field {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.complaints-compensation {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-card);
+  background: var(--opanel-panel-hover);
+}
+
+.complaints-compensation legend {
+  padding: 0 6px;
+  color: var(--opanel-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.complaints-compensation-result {
+  grid-column: 1 / -1;
+  padding: 8px 12px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+  background: var(--opanel-panel-solid);
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.complaints-notes {
+  grid-column: 1 / -1;
+}
+
+.complaints-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .complaints-panel-header {
+    flex-direction: column;
+  }
+
+  .complaints-filter {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .complaints-filter .n-input {
+    flex: 1 1 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .complaints-toolbar,
+  .complaints-panel .n-card__content {
+    padding: 16px;
+  }
+
+  .complaints-panel .n-card__header {
+    padding: 16px 16px 0;
+  }
+
+  .complaints-filter .n-input,
+  .complaints-status-select {
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .complaints-filter > .n-button {
+    flex: 1;
+  }
+
+  .complaints-form-grid,
+  .complaints-compensation {
+    grid-template-columns: 1fr;
+  }
+}
