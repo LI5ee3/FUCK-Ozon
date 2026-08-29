@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "./analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import ReturnsKpiCards from "../components/ReturnsKpiCards.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -702,22 +703,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-if="filters.tab === 'cancel'">
-      <div v-if="cancelKpis.length" class="analytics-kpi-grid returns-summary">
-        <NCard
-          v-for="kpi in cancelKpis"
-          :key="kpi.label"
-          :bordered="false"
-          class="analytics-kpi-card returns-kpi-card"
-          :class="`analytics-tone-${kpi.tone}`"
-        >
-          <div class="analytics-kpi-head">
-            <span>{{ kpi.label }}<NTag size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag></span>
-            <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
-          </div>
-          <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
-          <small>{{ kpi.note }}</small>
-        </NCard>
-      </div>
+      <ReturnsKpiCards :items="cancelKpis" />
 
       <NCard :bordered="false" class="analytics-table-card returns-panel">
         <template #header>
@@ -787,22 +773,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-else>
-      <div v-if="rfbsKpis.length" class="analytics-kpi-grid returns-summary">
-        <NCard
-          v-for="kpi in rfbsKpis"
-          :key="kpi.label"
-          :bordered="false"
-          class="analytics-kpi-card returns-kpi-card"
-          :class="`analytics-tone-${kpi.tone}`"
-        >
-          <div class="analytics-kpi-head">
-            <span>{{ kpi.label }}<NTag size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag></span>
-            <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
-          </div>
-          <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
-          <small>{{ kpi.note }}</small>
-        </NCard>
-      </div>
+      <ReturnsKpiCards :items="rfbsKpis" />
 
       <NCard :bordered="false" class="analytics-table-card returns-panel">
         <template #header>

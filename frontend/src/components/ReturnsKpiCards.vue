@@ -1,0 +1,37 @@
+<script setup lang="ts">
+import MorphIcon from "./MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
+import { NCard, NTag } from "naive-ui";
+
+type ReturnsKpi = {
+  icon: IconName;
+  label: string;
+  value: string;
+  badge: string;
+  note: string;
+  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+};
+
+defineProps<{
+  items: ReadonlyArray<ReturnsKpi>;
+}>();
+</script>
+
+<template>
+  <div v-if="items.length" class="analytics-kpi-grid returns-summary">
+    <NCard
+      v-for="kpi in items"
+      :key="kpi.label"
+      :bordered="false"
+      class="analytics-kpi-card returns-kpi-card"
+      :class="'analytics-tone-' + kpi.tone"
+    >
+      <div class="analytics-kpi-head">
+        <span>{{ kpi.label }}<NTag size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag></span>
+        <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+      </div>
+      <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
+      <small>{{ kpi.note }}</small>
+    </NCard>
+  </div>
+</template>
