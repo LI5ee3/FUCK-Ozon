@@ -87,9 +87,12 @@ def _cursor_pages(shop_id, path, payload, list_key, request_cursor="cursor", res
             return records
         if total is not None and len(records) >= int(total):
             return records
-        cursor = str(container.get(response_cursor) or body.get(response_cursor) or batch[-1].get("id") or "")
-        if not cursor:
+        next_cursor = str(container.get(response_cursor) or body.get(response_cursor) or batch[-1].get("id") or "")
+        if not next_cursor:
             raise RuntimeError(f"{path}: 分页游标缺失")
+        if next_cursor == cursor:
+            raise RuntimeError(f"{path}: 分页游标未前进")
+        cursor = next_cursor
     raise RuntimeError(f"{path}: 分页超过安全上限")
 
 

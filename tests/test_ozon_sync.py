@@ -43,6 +43,13 @@ class OzonSyncTest(DatabaseTestCase):
         self.assertEqual([row["id"] for row in records], [1, 2])
         self.assertEqual(post.call_args_list[1].args[2]["cursor"], "next")
 
+    def test_cursor_pages_stops_when_cursor_does_not_advance(self):
+        page = {"items": [{"id": 1}], "cursor": "stuck", "has_next": True}
+        with patch("app.ozon.client._post", return_value=page) as post:
+            with self.assertRaisesRegex(RuntimeError, "分页游标未前进"):
+                _cursor_pages(1, "/stocks", {"limit": 1}, "items")
+        self.assertEqual(post.call_count, 2)
+
     def test_returns_cursor_uses_last_return_id(self):
         pages = [
             {"returns": [{"id": "100"}, {"id": "101"}], "has_next": True},
