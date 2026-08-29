@@ -3,7 +3,7 @@ import unittest
 from fastapi import HTTPException
 
 from app import db
-from app.main import orders
+from app.routers.orders import orders
 from tests.support import DatabaseTestCase
 
 

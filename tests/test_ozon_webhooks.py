@@ -8,8 +8,10 @@ from unittest.mock import patch
 from fastapi import HTTPException, Response
 
 from app import db, main
-from app.main import WEBHOOK_MAX_BODY_BYTES, ozon_webhook, protect_api, stock
+from app.main import protect_api
 from app.ozon import client, sync, webhooks
+from app.routers.inventory import stock
+from app.routers.ozon_webhooks import WEBHOOK_MAX_BODY_BYTES, ozon_webhook
 from tests.support import DatabaseTestCase, add_item, add_order, add_stock_snapshot
 
 
@@ -37,7 +39,7 @@ class OzonWebhookTest(DatabaseTestCase):
             add_order(connection, 1, posting, channel, status_raw=status, shipped=shipped)
 
     def test_ping_is_public_and_other_api_is_not(self):
-        with patch("app.main._env", return_value=ENV):
+        with patch("app.routers.ozon_webhooks._env", return_value=ENV):
             result = asyncio.run(ozon_webhook("secret-one", WebhookRequest({"message_type": "TYPE_PING"})))
         self.assertEqual(result["version"], "1.0.0")
         self.assertEqual(result["name"], "oPanel")
@@ -61,7 +63,7 @@ class OzonWebhookTest(DatabaseTestCase):
         self.assertEqual(asyncio.run(protect_api(request, next_response)).status_code, 401)
 
     def test_bad_secret_size_and_required_fields_are_rejected(self):
-        with patch("app.main._env", return_value=ENV):
+        with patch("app.routers.ozon_webhooks._env", return_value=ENV):
             for secret in ("wrong", "secret-one"):
                 request = WebhookRequest({"message_type": "TYPE_POSTING_CANCELLED"})
                 if secret == "wrong":
@@ -78,7 +80,7 @@ class OzonWebhookTest(DatabaseTestCase):
 
     def test_seller_id_is_checked(self):
         payload = {"message_type": "TYPE_ORDER_NEW", "order_number": "O-1", "seller_id": 999}
-        with patch("app.main._env", return_value=ENV), self.assertRaisesRegex(HTTPException, "店铺身份"):
+        with patch("app.routers.ozon_webhooks._env", return_value=ENV), self.assertRaisesRegex(HTTPException, "店铺身份"):
             asyncio.run(ozon_webhook("secret-one", WebhookRequest(payload)))
 
     def test_new_posting_is_persisted_then_completed_from_detail(self):

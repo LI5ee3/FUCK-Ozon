@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 from app import db
 from app.importer import _shipping, import_csv
-from app.main import upload
+from app.routers.imports import upload
 from app.routers.export import export_orders
 from tests.support import DatabaseTestCase
 
@@ -71,7 +71,7 @@ class ImportTest(DatabaseTestCase):
                         "M-1;P-1;已签收;SKU-1;1\n").encode()
 
         runner = AsyncMock(return_value={"rows": 1})
-        with patch("app.main.run_in_threadpool", runner):
+        with patch("app.routers.imports.run_in_threadpool", runner):
             result = asyncio.run(upload("FBP", Request(), 1))
         self.assertEqual(result, {"rows": 1})
         runner.assert_awaited_once()

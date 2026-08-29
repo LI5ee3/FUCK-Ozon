@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from app import db
-from app.main import stock
+from app.routers.inventory import stock
 from tests.support import (DatabaseTestCase, add_item, add_order,
                            add_stock_snapshot)
 

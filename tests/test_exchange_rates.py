@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from app import db
 from app.exchange import convert_compensation, split_period, sync_exchange_rates, utc_period
-from app.main import _gmv_summary, order_trend, summary
+from app.routers.dashboard import _gmv_summary, order_trend, summary
 from tests.support import DatabaseTestCase
 
 

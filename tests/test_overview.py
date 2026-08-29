@@ -4,8 +4,9 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app import db
-from app.main import BEIJING, _trend_range, order_trend, summary
+from app.ozon.client import BEIJING
 from app.routers.common import _overview_range
+from app.routers.dashboard import _trend_range, order_trend, summary
 from tests.support import DatabaseTestCase
 
 

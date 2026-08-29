@@ -13,7 +13,7 @@ from app import db
 from app.db import DEFAULT_DAILY_TEMPLATE
 from app.dingtalk import (daily_message, render_template, run_scheduled_once,
                           send_sync_failure, send_text, validate_template)
-from app.main import dingtalk_settings, update_dingtalk_settings
+from app.routers.dingtalk import dingtalk_settings, update_dingtalk_settings
 from tests.support import DatabaseTestCase, MockRequest as Request
 
 

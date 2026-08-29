@@ -4,8 +4,8 @@ import unittest
 from fastapi import HTTPException
 
 from app import db
-from app.main import product_rules, save_product_rule
 from app.products import clean_product_name, load_product_rules, resolve_product
+from app.routers.products import product_rules, save_product_rule
 from tests.support import DatabaseTestCase, MockRequest as Request, add_item, add_order
 
 

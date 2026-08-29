@@ -2,7 +2,7 @@ import json
 import unittest
 
 from app import db
-from app.main import returns, rfbs_returns
+from app.routers.returns import returns, rfbs_returns
 from tests.support import DatabaseTestCase
 
 

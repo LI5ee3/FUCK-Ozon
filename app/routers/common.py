@@ -1,3 +1,4 @@
+import statistics
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
@@ -5,6 +6,9 @@ from fastapi import HTTPException
 from ..exchange import convert_compensation
 from ..ozon.client import BEIJING
 from ..ozon.mappings import CANCEL_REASON_ZH, STATUS_ZH
+
+
+ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
 
 
 def _paging(page, size):
@@ -50,6 +54,23 @@ def _utc_moment(value):
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(timezone.utc)
+
+
+def _percentile(values, fraction):
+    if not values:
+        return None
+    if fraction == .5:
+        return statistics.median(values)
+    if len(values) == 1:
+        return values[0]
+    return statistics.quantiles(values, n=10, method="inclusive")[8]
+
+
+def _duration_hours(start, end):
+    start, end = _utc_moment(start), _utc_moment(end)
+    if not start or not end or end < start:
+        return None
+    return (end - start).total_seconds() / 3600
 
 
 def _complaint_deadline(primary_time, fallback_time=None, now=None):

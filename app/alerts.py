@@ -462,7 +462,7 @@ def _inventory_risk(db, shop_id, config, now):
     if not fresh:
         return [], reason, set()
     try:
-        from .main import stock
+        from .routers.inventory import stock
         rows, page, size = [], 1, 100
         # ponytail: page through the existing forecast endpoint; extract its SQL only if this becomes measurable.
         while True:
