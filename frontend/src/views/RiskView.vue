@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "./analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNode, type VNodeChild } from "vue";
+import RiskKpiCards from "../components/RiskKpiCards.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -542,23 +543,7 @@ onBeforeUnmount(() => {
       </div>
     </NAlert>
 
-    <div v-if="riskData" class="analytics-kpi-grid risk-kpi-grid">
-      <NCard
-        v-for="kpi in summaryKpis"
-        :key="kpi.label"
-        :bordered="false"
-        class="analytics-kpi-card"
-        :class="'analytics-tone-' + kpi.tone"
-      >
-        <div class="analytics-kpi-head">
-          <span>{{ kpi.label }}</span>
-          <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
-        </div>
-        <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
-        <small v-if="kpi.badge" class="risk-kpi-badge">{{ kpi.badge }}</small>
-        <small>{{ kpi.note }}</small>
-      </NCard>
-    </div>
+    <RiskKpiCards v-if="riskData" :items="summaryKpis" />
 
     <NCard :bordered="false" class="analytics-table-card risk-panel">
       <template #header>
