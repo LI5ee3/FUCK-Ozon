@@ -8,7 +8,8 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from app import db, ozon, performance
+from app import db, performance
+from app.ozon import client
 from app.main import performance_campaign_sync, performance_campaigns, performance_test
 from tests.support import DatabaseTestCase, MockRequest
 
@@ -156,10 +157,10 @@ class PerformanceClientTest(DatabaseTestCase):
         with patch("app.performance._env", return_value={}):
             with self.assertRaises(performance.PerformanceConfigurationError):
                 performance.get_token(1)
-        with patch("app.ozon._post", return_value={"ok": True}) as seller_request:
-            self.assertEqual(ozon._post(1, "/v1/roles", {}), {"ok": True})
+        with patch("app.ozon.client._post", return_value={"ok": True}) as seller_request:
+            self.assertEqual(client._post(1, "/v1/roles", {}), {"ok": True})
         seller_request.assert_called_once_with(1, "/v1/roles", {})
-        self.assertNotEqual(performance.BASE_URL, ozon.API)
+        self.assertNotEqual(performance.BASE_URL, client.API)
 
     def test_error_text_redacts_performance_secret(self):
         secret = ENV["SHOP_1_OZON_PERF_CLIENT_SECRET"]

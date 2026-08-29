@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 from fastapi import HTTPException, Response
 
-from app import db, main, ozon
+from app import db, main
 from app.main import WEBHOOK_MAX_BODY_BYTES, ozon_webhook, protect_api, stock
+from app.ozon import client, sync, webhooks
 from tests.support import DatabaseTestCase, add_item, add_order, add_stock_snapshot
 
 
@@ -83,13 +84,13 @@ class OzonWebhookTest(DatabaseTestCase):
         payload = {"message_type": "TYPE_NEW_POSTING", "posting_number": "P-NEW",
                    "integration_type_flow": "aggregator", "in_process_at": "2026-08-01T01:00:00Z",
                    "uuid": "event-new"}
-        row = ozon.persist_webhook_event(1, payload, "2026-08-01T01:01:00Z")
+        row = webhooks.persist_webhook_event(1, payload, "2026-08-01T01:01:00Z")
         detail = {"result": {"posting_number": "P-NEW", "order_number": "O-NEW",
                               "integration_type_flow": "aggregator", "status": "delivering",
                               "in_process_at": "2026-08-01T01:00:00Z", "products": [
                                   {"sku": 11, "offer_id": "A", "name": "商品", "quantity": 2, "price": "3.5"}]}}
-        with patch("app.ozon._post", return_value=detail) as post:
-            ozon.complete_webhook_posting(1, row["event_key"])
+        with patch("app.ozon.client._post", return_value=detail) as post:
+            webhooks.complete_webhook_posting(1, row["event_key"])
         post.assert_called_once()
         self.assertEqual(post.call_args.args[1], "/v3/posting/fbs/get")
         with db.connect() as connection:
@@ -109,10 +110,10 @@ class OzonWebhookTest(DatabaseTestCase):
         fbo = {"message_type": "TYPE_FBO_POSTING_CANCELLED", "posting_number": "W-CANCEL",
                "cancel_date": "2026-08-01T11:00:00Z", "reason": {"id": 80, "message": "fbo"},
                "uuid": "cancel-fbo"}
-        ozon.process_webhook_event(1, fbs, "2026-08-01T12:00:00Z")
-        ozon.process_webhook_event(1, fbo, "2026-08-01T12:00:00Z")
+        webhooks.process_webhook_event(1, fbs, "2026-08-01T12:00:00Z")
+        webhooks.process_webhook_event(1, fbo, "2026-08-01T12:00:00Z")
         earlier = dict(fbs, uuid="cancel-fbs-earlier", changed_state_date="2026-08-01T09:00:00Z")
-        ozon.process_webhook_event(1, earlier, "2026-08-01T12:00:00Z")
+        webhooks.process_webhook_event(1, earlier, "2026-08-01T12:00:00Z")
         with db.connect() as connection:
             rows = connection.execute("""SELECT posting_number,status_raw,status_changed_at,
               cancel_reason_id,cancel_reason_raw FROM orders ORDER BY posting_number""").fetchall()
@@ -129,8 +130,8 @@ class OzonWebhookTest(DatabaseTestCase):
         old = {"message_type": "TYPE_STATE_CHANGED", "posting_number": "P-STATE",
                "new_state": "posting_in_carriage", "changed_state_date": "2026-08-01T09:00:00Z",
                "uuid": "state-old"}
-        ozon.process_webhook_event(1, delivered)
-        ozon.process_webhook_event(1, old)
+        webhooks.process_webhook_event(1, delivered)
+        webhooks.process_webhook_event(1, old)
         with db.connect() as connection:
             row = connection.execute("SELECT status_raw,status_changed_at,shipped,delivered_at FROM orders WHERE posting_number='P-STATE'").fetchone()
         self.assertEqual(tuple(row), ("已签收", "2026-08-01T10:00:00Z", 1, "2026-08-01T10:00:00Z"))
@@ -139,14 +140,14 @@ class OzonWebhookTest(DatabaseTestCase):
         payload = {"message_type": "TYPE_POSTING_CANCELLED", "posting_number": "P-LATE",
                    "changed_state_date": "2026-08-01T10:00:00Z", "reason": {"id": 7, "message": "late"},
                    "uuid": "cancel-late"}
-        row = ozon.process_webhook_event(1, payload)
+        row = webhooks.process_webhook_event(1, payload)
         with db.connect() as connection:
             self.assertIsNone(connection.execute("SELECT applied_at FROM ozon_webhook_events WHERE event_key=?",
                                                  (row["event_key"],)).fetchone()[0])
         detail = {"result": {"posting_number": "P-LATE", "integration_type_flow": "FBP",
                               "status": "awaiting_packaging", "products": []}}
-        with patch("app.ozon._post", return_value=detail):
-            ozon.complete_webhook_posting(1, row["event_key"])
+        with patch("app.ozon.client._post", return_value=detail):
+            webhooks.complete_webhook_posting(1, row["event_key"])
         with db.connect() as connection:
             result = connection.execute("SELECT channel,status_raw,status_changed_at FROM orders WHERE posting_number='P-LATE'").fetchone()
         self.assertEqual(tuple(result), ("FBP", "已取消", "2026-08-01T10:00:00Z"))
@@ -154,18 +155,18 @@ class OzonWebhookTest(DatabaseTestCase):
     def test_uuid_and_canonical_payload_hash_are_idempotent(self):
         first = {"message_type": "TYPE_ORDER_NEW", "order_number": "O-1", "uuid": "same"}
         second = {"uuid": "same", "order_number": "O-2", "message_type": "TYPE_ORDER_NEW"}
-        ozon.persist_webhook_event(1, first)
-        duplicate = ozon.persist_webhook_event(1, second)
+        webhooks.persist_webhook_event(1, first)
+        duplicate = webhooks.persist_webhook_event(1, second)
         self.assertFalse(duplicate["new"])
         left = {"message_type": "TYPE_ORDER_CANCELLED", "order_number": "O-2", "a": {"x": 1, "y": 2}}
         right = {"a": {"y": 2, "x": 1}, "order_number": "O-2", "message_type": "TYPE_ORDER_CANCELLED"}
-        self.assertEqual(ozon.webhook_event_key(left), ozon.webhook_event_key(right))
+        self.assertEqual(webhooks.webhook_event_key(left), webhooks.webhook_event_key(right))
 
     def test_order_events_are_saved_without_changing_orders(self):
         self.order("P-ORDER", status="待备货", shipped=0)
         payload = {"message_type": "TYPE_ORDER_STATE_CHANGED", "posting_number": "P-ORDER",
                    "order_number": "O-ORDER", "new_state": "cancelled"}
-        row = ozon.process_webhook_event(1, payload)
+        row = webhooks.process_webhook_event(1, payload)
         with db.connect() as connection:
             status = connection.execute("SELECT status_raw FROM orders WHERE posting_number='P-ORDER'").fetchone()[0]
             saved = connection.execute("SELECT order_number,applied_at FROM ozon_webhook_events WHERE event_key=?",
@@ -181,8 +182,8 @@ class OzonWebhookTest(DatabaseTestCase):
         fbo = {"message_type": "TYPE_FBO_STOCKS_CHANGED", "uuid": "stock-fbo", "sku": 12,
                "warehouse_id": 2, "updated_at": "2026-08-01T11:00:00Z",
                "stocks": {"new_present": 8, "new_reserved": 1}}
-        ozon.process_webhook_event(1, fbs)
-        ozon.process_webhook_event(1, fbo)
+        webhooks.process_webhook_event(1, fbs)
+        webhooks.process_webhook_event(1, fbo)
         with db.transaction() as connection:
             add_order(connection, 1, "STOCK-11", "realFBS", "2026-08-01T00:00:00Z", "运输中", 1)
             add_item(connection, 1, "STOCK-11", "realFBS", "11", offer_id="O-11",
@@ -206,22 +207,22 @@ class OzonWebhookTest(DatabaseTestCase):
 
     def test_full_order_sync_does_not_overwrite_push_cancel(self):
         self.order("P-PUSH", status="已取消", shipped=1)
-        ozon.process_webhook_event(1, {"message_type": "TYPE_POSTING_CANCELLED", "posting_number": "P-PUSH",
+        webhooks.process_webhook_event(1, {"message_type": "TYPE_POSTING_CANCELLED", "posting_number": "P-PUSH",
                                        "changed_state_date": "2026-08-01T10:00:00Z", "uuid": "push-cancel"})
         posting = {"posting_number": "P-PUSH", "integration_type_flow": "aggregator", "status": "delivering",
                    "products": []}
-        with patch("app.ozon._cursor_pages", side_effect=[[posting], []]):
-            ozon.sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
+        with patch("app.ozon.client._cursor_pages", side_effect=[[posting], []]):
+            sync.sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
         with db.connect() as connection:
             self.assertEqual(tuple(connection.execute(
                 "SELECT status_raw,shipped,status_changed_at FROM orders WHERE posting_number='P-PUSH'").fetchone()),
                              ("已取消", 1, "2026-08-01T10:00:00Z"))
 
     def test_notification_management_uses_current_api_shapes(self):
-        with patch("app.ozon._post", return_value={}) as post:
-            ozon.notification_set(1, "https://example.test/api/webhooks/ozon/secret", ["TYPE_NEW_POSTING"])
-            ozon.notification_enable(1, 7, True)
-            ozon.notification_delete(1, 7)
+        with patch("app.ozon.client._post", return_value={}) as post:
+            client.notification_set(1, "https://example.test/api/webhooks/ozon/secret", ["TYPE_NEW_POSTING"])
+            client.notification_enable(1, 7, True)
+            client.notification_delete(1, 7)
         self.assertEqual([call.args[1] for call in post.call_args_list], [
             "/v1/notification/set", "/v1/notification/enable", "/v1/notification/delete"])
         self.assertEqual(post.call_args_list[1].args[2], {"id": 7, "enabled": True})

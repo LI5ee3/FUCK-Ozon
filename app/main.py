@@ -28,13 +28,13 @@ from .dingtalk import (configured as dingtalk_configured, next_push_time,
 from .exchange import (convert_compensation, exchange_rate_status, load_base_rate_periods,
                        rates_for_order, sync_exchange_rates)
 from .importer import CHANNELS, import_csv
-from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
-                   PUSH_EVENT_TYPES, RETURN_STATUS_ZH, STATUS_ZH, _env,
-                   default_range, notification_check,
-                   notification_delete, notification_enable, notification_list,
-                   notification_set, probe_shop, process_webhook_event, push_type_list,
-                   sync_module,
-                   webhook_validation_error)
+from .ozon.client import (BEIJING, _env, notification_check, notification_delete,
+                          notification_enable, notification_list, notification_set,
+                          probe_shop, push_type_list)
+from .ozon.mappings import (CANCEL_REASON_ZH, PUSH_EVENT_TYPES, RFBS_RETURN_STATUS_ZH,
+                            RETURN_STATUS_ZH, STATUS_ZH)
+from .ozon.sync import default_range, sync_module
+from .ozon.webhooks import process_webhook_event, webhook_validation_error
 from .performance import (PerformanceConfigurationError, list_campaigns,
                            sync_performance_campaigns, sync_performance_statistics)
 from .products import clean_product_name, load_product_rules, resolve_product

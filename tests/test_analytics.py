@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from app import ozon
+from app.ozon import analytics
 from app.routers.analytics import (BEIJING, _analytics_range, get_analytics_data,
                                     get_product_queries, get_product_query_details)
 from tests.support import DatabaseTestCase
@@ -13,18 +13,18 @@ from tests.support import DatabaseTestCase
 
 class AnalyticsApiTest(DatabaseTestCase):
     def test_ozon_wrappers_send_verified_payloads(self):
-        with patch("app.ozon._post", return_value={}) as post:
-            ozon.analytics_data(2, "2026-08-01", "2026-08-07", "123", 50, 10)
+        with patch("app.ozon.client._post", return_value={}) as post:
+            analytics.analytics_data(2, "2026-08-01", "2026-08-07", "123", 50, 10)
             payload = post.call_args.args[2]
             self.assertEqual(post.call_args.args[:2], (2, "/v1/analytics/data"))
             self.assertEqual(payload["filters"], [{"key": "sku", "op": "EQ", "value": "123"}])
             self.assertEqual((payload["limit"], payload["offset"]), (50, 10))
 
-            ozon.product_queries(1, "from", "to", [123])
+            analytics.product_queries(1, "from", "to", [123])
             self.assertEqual(post.call_args.args[1], "/v1/analytics/product-queries")
             self.assertEqual(post.call_args.args[2]["page"], 0)
 
-            ozon.product_query_details(1, "from", "to", [123])
+            analytics.product_query_details(1, "from", "to", [123])
             self.assertEqual(post.call_args.args[1], "/v1/analytics/product-queries/details")
             self.assertEqual(post.call_args.args[2]["limit_by_sku"], 15)
 

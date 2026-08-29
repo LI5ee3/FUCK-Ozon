@@ -4,10 +4,12 @@ import urllib.error
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from app import db, ozon
+from app import db
 from app.importer import import_csv
-from app.ozon import (_cursor_pages, _post, _product_price, _sync_stock_snapshot,
-                      sync_module, sync_orders, sync_returns)
+from app.ozon import client
+from app.ozon.client import _cursor_pages, _post
+from app.ozon.sync import (_product_price, _sync_stock_snapshot, sync_module,
+                           sync_orders, sync_returns)
 from tests.support import DatabaseTestCase, table_fingerprints
 
 
@@ -19,14 +21,14 @@ class OzonSyncTest(DatabaseTestCase):
     def test_stock_sync_changes_only_stock_table(self):
         before = table_fingerprints()
         response = {"items": [{"product_id": 1, "offer_id": "A", "stocks": []}], "has_next": False}
-        with patch("app.ozon._post", return_value=response):
+        with patch("app.ozon.client._post", return_value=response):
             sync_module("stock", 1)
         after = table_fingerprints()
         self.assertEqual({table for table in before if before[table] != after[table]}, {"stock_snapshots"})
 
     def test_network_errors_are_retried(self):
-        with patch("app.ozon.urllib.request.urlopen", side_effect=urllib.error.URLError("temporary")) as request, \
-             patch("app.ozon.time.sleep"):
+        with patch("app.ozon.client.urllib.request.urlopen", side_effect=urllib.error.URLError("temporary")) as request, \
+             patch("app.ozon.client.time.sleep"):
             with self.assertRaises(RuntimeError):
                 _post(1, "/test", {})
         self.assertEqual(request.call_count, 7)
@@ -36,7 +38,7 @@ class OzonSyncTest(DatabaseTestCase):
             {"items": [{"id": 1}], "cursor": "next", "total": 2},
             {"items": [{"id": 2}], "cursor": "done", "total": 2},
         ]
-        with patch("app.ozon._post", side_effect=pages) as post:
+        with patch("app.ozon.client._post", side_effect=pages) as post:
             records = _cursor_pages(1, "/stocks", {"limit": 1}, "items")
         self.assertEqual([row["id"] for row in records], [1, 2])
         self.assertEqual(post.call_args_list[1].args[2]["cursor"], "next")
@@ -46,7 +48,7 @@ class OzonSyncTest(DatabaseTestCase):
             {"returns": [{"id": "100"}, {"id": "101"}], "has_next": True},
             {"returns": [{"id": "102"}], "has_next": False},
         ]
-        with patch("app.ozon._post", side_effect=pages) as post:
+        with patch("app.ozon.client._post", side_effect=pages) as post:
             records = _cursor_pages(1, "/v1/returns/list", {"limit": 100}, "returns", "last_id", "")
         self.assertEqual([row["id"] for row in records], ["100", "101", "102"])
         self.assertEqual(post.call_count, 2)
@@ -61,14 +63,14 @@ class OzonSyncTest(DatabaseTestCase):
             def __exit__(self, *_):
                 return False
 
-        ozon._last_request = 0
-        with patch("app.ozon.urllib.request.urlopen", return_value=Response()), \
-             patch("app.ozon.json.load", return_value={}):
+        client._last_request = 0
+        with patch("app.ozon.client.urllib.request.urlopen", return_value=Response()), \
+             patch("app.ozon.client.json.load", return_value={}):
             thread = threading.Thread(target=_post, args=(1, "/test", {}))
             thread.start(); self.assertTrue(entered.wait(1))
-            acquired = ozon._request_lock.acquire(timeout=.1)
+            acquired = client._request_lock.acquire(timeout=.1)
             if acquired:
-                ozon._request_lock.release()
+                client._request_lock.release()
             release.set(); thread.join(1)
         self.assertTrue(acquired)
 
@@ -96,7 +98,7 @@ class OzonSyncTest(DatabaseTestCase):
 
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 3, tzinfo=timezone.utc)
-        with patch("app.ozon._post", side_effect=response) as post:
+        with patch("app.ozon.client._post", side_effect=response) as post:
             sync_returns(1, start, end)
             sync_returns(1, start, end)
         with db.connect() as connection:
@@ -125,7 +127,7 @@ class OzonSyncTest(DatabaseTestCase):
 
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 2, tzinfo=timezone.utc)
-        with patch("app.ozon._post", side_effect=first):
+        with patch("app.ozon.client._post", side_effect=first):
             with self.assertRaisesRegex(RuntimeError, "temporary"):
                 sync_returns(1, start, end)
         with db.connect() as connection:
@@ -139,7 +141,7 @@ class OzonSyncTest(DatabaseTestCase):
             called.append(payload["return_id"])
             return {"return_reason": {"id": 99, "name": "未收录原因"}}
 
-        with patch("app.ozon._post", side_effect=retry):
+        with patch("app.ozon.client._post", side_effect=retry):
             sync_returns(1, start, end)
         self.assertEqual(called, [26])
         with db.connect() as connection:
@@ -170,7 +172,7 @@ class OzonSyncTest(DatabaseTestCase):
 
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 2, tzinfo=timezone.utc)
-        with patch("app.ozon._post", side_effect=response):
+        with patch("app.ozon.client._post", side_effect=response):
             sync_returns(1, start, end)
         with db.connect() as connection:
             reason, stored = connection.execute(
@@ -191,7 +193,7 @@ class OzonSyncTest(DatabaseTestCase):
 
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 2, tzinfo=timezone.utc)
-        with patch("app.ozon._post", side_effect=response) as post:
+        with patch("app.ozon.client._post", side_effect=response) as post:
             sync_returns(1, start, end)
             sync_returns(1, start, end)
         self.assertEqual(sum(call.args[1] == "/v2/returns/rfbs/get"
@@ -223,7 +225,7 @@ class OzonSyncTest(DatabaseTestCase):
         start = datetime(2026, 8, 1, tzinfo=timezone.utc)
         end = datetime(2026, 8, 2, tzinfo=timezone.utc)
         before = table_fingerprints()
-        with patch("app.ozon._post", side_effect=response):
+        with patch("app.ozon.client._post", side_effect=response):
             sync_returns(1, start, end, include_existing_missing=False)
         after = table_fingerprints()
         self.assertEqual(details, [2])
@@ -240,9 +242,9 @@ class OzonSyncTest(DatabaseTestCase):
 
     def test_return_permission_probe_includes_rfbs_detail(self):
         methods = ["/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"]
-        with patch("app.ozon._post", side_effect=[{"roles": [{"name": "Admin", "methods": methods}]},
+        with patch("app.ozon.client._post", side_effect=[{"roles": [{"name": "Admin", "methods": methods}]},
                                                    {"result": {"name": "Shop"}}]) as post:
-            result = ozon.probe_shop(1)
+            result = client.probe_shop(1)
         self.assertEqual(result["permissions"]["returns"], "可用")
         self.assertEqual([call.args[1] for call in post.call_args_list], ["/v1/roles", "/v1/seller/info"])
 
@@ -267,8 +269,8 @@ class OzonSyncTest(DatabaseTestCase):
             connection.execute("""INSERT INTO orders(shop_id,posting_number,channel,created_at,shipped_at,
               delivered_at,status_raw,shipped,source) VALUES(1,'P-3','FBP','2026-08-01T00:00:00Z',
               '2026-08-01T04:00:00Z','2026-08-01T04:00:00Z','已签收',1,'api')""")
-        with patch("app.ozon._cursor_pages", side_effect=[postings, fbo]), \
-             patch("app.ozon._post") as detail:
+        with patch("app.ozon.client._cursor_pages", side_effect=[postings, fbo]), \
+             patch("app.ozon.client._post") as detail:
             sync_orders(1, moment, moment)
         detail.assert_not_called()
         with db.connect() as connection:
@@ -289,7 +291,7 @@ class OzonSyncTest(DatabaseTestCase):
                    "products": [{"sku": "A", "offer_id": "OA", "name": "商品A", "quantity": 1, "price": "10"},
                                 {"sku": "A", "offer_id": "OA", "name": "商品A", "quantity": 2, "price": "20"},
                                 {"sku": "B", "offer_id": "OB", "name": "商品B", "quantity": 1, "price": "3"}]}
-        with patch("app.ozon._cursor_pages", side_effect=[[posting], [], [posting], []]):
+        with patch("app.ozon.client._cursor_pages", side_effect=[[posting], [], [posting], []]):
             sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
             sync_orders(1, datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 8, 2, tzinfo=timezone.utc))
         with db.connect() as connection:
@@ -309,8 +311,8 @@ class OzonSyncTest(DatabaseTestCase):
             {**record, "stocks": [{**record["stocks"][0], "present": 20}]},
             {**record, "stocks": [{**record["stocks"][0], "present": 20}]},
         ]
-        with patch("app.ozon._cursor_pages", side_effect=([response] for response in responses)), \
-             patch("app.ozon._stamp", side_effect=["2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z",
+        with patch("app.ozon.client._cursor_pages", side_effect=([response] for response in responses)), \
+             patch("app.ozon.client._stamp", side_effect=["2026-08-01T00:00:00Z", "2026-08-02T00:00:00Z",
                                                      "2026-08-03T00:00:00Z", "2026-08-03T00:00:00Z"]):
             for _ in responses:
                 _sync_stock_snapshot(1)

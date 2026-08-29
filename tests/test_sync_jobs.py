@@ -7,7 +7,7 @@ from app import db
 from app.main import (_run_sync_job, _sync_ranges, _trim_sync_runs,
                       auto_sync_slot, run_auto_sync_once,
                       save_auto_sync_settings)
-from app.ozon import BEIJING
+from app.ozon.client import BEIJING
 from tests.support import DatabaseTestCase
 
 

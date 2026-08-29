@@ -4,7 +4,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from ..db import connect
-from ..ozon import BEIJING, analytics_data, product_queries, product_query_details
+from ..ozon.analytics import analytics_data, product_queries, product_query_details
+from ..ozon.client import BEIJING
 
 
 router = APIRouter()

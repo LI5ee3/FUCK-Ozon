@@ -9,7 +9,7 @@ from math import isfinite
 from zoneinfo import ZoneInfo
 
 from .db import connect, transaction
-from .ozon import _env
+from .ozon.client import _env
 
 BASE_URL = "https://api-performance.ozon.ru"
 TOKEN_PATH = "/api/client/token"

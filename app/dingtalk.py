@@ -10,7 +10,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from .db import connect, transaction
-from .ozon import BEIJING, CANCEL_REASON_ZH, _env
+from .ozon.client import BEIJING, _env
+from .ozon.mappings import CANCEL_REASON_ZH
 
 MODULE_NAMES = {"orders": "订单", "returns": "退货", "stock": "库存"}
 _stop = threading.Event()
