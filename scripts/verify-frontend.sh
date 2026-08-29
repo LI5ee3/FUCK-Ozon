@@ -32,8 +32,13 @@ JS_ASSET=$(sed -n 's/.*src="\([^\"]*\.js\)".*/\1/p' "$ROOT_BODY" | awk '/^\/asse
 CSS_ASSET=$(sed -n 's/.*href="\([^\"]*\.css\)".*/\1/p' "$ROOT_BODY" | awk '/^\/assets\// { print; exit }')
 [ -n "$JS_ASSET" ] || fail 'production root 没有可验证的 JS asset。'
 [ -n "$CSS_ASSET" ] || fail 'production root 没有可验证的 CSS asset。'
-curl --noproxy '*' -fsS --max-time 10 -o /dev/null "$BASE_URL$JS_ASSET" || fail 'main JS asset 请求失败。'
-curl --noproxy '*' -fsS --max-time 10 -o /dev/null "$BASE_URL$CSS_ASSET" || fail 'main CSS asset 请求失败。'
+for asset in "$JS_ASSET" "$CSS_ASSET"; do
+  HASHED_HEADERS="$TEMP_DIR/hashed.headers"
+  curl --noproxy '*' -fsS --max-time 10 -D "$HASHED_HEADERS" -o /dev/null "$BASE_URL$asset" ||
+    fail "hashed asset $asset 请求失败。"
+  grep -Eiq '^cache-control:[[:space:]]*public,[[:space:]]*max-age=31536000,[[:space:]]*immutable' \
+    "$HASHED_HEADERS" || fail "hashed asset $asset 缺少长期 immutable 缓存。"
+done
 
 for route in / /orders /analytics /ads /ads/campaigns /ads/skus /timeliness /risk /returns /alerts /complaints /inventory /profit /transfer /sync /rules /push-subscriptions /dingtalk /settings; do
   if ! status=$(status_for "$route"); then
@@ -57,6 +62,12 @@ for source in "$ROOT/frontend/public/assets"/*; do
     fail "current asset $path 请求失败。"
   fi
   [ "$status" = 200 ] || fail "current asset $path 返回 HTTP $status。"
+  PUBLIC_HEADERS="$TEMP_DIR/public.headers"
+  curl --noproxy '*' -fsS --max-time 10 -D "$PUBLIC_HEADERS" -o /dev/null "$BASE_URL$path" ||
+    fail "current asset $path 请求失败。"
+  if grep -Eiq '^cache-control:.*immutable' "$PUBLIC_HEADERS"; then
+    fail "未 hash 的 public asset $path 被错误设置为 immutable。"
+  fi
 done
 
 for path in /static/logo.svg /static/morphicons.js /static/TABLER_ICONS_LICENSE \

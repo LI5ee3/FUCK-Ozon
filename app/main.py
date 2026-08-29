@@ -4,6 +4,7 @@ import hmac
 import ipaddress
 import json
 import math
+import re
 import secrets
 import statistics
 import threading
@@ -46,6 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 FRONTEND_ASSETS = FRONTEND_DIST / "assets"
 FRONTEND_INDEX = FRONTEND_DIST / "index.html"
+FRONTEND_PUBLIC_ASSETS = ROOT / "frontend" / "public" / "assets"
 ACTIVE = "NOT (o.status_raw='已取消' AND o.shipped=0)"
 BUYER_UNCLAIMED_REASONS = (
     "Покупатель не забрал заказ",
@@ -104,8 +106,18 @@ async def lifespan(app: FastAPI):
     _stop_auto_sync_scheduler()
 
 
+class ViteStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if (response.status_code in (200, 304)
+                and re.fullmatch(r".+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+", Path(path).name)
+                and not (FRONTEND_PUBLIC_ASSETS / path).is_file()):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
-app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
+app.mount("/assets", ViteStaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
 app.include_router(analytics_router)
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,23 @@ class VueProductionTest(unittest.TestCase):
         self.assertNotIn("/static", mounts)
         self.assertIn("/assets", mounts)
         self.assertEqual(mounts["/assets"].name, "frontend-assets")
+
+    def test_only_hashed_vite_assets_are_immutable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            assets = Path(temp) / "dist/assets"
+            public = Path(temp) / "public/assets"
+            assets.mkdir(parents=True)
+            public.mkdir(parents=True)
+            (assets / "index-Ab12_cd3.js").write_text("js")
+            (assets / "logo.svg").write_text("logo")
+            (public / "logo.svg").write_text("logo")
+            static = main.ViteStaticFiles(directory=assets)
+            scope = {"type": "http", "method": "GET", "headers": []}
+            with patch.object(main, "FRONTEND_PUBLIC_ASSETS", public):
+                hashed = asyncio.run(static.get_response("index-Ab12_cd3.js", scope))
+                unhashed = asyncio.run(static.get_response("logo.svg", scope))
+        self.assertEqual(hashed.headers["cache-control"], "public, max-age=31536000, immutable")
+        self.assertNotIn("cache-control", unhashed.headers)
 
     def test_root_and_fallback_serve_index_with_no_cache(self):
         with tempfile.TemporaryDirectory() as temp:
