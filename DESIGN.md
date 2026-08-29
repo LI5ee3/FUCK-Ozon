@@ -1,89 +1,58 @@
 ---
-version: 1.2.0
+version: 1.3.0
 name: oPanel-Design-System
-description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro, negative tracking, tabular nums, 1px hairlines, 18px cards) with an Open Macaron Pastel color philosophy (low-saturation harmonic shells with high-contrast text), rigid 3-way alignment, and tactile spring physics."
+description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro Text, negative tracking, tabular nums, 1px hairlines, 18px cards) with low-saturation harmonic card tints derived from semantic colors via color-mix, rigid left/right table alignment, fluid motion, and morphing Tabler icons."
 
 colors:
+  # Source of truth: frontend/src/theme/tokens.ts, the --opanel-* variables in
+  # frontend/src/style.css (:root and :root[data-theme="dark"]), and
+  # frontend/src/theme/naive-theme.ts (maps the same tokens onto Naive UI).
+
   # Brand & Core Interactive (Apple Action Blue)
-  primary: "#0066CC"
-  primary-focus: "#0071E3"
-  primary-on-dark: "#2997FF"
+  primary-light: "#0066CC"
+  primary-focus-light: "#0071E3"
+  primary-dark: "#2997FF"
+  primary-focus-dark: "#47A7FF"
   primary-soft-light: "rgba(0, 102, 204, 0.08)"
   primary-soft-dark: "rgba(41, 151, 255, 0.15)"
 
-  # Light Theme Canvas & Surfaces
+  # Light Theme Canvas & Surfaces (--opanel-bg / tokens.light.canvas)
   canvas-light: "#F5F5F7"
   panel-light: "rgba(255, 255, 255, 0.88)"
   panel-solid-light: "#FFFFFF"
+  panel-hover-light: "#FAFAFC"
   ink-light: "#1D1D1F"
   ink-muted-light: "#7A7A7A"
   line-light: "rgba(0, 0, 0, 0.08)"
-  line-highlight-light: "rgba(255, 255, 255, 0.9)"
 
   # Dark Theme Canvas & Surfaces
   canvas-dark: "#151419"
   panel-dark: "rgba(28, 26, 36, 0.85)"
   panel-solid-dark: "#1E1B26"
+  panel-hover-dark: "#262330"
   ink-dark: "#F6F5F8"
   ink-muted-dark: "#9E9AA8"
   line-dark: "rgba(255, 255, 255, 0.08)"
-  line-highlight-dark: "rgba(255, 255, 255, 0.04)"
 
-  # Open Macaron Pastel Presets
-  macaron-presets:
-    peach:
-      light-bg: "#FFEBEA"
-      light-text: "#C42B24"
-      dark-bg: "#3D2226"
-      dark-text: "#FF859F"
-      role: "Orders & Cancellations"
-    mint:
-      light-bg: "#E6F7F0"
-      light-text: "#127546"
-      dark-bg: "#16382C"
-      dark-text: "#7EE0B3"
-      role: "Fulfillment & Deliveries"
-    lavender:
-      light-bg: "#F0EDFF"
-      light-text: "#5944B3"
-      dark-bg: "#312847"
-      dark-text: "#BBA8FF"
-      role: "Disputes & Timeliness"
-    azure:
-      light-bg: "#EBF3FF"
-      light-text: "#0066CC"
-      dark-bg: "#172A46"
-      dark-text: "#6CAFFF"
-      role: "GMV & Primary Metrics"
-    butter:
-      light-bg: "#FFF5E5"
-      light-text: "#B86614"
-      dark-bg: "#3D2B19"
-      dark-text: "#FFAE61"
-      role: "WHD & Warning States"
-    pistachio:
-      light-bg: "#EEF7E8"
-      light-text: "#3B7A20"
-      dark-bg: "#1E3516"
-      dark-text: "#98E07A"
-      role: "Profits & Healthy State"
-    berry:
-      light-bg: "#FCEEF6"
-      light-text: "#A8226A"
-      dark-bg: "#381A2B"
-      dark-text: "#F07AB9"
-      role: "Top Products & Highlights"
+  # Status & Feedback Tones (iOS system colors; dark values from tokens.ts)
+  danger-light: "#FF3B30"
+  danger-dark: "#FF453A"
+  warning-light: "#FF9500"
+  warning-dark: "#FF9F0A"
+  success-light: "#34C759"
+  success-dark: "#32D74B"
 
-  # Status & Feedback Tones
-  danger: "#FF3B30"
-  danger-soft-light: "#FFEBEA"
-  danger-soft-dark: "#451B1C"
-  warning: "#FF9500"
-  warning-soft-light: "#FFF5E5"
-  warning-soft-dark: "#452E15"
-  success: "#34C759"
-  success-soft-light: "#EAF9ED"
-  success-soft-dark: "#193E23"
+  # Card Tint System — the only tone mechanism. There are no fixed pastel hex
+  # presets and no per-theme dark variants; card backgrounds and icon badges
+  # are derived at runtime from the semantic variables above:
+  #   card background: color-mix(in srgb, <source var> N%, var(--opanel-panel-solid))
+  #   icon badge:      color-mix(in srgb, <status var> 13%, transparent) or var(--opanel-primary-soft)
+  tones:
+    azure:    { source: "--opanel-primary", background: "10%", badge: "var(--opanel-primary-soft)" }
+    blue:     { source: "--opanel-primary", background: "6%",  badge: "var(--opanel-primary-soft)" }
+    lavender: { source: "--opanel-primary", background: "7%",  badge: "var(--opanel-primary-soft)" }
+    mint:     { source: "--opanel-success", background: "8%",  badge: "success 13%" }
+    peach:    { source: "--opanel-danger",  background: "8%",  badge: "danger 13%" }
 
 alignment:
   grid-unit: "8px"
@@ -91,13 +60,13 @@ alignment:
   columns:
     text: "left"
     numeric: "right"
-    status: "center"
     actions: "right"
+  status: "status tags render inline inside left/right-aligned content cells; no dedicated centered status column"
   tabular-nums: true
   optical-icon-centering: true
 
 typography:
-  font-family-display: "SF Pro Display, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif"
+  # One stack for all text (style.css body); no separate display face is loaded.
   font-family-body: "SF Pro Text, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif"
   font-family-mono: "'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace"
 
@@ -106,10 +75,17 @@ typography:
       size: "24px"
       weight: 700
       tracking: "-0.025em"
+      selector: ".opanel-heading h1"
     panel-title:
       size: "16px"
       weight: 650
       tracking: "-0.015em"
+    kpi-value:
+      size: "28px"
+      weight: 750
+      tracking: "-0.025em"
+      line-height: 1.15
+      font-variant-numeric: "tabular-nums"
     body:
       size: "14px"
       weight: 400
@@ -131,48 +107,51 @@ shapes:
   rounded-xs: "4px"
 
 physics:
-  ease-apple-spring: "cubic-bezier(0.34, 1.56, 0.64, 1)"
-  ease-apple-fluid: "cubic-bezier(0.16, 1, 0.3, 1)"
-  active-scale: "scale(0.95)"
-  active-scale-card: "scale(0.985)"
+  # Fluid easing is the only easing in the codebase (--opanel-ease-fluid).
+  ease-fluid: "cubic-bezier(0.16, 1, 0.3, 1)"
+  # Press feedback is per-component, not a global spring curve:
+  #   sidebar footer buttons scale(0.95), menu items scale(0.97), drag panels scale(0.995)
+  press-scale: "0.95 – 0.995 depending on component"
+  # Icon state changes morph via <MorphIcon>; motion respects the user's
+  # reduced-motion preference (reduced-motion="user").
+  icon-morph: "src/components/MorphIcon.vue (morphicons/vue)"
 
 iconography:
-  system: "Lucide / Tabler Stroke System (24x24, 1.8px default stroke, round cap/join)"
+  system: "Tabler Icons 24x24 stroke paths — hand-curated registry in frontend/src/icons/tabler.ts (add new icons there), rendered through frontend/src/components/MorphIcon.vue, a thin wrapper over morphicons/vue MorphIcon"
+  stroke: "views pass stroke-width 1.8–2; component default is 1.5"
+  morphing: "icon swaps animate as morphs; honors prefers-reduced-motion"
 ---
 
 # Design Philosophy
 
-### 1. Open Macaron × Apple HIG Synergy
-- **Open Macaron Harmonic Palette**: Replaces sterile, fatiguing dashboard tables with breathable, low-saturation pastel cards (Light Shell + High-Contrast Ganache Text). Supports any custom hue via the L/C harmonic formula.
-- **Apple Architectural Rigor**: 1px crisp hairlines (`rgba(0,0,0,0.08)`), negative display tracking (`-0.015em` to `-0.025em`), and 18px golden-ratio radii.
+### 1. Tint-Harmonic Palette × Apple HIG Synergy
+- **Open Macaron Harmonic Tints**: Replaces sterile, fatiguing dashboard tables with breathable, low-saturation card shells derived from the semantic status colors via `color-mix`, so light and dark themes adapt automatically from one definition. High-contrast ink text sits on every shell.
+- **Apple Architectural Rigor**: 1px crisp hairlines (`rgba(0,0,0,0.08)` / `rgba(255,255,255,0.08)`), negative display tracking (`-0.015em` to `-0.025em`), and 18px card radii.
+- **Single Token Source**: `frontend/src/theme/tokens.ts` (consumed by `naive-theme.ts` for Naive UI overrides) and the `--opanel-*` variables in `frontend/src/style.css` mirror each other; never hardcode theme hexes in views.
 
 ### 2. High-Density Data Clarity
 - All numeric metrics, currency amounts, order numbers, and timestamps enforce `font-variant-numeric: tabular-nums` to eliminate visual jitter and guarantee columnar alignment.
 - Minimal chrome: decorative containers recede so operational insights take focus.
 
-### 3. Rigid 3-Way Table Alignment & Spatial Rhythm
-- **Text Left, Numbers Right, Badges Center**: SKU, titles, and strings align left for scanning; GMV, piece counts, and percentages align right with tabular digits for vertical magnitude comparison; status chips and channel tags center horizontally.
+### 3. Rigid Table Alignment & Spatial Rhythm
+- **Text Left, Numbers Right, Actions Right**: SKU, titles, and strings align left for scanning; GMV, piece counts, and percentages align right with tabular digits for vertical magnitude comparison; action buttons/columns align right. Status and metadata tags render inline within left/right-aligned cells rather than in a dedicated centered column.
 - **8pt Spatial Grid**: Padding, margins, and gaps follow rigid 8px increments (`8px / 16px / 24px / 32px`).
 - **Optical Vertical Centering**: Icon-text pairs are optically centered against font x-height to prevent baseline drift.
 
-### 4. Tactile Physical Motion
-- Touch feedback via immediate `scale(0.95)` press physics.
-- Seamless state morphing via `<morph-icon>` powered by Apple spring kinematics.
+### 4. Fluid Motion & Morphing Icons
+- Transitions use the shared fluid easing `--opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1)`.
+- Press feedback is tactile but per-component (scale 0.95–0.995 depending on surface size); there is no global spring curve.
+- **Icon morphing is a core behavior**: icon state changes (theme toggle, status flips, menu icons) go through `<MorphIcon>` (`frontend/src/components/MorphIcon.vue`), which animates the swap as a morph and honors the user's reduced-motion setting.
 
-### 5. Unified Metric Card Component Anatomy & Grid Standards
-All dashboard summary cards must strictly adhere to the single standard `.metric` archetype:
-- **Card Container (`.metric`)**: `18px` border-radius, 1px subtle matching border, soft `color-mix` pastel background tint.
-- **Card Head (`.metric-head`)**:
-  - Left: Title label (`span` / `.metric-title`) + optional rate badge (`.analysis-rate-badge`).
-  - Top-Right: Solid pastel icon badge (`.metric-icon-badge`, `32x32px`, `8px` radius).
-- **Metric Value (`strong`)**: `28px`, weight 750, letter-spacing `-0.025em`, `tabular-nums`.
+### 5. NCard KPI Card Anatomy & Grid Standards
+All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel-line` border and `--opanel-shadow-sm` via CSS, 18px radius) sharing one anatomy and a per-domain class prefix:
+
+- **Shared components**: `components/AnalyticsKpiCards.vue` (reused by Risk, Returns, Timeliness, and Complaints through the shared `views/analytics.css`), `components/AlertSummaryCards.vue`, `components/SyncSummaryCards.vue`; the Dashboard builds its cards inline on the same pattern (`views/dashboard.css`). Domain stylesheets `orders.css` and `complaints.css` follow the same conventions — complaints adds deadline badges, copy buttons, and compensation previews on the same primitives.
+- **Card Head**: left label `span` (13px, weight 550, muted) + top-right icon badge (`{prefix}-icon-badge`, `32x32px`, 8px radius, tone-tinted).
+- **Metric Value (`strong`)**: `{prefix}-kpi-value` — `28px`, weight 750, letter-spacing `-0.025em`, `tabular-nums`. Multi-line money variant: `{prefix}-kpi-money` (15px, column flex).
 - **Metric Note (`small`)**: `12px`, muted secondary text.
-- **Macaron 4-Tone Palette**:
-  - `blue`: Core operational metrics (GMV, orders, inventory).
-  - `peach`: Danger, cancellation, high-risk items.
-  - `mint`: Safe, fulfillment, successful items.
-  - `lavender`: Time, pending, dispute, and rate metrics.
+- **Tone Classes**: `{prefix}-tone-{azure | blue | lavender | mint | peach}` apply the color-mix formulas defined in `colors.tones` above; icon badges re-tint via 13% transparent mixes of the matching status variable.
 - **Grid Layout Standards**:
-  - **5-Column Grid (`repeat(5, 1fr)`)**: Overview (`.cards.overview-cards`), Stock & Replenishment (`.stock-summary`).
-  - **4-Column Grid (`repeat(4, 1fr)`)**: Cancellation Analysis (`.risk-summary`), Timeliness (`.timeliness-summary`), Rules (`.rule-summary`).
-  - **2-Column Grid (`repeat(2, 1fr)`)**: Returns & Disputes (`.return-summary`).
+  - **5-Column Grid (`repeat(5, minmax(0, 1fr))`)**: Dashboard KPIs (`.dashboard-kpi-grid`).
+  - **4-Column Grid (`repeat(4, minmax(0, 1fr))`)**: Analytics/Risk/Returns/Timeliness KPIs (`.analytics-kpi-grid`).
+  - Both collapse responsively on narrow viewports (dashboard → 2 → 1, analytics → 3 → fewer).
