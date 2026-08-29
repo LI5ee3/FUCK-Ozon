@@ -7,10 +7,10 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 
 from app import db
-from app.main import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_sync_runs,
-                      auto_sync_slot, run_auto_sync_once,
-                      save_auto_sync_settings, sync as start_sync)
 from app.ozon.client import BEIJING
+from app.routers.sync import sync as start_sync
+from app.sync_jobs import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_sync_runs,
+                           auto_sync_slot, run_auto_sync_once, save_auto_sync_settings)
 from tests.support import DatabaseTestCase, MockRequest
 
 
@@ -38,7 +38,7 @@ class AutoSyncTest(DatabaseTestCase):
 
     def test_same_slot_deduplicates_and_new_slot_runs(self):
         save_auto_sync_settings(settings({(1, "orders")}, interval=6))
-        with patch("app.main.threading.Thread") as thread:
+        with patch("app.sync_jobs.threading.Thread") as thread:
             first = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
             duplicate = run_auto_sync_once(datetime(2026, 8, 24, 10, 55, tzinfo=BEIJING))
             with db.transaction() as connection:
@@ -57,7 +57,7 @@ class AutoSyncTest(DatabaseTestCase):
             connection.execute("""INSERT INTO sync_runs(
               shop_id,module,status,run_source,scheduled_slot,started_at)
               VALUES(1,'orders','running','auto','2026-08-24T00:00:00+08:00','2026-08-24T00:00:00Z')""")
-        with patch("app.main.threading.Thread") as thread:
+        with patch("app.sync_jobs.threading.Thread") as thread:
             started = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
         self.assertEqual(len(started), 2)
         self.assertEqual(thread.call_count, 2)
@@ -69,7 +69,7 @@ class AutoSyncTest(DatabaseTestCase):
     def test_database_blocks_duplicate_manual_job_but_allows_other_pairs(self):
         start = datetime(2026, 8, 1, tzinfo=BEIJING)
         end = datetime(2026, 8, 2, tzinfo=BEIJING)
-        with patch("app.main.threading.Thread") as thread:
+        with patch("app.sync_jobs.threading.Thread") as thread:
             first = _create_sync_job("orders", 1, start, end)
             duplicate = _create_sync_job("orders", 1, start, end)
             other_module = _create_sync_job("returns", 1, start, end)
@@ -83,7 +83,7 @@ class AutoSyncTest(DatabaseTestCase):
         save_auto_sync_settings(settings({(1, "orders")}))
         start = datetime(2026, 8, 1, tzinfo=BEIJING)
         end = datetime(2026, 8, 2, tzinfo=BEIJING)
-        with patch("app.main.threading.Thread"):
+        with patch("app.sync_jobs.threading.Thread"):
             _create_sync_job("orders", 1, start, end)
             automatic = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
             with self.assertRaises(HTTPException) as raised:
@@ -99,7 +99,7 @@ class AutoSyncTest(DatabaseTestCase):
               shop_id,module,status,run_source,scheduled_slot,started_at,finished_at)
               VALUES(1,'orders','failed','auto','2026-08-24T06:00:00+08:00',
                      '2026-08-24T02:00:00Z','2026-08-24T02:01:00Z')""")
-        with patch("app.main.threading.Thread") as thread:
+        with patch("app.sync_jobs.threading.Thread") as thread:
             cooling = run_auto_sync_once(datetime(2026, 8, 24, 10, 4, tzinfo=BEIJING))
             retried = run_auto_sync_once(datetime(2026, 8, 24, 10, 7, tzinfo=BEIJING))
         self.assertEqual(cooling, [])
@@ -144,7 +144,7 @@ class SyncProgressTest(DatabaseTestCase):
                           ("2026-03-01", "2026-03-02")])
         self.assertEqual(ranges[1][0].strftime("%Y-%m-%d %H:%M:%S"), "2026-02-01 00:00:00")
         run_id = self.create_run(len(ranges))
-        with patch("app.main.sync_module", return_value={"records": 4}):
+        with patch("app.sync_jobs.sync_module", return_value={"records": 4}):
             _run_sync_job(run_id, "orders", 1, ranges)
         with db.connect() as connection:
             row = connection.execute("SELECT status,progress_done,progress_total,records FROM sync_runs").fetchone()
@@ -156,8 +156,8 @@ class SyncProgressTest(DatabaseTestCase):
         ranges = _sync_ranges("orders", start, end)
         self.assertEqual(len(_sync_ranges("stock", start, end)), 1)
         run_id = self.create_run(len(ranges))
-        with patch("app.main.sync_module", side_effect=({"records": 2}, RuntimeError("第二段失败"))) as sync_call, \
-             patch("app.main.send_sync_failure"):
+        with patch("app.sync_jobs.sync_module", side_effect=({"records": 2}, RuntimeError("第二段失败"))) as sync_call, \
+             patch("app.sync_jobs.send_sync_failure"):
             _run_sync_job(run_id, "orders", 1, ranges)
         with db.connect() as connection:
             row = connection.execute("SELECT status,progress_done,progress_total,records,error FROM sync_runs").fetchone()
@@ -173,7 +173,7 @@ class SyncProgressTest(DatabaseTestCase):
             run_id = connection.execute("""INSERT INTO sync_runs(
               shop_id,module,range_from,range_to,status,progress_total)
               VALUES(1,'ad_campaign_daily','','','running',?)""", (len(ranges),)).lastrowid
-        with patch("app.main.sync_performance_statistics", return_value={"inserted_or_updated": 3}) as sync_call:
+        with patch("app.sync_jobs.sync_performance_statistics", return_value={"inserted_or_updated": 3}) as sync_call:
             _run_sync_job(run_id, "ad_campaign_daily", 1, ranges)
         self.assertEqual(sync_call.call_args.args, (1, "2026-08-01", "2026-08-07", "ad_campaign_daily"))
         with db.connect() as connection:

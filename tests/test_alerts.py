@@ -11,9 +11,10 @@ from app import db
 from app.alerts import (acknowledge_alert, alert_summary, evaluate_alerts,
                         get_alert_rules, list_alert_events, update_alert_rule,
                         validate_rule_config)
-from app.main import (_run_sync_job, alert_acknowledge, alert_rule_update,
-                      alerts, alerts_evaluate, alerts_summary)
 from app.performance import MOSCOW
+from app.routers.alerts import (alert_acknowledge, alert_rule_update, alerts,
+                                alerts_evaluate, alerts_summary)
+from app.sync_jobs import _run_sync_job
 from tests.support import (DatabaseTestCase, MockRequest, add_item, add_order,
                            add_stock_snapshot)
 
@@ -350,8 +351,8 @@ class AlertTest(DatabaseTestCase):
             self.assertEqual(connection.execute("SELECT last_notify_error FROM alert_events").fetchone()[0], "钉钉发送失败")
         with db.transaction() as connection:
             run_id = connection.execute("INSERT INTO sync_runs(shop_id,module,status) VALUES(1,'orders','running')").lastrowid
-        with patch("app.main.sync_module", return_value={"records": 1}), \
-                patch("app.main.evaluate_alerts", side_effect=RuntimeError("alert failure")):
+        with patch("app.sync_jobs.sync_module", return_value={"records": 1}), \
+                patch("app.sync_jobs.evaluate_alerts", side_effect=RuntimeError("alert failure")):
             _run_sync_job(run_id, "orders", 1, [(self.now - timedelta(days=1), self.now)])
         with db.connect() as connection:
             self.assertEqual(connection.execute("SELECT status FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0], "success")

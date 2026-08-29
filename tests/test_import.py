@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, patch
 
 from app import db
 from app.importer import _shipping, import_csv
-from app.main import export_orders, upload
+from app.main import upload
+from app.routers.export import export_orders
 from tests.support import DatabaseTestCase
 
 

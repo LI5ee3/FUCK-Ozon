@@ -1,15 +1,9 @@
 from contextlib import asynccontextmanager
-import hashlib
 import hmac
-import ipaddress
 import json
 import math
 import re
-import secrets
-import sqlite3
 import statistics
-import threading
-import time
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -18,32 +12,33 @@ from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from .alerts import (acknowledge_alert, alert_summary, evaluate_alerts, get_alert_rules,
-                     list_alert_events, update_alert_rule)
-from .db import DATA_DIR, connect, init_db, transaction
+from .db import connect, init_db, transaction
 from .dingtalk import (configured as dingtalk_configured, next_push_time,
-                       send_sync_failure, start_scheduler, stop_scheduler)
-from .exchange import (convert_compensation, exchange_rate_status, load_base_rate_periods,
-                       rates_for_order, sync_exchange_rates)
+                       start_scheduler, stop_scheduler)
+from .exchange import (exchange_rate_status, load_base_rate_periods, rates_for_order,
+                       sync_exchange_rates)
 from .importer import CHANNELS, import_csv
-from .ozon.client import (BEIJING, _env, notification_check, notification_delete,
-                          notification_enable, notification_list, notification_set,
-                          probe_shop, push_type_list)
-from .ozon.mappings import (CANCEL_REASON_ZH, PUSH_EVENT_TYPES, RFBS_RETURN_STATUS_ZH,
-                            RETURN_STATUS_ZH, STATUS_ZH)
-from .ozon.sync import default_range, sync_module
+from .ozon.client import BEIJING, _env, probe_shop
+from .ozon.mappings import CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH, RETURN_STATUS_ZH
 from .ozon.webhooks import (process_webhook_event, start_webhook_worker,
                             stop_webhook_worker, webhook_validation_error)
-from .performance import (PerformanceConfigurationError, list_campaigns,
-                           sync_performance_campaigns, sync_performance_statistics)
 from .products import clean_product_name, load_product_rules, resolve_product
+from .routers.alerts import router as alerts_router
 from .routers.analytics import router as analytics_router
-from .security import (clear_login_failures, login_limited, migrate_env_password,
-                       password_matches, record_login_failure)
+from .routers.auth import _authenticated, router as auth_router
+from .routers.common import (_complaint_deadline, _months_before, _overview_range, _paging,
+                             _shop_clause, _translated_order, _utc_moment, _utc_text,
+                             _with_compensation_conversion)
+from .routers.export import router as export_router
+from .routers.ozon_notifications import router as ozon_notifications_router
+from .routers.performance import router as performance_router
+from .routers.sync import router as sync_router
+from .security import migrate_env_password
+from .sync_jobs import _start_auto_sync_scheduler, _stop_auto_sync_scheduler, _trim_sync_runs
 
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -59,11 +54,6 @@ BUYER_UNCLAIMED_REASONS = (
     "Покупатель отменил заказ: нашел дешевле",
 )
 RISK_REASON_ZH = CANCEL_REASON_ZH
-SYNC_MODULES = {"orders", "returns", "stock"}
-AD_SYNC_MODULES = {"ad_campaign_daily", "ad_sku_daily"}
-AUTO_SYNC_MODULES = SYNC_MODULES | AD_SYNC_MODULES
-PERFORMANCE_SYNC_MODULE = "ad_campaigns"
-AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
 FORECAST_WINDOWS = (7, 15, 30)
 FORECAST_WEIGHTS = {7: .50, 15: .30, 30: .20}
 FORECAST_LEAD_TIME_DAYS = 25
@@ -81,16 +71,8 @@ FORECAST_RISK_ORDER = {
     "out_of_stock": 0, "urgent_replenishment": 1, "replenish": 2,
     "sufficient": 3, "overstock": 4, "no_recent_sales": 5,
 }
-_auto_sync_stop = threading.Event()
-_auto_sync_thread = None
 
 
-def _trim_sync_runs(db, keep=10, scheduled_slot=None, today=None):
-    today = (scheduled_slot or today or datetime.now(BEIJING).date().isoformat())[:10]
-    db.execute("""DELETE FROM sync_runs
-      WHERE id NOT IN (SELECT id FROM sync_runs ORDER BY id DESC LIMIT ?)
-      AND status!='running'
-      AND NOT (run_source='auto' AND substr(COALESCE(scheduled_slot,''),1,10)=?)""", (keep, today))
 
 
 @asynccontextmanager
@@ -125,31 +107,13 @@ class ViteStaticFiles(StaticFiles):
 app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.mount("/assets", ViteStaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
 app.include_router(analytics_router)
+app.include_router(auth_router)
+app.include_router(ozon_notifications_router)
+app.include_router(alerts_router)
+app.include_router(sync_router)
+app.include_router(export_router)
+app.include_router(performance_router)
 
-
-def _secret():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    path = DATA_DIR / "session_secret"
-    if not path.exists():
-        path.write_text(secrets.token_hex(32))
-        path.chmod(0o600)
-    return path.read_text().strip().encode()
-
-
-def _token(csrf):
-    expires = str(int(time.time()) + 86400)
-    value = f"{expires}.{csrf}"
-    signature = hmac.new(_secret(), value.encode(), hashlib.sha256).hexdigest()
-    return f"{value}.{signature}"
-
-
-def _authenticated(request):
-    try:
-        expires, csrf, signature = request.cookies.get("session", "").split(".", 2)
-        expected = hmac.new(_secret(), f"{expires}.{csrf}".encode(), hashlib.sha256).hexdigest()
-        return int(expires) > time.time() and hmac.compare_digest(signature, expected)
-    except (ValueError, AttributeError):
-        return False
 
 
 def _is_ozon_webhook_path(path):
@@ -186,50 +150,6 @@ def index():
     return _frontend_index_response()
 
 
-@app.get("/api/session")
-def session(request: Request):
-    authenticated = _authenticated(request)
-    csrf = request.cookies.get("session", "").split(".", 2)[1] if authenticated else ""
-    return {"authenticated": authenticated, "csrf_token": csrf}
-
-
-def _client_ip(request):
-    headers = {str(key).lower(): value for key, value in request.headers.items()}
-    for header in ("cf-connecting-ip", "x-forwarded-for"):
-        for value in str(headers.get(header) or "").split(","):
-            try:
-                return str(ipaddress.ip_address(value.strip()))
-            except ValueError:
-                continue
-    host = request.client.host if request.client else None
-    return str(host).strip() if host else "unknown"
-
-
-@app.post("/api/login")
-async def login(request: Request, response: Response):
-    values = _env()
-    salt, expected = values.get("ADMIN_PASSWORD_SALT"), values.get("ADMIN_PASSWORD_HASH")
-    if not salt or not expected:
-        raise HTTPException(503, "服务器尚未设置管理员密码哈希")
-    key = _client_ip(request)
-    if login_limited(key):
-        raise HTTPException(429, "登录失败次数过多，请5分钟后重试")
-    body = await request.json()
-    if not password_matches(str(body.get("password", "")), salt, expected):
-        record_login_failure(key)
-        raise HTTPException(401, "密码错误")
-    clear_login_failures(key)
-    csrf = secrets.token_urlsafe(24)
-    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
-    response.set_cookie("session", _token(csrf), httponly=True, secure=secure,
-                        samesite="strict", max_age=86400)
-    return {"ok": True}
-
-
-@app.post("/api/logout")
-def logout(response: Response):
-    response.delete_cookie("session", path="/", httponly=True, samesite="strict")
-    return {"ok": True}
 
 
 @app.get("/api/shops")
@@ -334,88 +254,10 @@ async def ozon_webhook(secret: str, request: Request):
     return {"result": True}
 
 
-def _admin_shop(body):
-    try:
-        shop_id = int(body.get("shop_id"))
-    except (AttributeError, TypeError, ValueError) as error:
-        raise HTTPException(400, "shop_id无效") from error
-    if shop_id not in (1, 2):
-        raise HTTPException(400, "未知店铺")
-    return shop_id
 
 
-def _performance_shop_id(value):
-    text = str(value or "").strip().lower()
-    if text in ("1", "shop_1"):
-        return 1
-    if text in ("2", "shop_2"):
-        return 2
-    raise HTTPException(400, "请选择有效店铺")
 
 
-async def _ozon_management_call(function, *args):
-    try:
-        return await run_in_threadpool(function, *args)
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-
-
-@app.post("/api/ozon/notifications/push-types")
-async def ozon_push_types(shop_id: int):
-    if shop_id not in (1, 2):
-        raise HTTPException(400, "未知店铺")
-    return await _ozon_management_call(push_type_list, shop_id)
-
-
-@app.post("/api/ozon/notifications/check")
-async def ozon_notification_check(request: Request):
-    body = await request.json()
-    shop_id = _admin_shop(body)
-    url = str(body.get("url") or "").strip()
-    if not url:
-        raise HTTPException(400, "url不能为空")
-    return await _ozon_management_call(notification_check, shop_id, url)
-
-
-@app.post("/api/ozon/notifications/set")
-async def ozon_notification_set(request: Request):
-    body = await request.json()
-    shop_id = _admin_shop(body)
-    url = str(body.get("url") or "").strip()
-    types = body.get("types") or PUSH_EVENT_TYPES
-    if not url or not isinstance(types, (list, tuple)) or not all(isinstance(value, str) and value for value in types):
-        raise HTTPException(400, "url或types无效")
-    return await _ozon_management_call(notification_set, shop_id, url, types)
-
-
-@app.post("/api/ozon/notifications/list")
-async def ozon_notification_list(request: Request):
-    return await _ozon_management_call(notification_list, _admin_shop(await request.json()))
-
-
-@app.post("/api/ozon/notifications/enable")
-async def ozon_notification_enable(request: Request):
-    body = await request.json()
-    shop_id = _admin_shop(body)
-    try:
-        notification_id = int(body.get("id"))
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "通知ID无效") from error
-    if "enabled" not in body and "enable" not in body:
-        raise HTTPException(400, "缺少 enabled")
-    return await _ozon_management_call(notification_enable, shop_id, notification_id,
-                                       bool(body.get("enabled", body.get("enable"))))
-
-
-@app.post("/api/ozon/notifications/delete")
-async def ozon_notification_delete(request: Request):
-    body = await request.json()
-    shop_id = _admin_shop(body)
-    try:
-        notification_id = int(body.get("id"))
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "通知ID无效") from error
-    return await _ozon_management_call(notification_delete, shop_id, notification_id)
 
 
 def _dingtalk_settings():
@@ -437,65 +279,6 @@ def dingtalk_settings():
     return _dingtalk_settings()
 
 
-def _alert_shop_id(value=0):
-    try:
-        shop_id = int(value)
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "shop_id无效") from error
-    if shop_id not in (0, 1, 2):
-        raise HTTPException(400, "未知店铺")
-    return shop_id
-
-
-@app.get("/api/alerts")
-def alerts(shop_id: int = 0, status: str = "open", severity: str = "", rule_key: str = "",
-           category: str = "", q: str = "", page: int = 1, size: int = 50):
-    try:
-        return list_alert_events(_alert_shop_id(shop_id), status, severity, rule_key, q, page, size, category)
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.get("/api/alerts/summary")
-def alerts_summary(shop_id: int = 0):
-    try:
-        return alert_summary(_alert_shop_id(shop_id))
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.post("/api/alerts/evaluate")
-async def alerts_evaluate(request: Request):
-    body = await request.json()
-    try:
-        shop_id = _alert_shop_id((body or {}).get("shop_id", 0))
-        return await run_in_threadpool(evaluate_alerts, shop_id)
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.post("/api/alerts/{alert_id}/acknowledge")
-def alert_acknowledge(alert_id: int):
-    try:
-        return acknowledge_alert(alert_id)
-    except (LookupError, ValueError) as error:
-        raise HTTPException(404 if isinstance(error, LookupError) else 400, str(error)) from error
-
-
-@app.get("/api/alert-rules")
-def alert_rules(shop_id: int = 0):
-    try:
-        return get_alert_rules(_alert_shop_id(shop_id))
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-
-
-@app.put("/api/alert-rules/{rule_key}")
-async def alert_rule_update(rule_key: str, request: Request):
-    try:
-        return update_alert_rule(rule_key, await request.json())
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
 
 
 @app.put("/api/dingtalk/settings")
@@ -526,37 +309,11 @@ async def update_dingtalk_settings(request: Request):
     return _dingtalk_settings()
 
 
-def _shop_clause(shop_id):
-    return (" AND o.shop_id=?", [shop_id]) if shop_id in (1, 2) else ("", [])
-
 
 def _record_clause(shop_id, alias="r"):
     return (f" WHERE {alias}.shop_id=?", [shop_id]) if shop_id in (1, 2) else ("", [])
 
 
-def _paging(page, size):
-    return max(page, 1), min(max(size, 1), 100)
-
-
-def _months_before(value, months=3):
-    month = value.month - months - 1
-    year, month = value.year + month // 12, month % 12 + 1
-    next_month = date(year + (month == 12), month % 12 + 1, 1)
-    return date(year, month, min(value.day, (next_month - timedelta(days=1)).day))
-
-
-def _overview_range(date_from=None, date_to=None, now=None):
-    today = (now or datetime.now(BEIJING)).date()
-    try:
-        end = date.fromisoformat(date_to) if date_to else today
-        start = date.fromisoformat(date_from) if date_from else _months_before(end)
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "日期格式必须为 YYYY-MM-DD") from error
-    if start > end:
-        raise HTTPException(400, "开始日期不能晚于结束日期")
-    utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
-    utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
-    return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")
 
 
 def _compensation_pair(body, amount_key, time_key):
@@ -575,27 +332,6 @@ def _compensation_pair(body, amount_key, time_key):
     if moment.tzinfo is None:
         moment = moment.replace(tzinfo=BEIJING)
     return str(value), _utc_text(moment)
-
-
-def _utc_text(value):
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _with_compensation_conversion(db, row):
-    target = row.get("settlement_currency")
-    for prefix, amount_key, time_key, source in (
-        ("platform_compensation", "platform_compensation_rub", "platform_compensated_at", "RUB"),
-        ("logistics_compensation", "logistics_compensation_cny", "logistics_compensated_at", "CNY"),
-    ):
-        result = convert_compensation(db, row.get(amount_key), row.get(time_key), source, target)
-        row[f"{prefix}_original_currency"] = source
-        row[f"{prefix}_converted_amount"] = result["converted_amount"]
-        row[f"{prefix}_converted_currency"] = result["converted_currency"]
-        row[f"{prefix}_base_rates"] = result["base_rates"]
-        row[f"{prefix}_missing_rate"] = result["missing_rate"]
-        moment = _utc_moment(row.get(time_key))
-        row[f"{time_key}_beijing"] = moment.astimezone(BEIJING).strftime("%Y-%m-%d %H:%M") if moment else None
-    return row
 
 
 def _bucket_start(value, granularity):
@@ -852,12 +588,6 @@ def order_trend(shop_id: int = 0, granularity: str = "day"):
     return {"granularity": granularity, "from": start.isoformat(), "to": end.isoformat(), "buckets": buckets}
 
 
-def _translated_order(row):
-    order = dict(row)
-    order["status_raw"] = STATUS_ZH.get(order["status_raw"], order["status_raw"])
-    order["cancel_reason_raw"] = CANCEL_REASON_ZH.get(order["cancel_reason_raw"], order["cancel_reason_raw"])
-    return order
-
 
 @app.get("/api/orders")
 def orders(shop_id: int = 0, channel: str = "", q: str = "", page: int = 1, size: int = 30,
@@ -1065,34 +795,6 @@ def _percentile(values, fraction):
     if len(values) == 1:
         return values[0]
     return statistics.quantiles(values, n=10, method="inclusive")[8]
-
-
-def _utc_moment(value):
-    if not value:
-        return None
-    try:
-        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(timezone.utc)
-
-
-def _complaint_deadline(primary_time, fallback_time=None, now=None):
-    moment = _utc_moment(primary_time) or _utc_moment(fallback_time)
-    if not moment:
-        return {"complaint_deadline": None, "complaint_deadline_status": "missing"}
-    deadline = moment.astimezone(BEIJING).date() + timedelta(days=30)
-    if now is None:
-        today = datetime.now(BEIJING).date()
-    elif isinstance(now, datetime):
-        today = (now if now.tzinfo else now.replace(tzinfo=BEIJING)).astimezone(BEIJING).date()
-    else:
-        today = now
-    days = (deadline - today).days
-    status = "overdue" if days < 0 else "due_today" if days == 0 else "due_soon" if days <= 7 else "normal"
-    return {"complaint_deadline": deadline.isoformat(), "complaint_deadline_status": status}
 
 
 def _duration_hours(start, end):
@@ -2062,13 +1764,6 @@ def imports():
         """)]
 
 
-@app.get("/api/sync")
-def sync_runs():
-    with connect() as db:
-        return [dict(row) for row in db.execute("""
-          SELECT r.*,s.name shop_name FROM sync_runs r JOIN shops s ON s.id=r.shop_id ORDER BY r.id DESC LIMIT 10
-        """)]
-
 
 @app.get("/api/exchange-rates")
 def get_exchange_rate_status():
@@ -2085,745 +1780,8 @@ async def sync_exchange_rate_data(request: Request):
         raise HTTPException(502, f"汇率拉取失败：{error}") from error
 
 
-@app.get("/api/sync/{run_id}")
-def sync_run(run_id: int):
-    with connect() as db:
-        row = db.execute("SELECT * FROM sync_runs WHERE id=?", (run_id,)).fetchone()
-    if not row:
-        raise HTTPException(404, "拉取任务不存在")
-    return dict(row)
 
 
-def _run_performance_campaign_sync(shop_id):
-    started_at = _utc_text(datetime.now(timezone.utc))
-    with transaction() as db:
-        run_id = db.execute("""INSERT INTO sync_runs(
-          shop_id,module,status,progress_total,run_source,started_at)
-          VALUES(?,?, 'running',1,'manual',?)""",
-                            (shop_id, PERFORMANCE_SYNC_MODULE, started_at)).lastrowid
-    try:
-        result = sync_performance_campaigns(shop_id)
-    except Exception as error:
-        with transaction() as db:
-            db.execute("""UPDATE sync_runs SET finished_at=?,status='failed',error=?
-              WHERE id=?""", (_utc_text(datetime.now(timezone.utc)), str(error)[:500], run_id))
-            _trim_sync_runs(db)
-        raise
-    records = int(result.get("inserted_or_updated") or 0)
-    finished_at = _utc_text(datetime.now(timezone.utc))
-    with transaction() as db:
-        db.execute("""UPDATE sync_runs SET finished_at=?,status='success',progress_done=1,
-          records=?,data_through=? WHERE id=?""", (finished_at, records, finished_at, run_id))
-        _trim_sync_runs(db)
-    result = dict(result)
-    result["run_id"] = run_id
-    return result
-
-
-def _evaluate_alerts_after_sync(shop_id, module):
-    rule_keys = {
-        "orders": ("sales_drop", "inventory_risk"),
-        "stock": ("inventory_risk",),
-        "ad_campaign_daily": ("ad_spend_spike", "ad_drr_high", "ad_orders_drop"),
-        "ad_sku_daily": ("ad_clicks_no_orders",),
-        "ad_statistics": ("ad_spend_spike", "ad_drr_high", "ad_orders_drop", "ad_clicks_no_orders"),
-    }.get(module)
-    if not rule_keys:
-        return
-    try:
-        evaluate_alerts(shop_id, rule_keys=rule_keys)
-    except Exception:
-        # Alert delivery is best effort; a sync that succeeded must stay successful.
-        pass
-
-
-@app.post("/api/performance/test")
-async def performance_test(request: Request):
-    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
-    try:
-        campaigns = await run_in_threadpool(list_campaigns, shop_id)
-    except PerformanceConfigurationError as error:
-        raise HTTPException(400, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-    return {"success": True, "shop_id": shop_id, "campaign_count": len(campaigns)}
-
-
-@app.post("/api/performance/campaigns/sync")
-async def performance_campaign_sync(request: Request):
-    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
-    try:
-        return await run_in_threadpool(_run_performance_campaign_sync, shop_id)
-    except sqlite3.IntegrityError as error:
-        raise HTTPException(409, "该店铺的同模块拉取任务正在运行") from error
-    except PerformanceConfigurationError as error:
-        raise HTTPException(400, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-
-
-@app.get("/api/performance/campaigns")
-def performance_campaigns(shop_id: str = "0"):
-    value = str(shop_id or "0").strip().lower()
-    selected = 0 if value in ("0", "all") else _performance_shop_id(value)
-    with connect() as db:
-        if selected:
-            rows = db.execute("""SELECT a.*,s.name shop_name FROM ad_campaigns a
-              JOIN shops s ON s.id=a.shop_id WHERE a.shop_id=?
-              ORDER BY a.campaign_id""", (selected,)).fetchall()
-        else:
-            rows = db.execute("""SELECT a.*,s.name shop_name FROM ad_campaigns a
-              JOIN shops s ON s.id=a.shop_id ORDER BY a.shop_id,a.campaign_id""").fetchall()
-    return [dict(row) for row in rows]
-
-
-def _performance_range(date_from=None, date_to=None):
-    today = datetime.now(ZoneInfo("Europe/Moscow")).date()
-    try:
-        end = date.fromisoformat(str(date_to)) if date_to else today
-        start = date.fromisoformat(str(date_from)) if date_from else end - timedelta(days=6)
-    except (TypeError, ValueError) as error:
-        raise HTTPException(400, "日期格式必须为 YYYY-MM-DD") from error
-    if start > end:
-        raise HTTPException(400, "开始日期不能晚于结束日期")
-    return start, end
-
-
-def _performance_filter_shop(value):
-    text = str(value or "0").strip().lower()
-    return 0 if text in ("", "0", "all") else _performance_shop_id(text)
-
-
-AD_BASE_FIELDS = ("impressions", "clicks", "cart_adds", "spend_rub", "orders", "revenue_rub")
-
-
-def _ad_number(value):
-    try:
-        value = float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return value if math.isfinite(value) else 0.0
-
-
-def _ad_summary(row):
-    values = {field: _ad_number(row.get(field)) for field in AD_BASE_FIELDS}
-    values["impressions"] = int(values["impressions"])
-    values["clicks"] = int(values["clicks"])
-    values["cart_adds"] = int(values["cart_adds"])
-    values["orders"] = int(values["orders"])
-    values["spend_rub"] = round(values["spend_rub"], 2)
-    values["revenue_rub"] = round(values["revenue_rub"], 2)
-    values["ctr"] = round(values["clicks"] / values["impressions"] * 100, 4) if values["impressions"] else None
-    values["avg_cpc_rub"] = round(values["spend_rub"] / values["clicks"], 4) if values["clicks"] else None
-    values["drr"] = round(values["spend_rub"] / values["revenue_rub"] * 100, 4) if values["revenue_rub"] else None
-    values["roas"] = round(values["revenue_rub"] / values["spend_rub"], 4) if values["spend_rub"] else None
-    return values
-
-
-def _ad_add(target, row):
-    for field in AD_BASE_FIELDS:
-        target[field] = target.get(field, 0) + _ad_number(row.get(field))
-
-
-def _ad_sort(rows, sort, order):
-    sort = str(sort or "spend_rub").strip().lower()
-    aliases = {"spend": "spend_rub", "revenue": "revenue_rub", "cpc": "avg_cpc_rub",
-               "campaigns": "campaign_count"}
-    sort = aliases.get(sort, sort)
-    allowed = {"name", "sku", "spend_rub", "revenue_rub", "orders", "impressions", "clicks",
-               "ctr", "avg_cpc_rub", "drr", "roas", "campaign_count"}
-    if sort not in allowed:
-        sort = "spend_rub"
-    present = [row for row in rows if row.get(sort) is not None]
-    missing = [row for row in rows if row.get(sort) is None]
-    present.sort(key=lambda row: str(row.get(sort)).lower() if sort in {"name", "sku"} else row.get(sort),
-                 reverse=str(order or "desc").lower() == "desc")
-    return present + missing
-
-
-def _date_query_values(date_from, date_to, from_date, to_date):
-    return _performance_range(date_from or from_date, date_to or to_date)
-
-
-@app.get("/api/performance/overview")
-def performance_overview(shop_id: str = "0", date_from: str | None = None, date_to: str | None = None,
-                         from_date: Annotated[str | None, Query(alias="from")] = None,
-                         to_date: Annotated[str | None, Query(alias="to")] = None):
-    selected = _performance_filter_shop(shop_id)
-    start, end = _date_query_values(date_from, date_to, from_date, to_date)
-    with connect() as db:
-        rows = [dict(row) for row in db.execute("""
-          SELECT d.shop_id,s.name shop_name,d.stat_date,
-            SUM(COALESCE(d.impressions,0)) impressions,SUM(COALESCE(d.clicks,0)) clicks,
-            SUM(COALESCE(d.cart_adds,0)) cart_adds,SUM(COALESCE(d.spend_rub,0)) spend_rub,
-            SUM(COALESCE(d.orders,0)) orders,SUM(COALESCE(d.revenue_rub,0)) revenue_rub
-          FROM ad_campaign_daily d JOIN shops s ON s.id=d.shop_id
-          WHERE d.stat_date BETWEEN ? AND ? AND (?=0 OR d.shop_id=?)
-          GROUP BY d.shop_id,d.stat_date ORDER BY d.stat_date,d.shop_id""",
-            (start.isoformat(), end.isoformat(), selected, selected))]
-        shop_rows = [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")]
-    by_date, by_shop = {}, {}
-    for row in rows:
-        by_date.setdefault(row["stat_date"], {})
-        _ad_add(by_date[row["stat_date"]], row)
-        by_shop.setdefault(row["shop_id"], {"shop_id": row["shop_id"], "shop_name": row["shop_name"]})
-        _ad_add(by_shop[row["shop_id"]], row)
-    zero = {field: 0 for field in AD_BASE_FIELDS}
-    summary_base = dict(zero)
-    for row in rows:
-        _ad_add(summary_base, row)
-    trend = [{"date": current.isoformat(), **_ad_summary(by_date.get(current.isoformat(), zero))}
-             for index in range((end - start).days + 1)
-             for current in [start + timedelta(days=index)]]
-    shops = []
-    for shop in shop_rows:
-        if selected and shop["id"] != selected:
-            continue
-        shops.append({"shop_id": shop["id"], "shop_name": shop["name"],
-                      **_ad_summary(by_shop.get(shop["id"], zero))})
-    summary = _ad_summary(summary_base)
-    return {"shop_id": selected, "date_from": start.isoformat(), "date_to": end.isoformat(),
-            **summary, "summary": summary, "trend": trend, "shops": shops,
-            "data_through": max((row["stat_date"] for row in rows), default=None)}
-
-
-@app.get("/api/performance/campaign-stats")
-def performance_campaign_stats(shop_id: str = "0", state: str = "", sort: str = "spend_rub",
-                               order: str = "desc", page: int = 1, size: int = 100,
-                               date_from: str | None = None, date_to: str | None = None,
-                               from_date: Annotated[str | None, Query(alias="from")] = None,
-                               to_date: Annotated[str | None, Query(alias="to")] = None):
-    selected = _performance_filter_shop(shop_id)
-    start, end = _date_query_values(date_from, date_to, from_date, to_date)
-    page, size = _paging(page, size)
-    state = "" if str(state or "").lower() in {"", "all"} else str(state).strip()
-    with connect() as db:
-        rows = [dict(row) for row in db.execute("""
-          SELECT c.shop_id,s.name shop_name,c.campaign_id,c.name,c.state,c.payment_type,
-            c.adv_object_type,c.placement,c.weekly_budget,
-            COALESCE(d.impressions,0) impressions,COALESCE(d.clicks,0) clicks,
-            COALESCE(d.cart_adds,0) cart_adds,COALESCE(d.spend_rub,0) spend_rub,
-            COALESCE(d.orders,0) orders,COALESCE(d.revenue_rub,0) revenue_rub,d.data_through
-          FROM ad_campaigns c JOIN shops s ON s.id=c.shop_id
-          LEFT JOIN (
-            SELECT shop_id,campaign_id,MAX(stat_date) data_through,
-              SUM(COALESCE(impressions,0)) impressions,SUM(COALESCE(clicks,0)) clicks,
-              SUM(COALESCE(cart_adds,0)) cart_adds,SUM(COALESCE(spend_rub,0)) spend_rub,
-              SUM(COALESCE(orders,0)) orders,SUM(COALESCE(revenue_rub,0)) revenue_rub
-            FROM ad_campaign_daily WHERE stat_date BETWEEN ? AND ?
-            GROUP BY shop_id,campaign_id
-          ) d ON d.shop_id=c.shop_id AND d.campaign_id=c.campaign_id
-          WHERE (?=0 OR c.shop_id=?) AND (?='' OR c.state=?)
-          ORDER BY c.shop_id,c.campaign_id""",
-            (start.isoformat(), end.isoformat(), selected, selected, state, state))]
-    items = []
-    for row in rows:
-        item = {key: row[key] for key in ("shop_id", "shop_name", "campaign_id", "name", "state",
-                                           "payment_type", "adv_object_type", "placement", "weekly_budget")}
-        item.update(_ad_summary(row))
-        item["data_through"] = row["data_through"]
-        items.append(item)
-    items = _ad_sort(items, sort, order)
-    total = len(items)
-    offset = (page - 1) * size
-    return {"items": items[offset:offset + size], "total": total, "page": page, "size": size,
-            "date_from": start.isoformat(), "date_to": end.isoformat(),
-            "data_through": max((row["data_through"] for row in items if row["data_through"]), default=None)}
-
-
-@app.get("/api/performance/sku-stats")
-def performance_sku_stats(shop_id: str = "0", q: str = "", sort: str = "spend_rub",
-                          order: str = "desc", page: int = 1, size: int = 100,
-                          date_from: str | None = None, date_to: str | None = None,
-                          from_date: Annotated[str | None, Query(alias="from")] = None,
-                          to_date: Annotated[str | None, Query(alias="to")] = None):
-    selected = _performance_filter_shop(shop_id)
-    start, end = _date_query_values(date_from, date_to, from_date, to_date)
-    page, size = _paging(page, size)
-    with connect() as db:
-        rows = [dict(row) for row in db.execute("""
-          SELECT d.shop_id,s.name shop_name,d.sku,
-            COALESCE(MAX(NULLIF(d.product_name,'')),MAX(NULLIF(p.product_name,''))) product_name,
-            COUNT(DISTINCT d.campaign_id) campaign_count,MAX(d.stat_date) data_through,
-            SUM(COALESCE(d.impressions,0)) impressions,SUM(COALESCE(d.clicks,0)) clicks,
-            SUM(COALESCE(d.cart_adds,0)) cart_adds,SUM(COALESCE(d.spend_rub,0)) spend_rub,
-            SUM(COALESCE(d.orders,0)) orders,SUM(COALESCE(d.revenue_rub,0)) revenue_rub
-          FROM ad_sku_daily d JOIN shops s ON s.id=d.shop_id
-          LEFT JOIN (
-            SELECT shop_id,sku,MAX(NULLIF(product_name_raw,'')) product_name
-            FROM order_items GROUP BY shop_id,sku
-          ) p ON p.shop_id=d.shop_id AND p.sku=d.sku
-          WHERE d.stat_date BETWEEN ? AND ? AND (?=0 OR d.shop_id=?)
-          GROUP BY d.shop_id,d.sku ORDER BY d.shop_id,d.sku""",
-            (start.isoformat(), end.isoformat(), selected, selected))]
-    query = str(q or "").strip().lower()
-    items = []
-    for row in rows:
-        if query and query not in str(row["sku"]).lower() and query not in str(row["product_name"] or "").lower():
-            continue
-        item = {key: row[key] for key in ("shop_id", "shop_name", "sku", "product_name", "campaign_count", "data_through")}
-        item.update(_ad_summary(row))
-        items.append(item)
-    items = _ad_sort(items, sort, order)
-    total = len(items)
-    offset = (page - 1) * size
-    return {"items": items[offset:offset + size], "total": total, "page": page, "size": size,
-            "date_from": start.isoformat(), "date_to": end.isoformat(),
-            "data_through": max((row["data_through"] for row in items if row["data_through"]), default=None)}
-
-
-def _run_performance_statistics_sync(shop_id, start, end, module="all"):
-    run_module = "ad_statistics" if module == "all" else module
-    started_at = _utc_text(datetime.now(timezone.utc))
-    with transaction() as db:
-        run_id = db.execute("""INSERT INTO sync_runs(
-          shop_id,module,range_from,range_to,status,progress_total,run_source,started_at)
-          VALUES(?,?,?,?, 'running',1,'manual',?)""",
-                            (shop_id, run_module, start.isoformat(), end.isoformat(), started_at)).lastrowid
-    try:
-        result = sync_performance_statistics(shop_id, start.isoformat(), end.isoformat(), module)
-    except Exception as error:
-        with transaction() as db:
-            db.execute("""UPDATE sync_runs SET finished_at=?,status='failed',error=?
-              WHERE id=?""", (_utc_text(datetime.now(timezone.utc)), str(error)[:500], run_id))
-            _trim_sync_runs(db)
-        raise
-    records = int(result.get("inserted_or_updated") or 0)
-    finished_at = _utc_text(datetime.now(timezone.utc))
-    with transaction() as db:
-        db.execute("""UPDATE sync_runs SET finished_at=?,status='success',progress_done=1,
-          records=?,data_through=? WHERE id=?""",
-                   (finished_at, records, result.get("date_to"), run_id))
-        _trim_sync_runs(db)
-    _evaluate_alerts_after_sync(shop_id, run_module)
-    result = dict(result)
-    result["run_id"] = run_id
-    return result
-
-
-@app.post("/api/performance/statistics/sync")
-async def performance_statistics_sync(request: Request):
-    body = await request.json()
-    shop_id = _performance_shop_id(body.get("shop_id"))
-    try:
-        start, end = _performance_range(body.get("date_from") or body.get("from"),
-                                        body.get("date_to") or body.get("to"))
-    except HTTPException:
-        raise
-    module = str(body.get("module") or "all")
-    module = {"daily": "ad_campaign_daily", "campaign_daily": "ad_campaign_daily",
-              "sku": "ad_sku_daily"}.get(module, module)
-    if module not in {"all", "ad_campaign_daily", "ad_sku_daily"}:
-        raise HTTPException(400, "未知广告统计模块")
-    try:
-        return await run_in_threadpool(_run_performance_statistics_sync, shop_id, start, end, module)
-    except sqlite3.IntegrityError as error:
-        raise HTTPException(409, "该店铺的同模块拉取任务正在运行") from error
-    except PerformanceConfigurationError as error:
-        raise HTTPException(400, str(error)) from error
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-
-
-@app.get("/api/auto-sync-settings")
-def auto_sync_settings():
-    with connect() as db:
-        return [dict(row) for row in db.execute(
-            "SELECT * FROM shop_auto_sync_settings ORDER BY shop_id,CASE module "
-            "WHEN 'orders' THEN 1 WHEN 'returns' THEN 2 WHEN 'stock' THEN 3 "
-            "WHEN 'ad_campaign_daily' THEN 4 ELSE 5 END")]
-
-
-def save_auto_sync_settings(values):
-    if set(values) == SYNC_MODULES:
-        values = {str(shop_id): values for shop_id in (1, 2)}
-    if set(values) != {"1", "2"}:
-        raise ValueError("必须分别提交两个店铺的自动拉取设置")
-    with connect() as db:
-        current_ads = {shop_id: {row["module"]: dict(row) for row in db.execute(
-            "SELECT * FROM shop_auto_sync_settings WHERE shop_id=? AND module IN ('ad_campaign_daily','ad_sku_daily')",
-            (shop_id,))} for shop_id in (1, 2)}
-    settings = []
-    for shop_id in (1, 2):
-        submitted = dict(values[str(shop_id)])
-        if set(submitted) == SYNC_MODULES:
-            submitted.update({module: {"enabled": row["enabled"], "interval_hours": row["interval_hours"],
-                                       "range_days": row["range_days"]}
-                              for module, row in current_ads[shop_id].items()})
-        if set(submitted) != AUTO_SYNC_MODULES:
-            raise ValueError("必须分别提交两个店铺的五个模块设置")
-        for module in ("orders", "returns", "stock", "ad_campaign_daily", "ad_sku_daily"):
-            value = submitted[module]
-            if "run_time" in value:
-                raise ValueError("run_time 已停用，请提交 interval_hours")
-            try:
-                interval_hours = int(value.get("interval_hours"))
-                range_days = int(value.get("range_days") or 0)
-            except (TypeError, ValueError) as error:
-                raise ValueError("拉取频率或范围无效") from error
-            if interval_hours not in AUTO_SYNC_INTERVALS:
-                raise ValueError("拉取频率只允许 1、2、3、4、6、8、12、24 小时")
-            if not 1 <= range_days <= 365:
-                raise ValueError("自动拉取范围必须为 1 至 365 天")
-            settings.append((int(bool(value.get("enabled"))), interval_hours,
-                             1 if module == "stock" else range_days, shop_id, module))
-    with transaction() as db:
-        db.executemany("""UPDATE shop_auto_sync_settings SET enabled=?,interval_hours=?,range_days=?
-          WHERE shop_id=? AND module=?""",
-                       settings)
-
-
-@app.put("/api/auto-sync-settings")
-async def update_auto_sync_settings(request: Request):
-    try:
-        save_auto_sync_settings(await request.json())
-    except ValueError as error:
-        raise HTTPException(400, str(error)) from error
-    return {"ok": True}
-
-
-def _sync_ranges(module, start, end):
-    if module == "stock" or module in AD_SYNC_MODULES:
-        return [(start, end)]
-    ranges, current = [], start
-    while current <= end:
-        next_month = (current.replace(day=1, year=current.year + 1, month=1)
-                      if current.month == 12 else current.replace(day=1, month=current.month + 1))
-        next_month = next_month.replace(hour=0, minute=0, second=0, microsecond=0)
-        chunk_end = min(end, next_month - timedelta(seconds=1))
-        ranges.append((current, chunk_end))
-        current = next_month
-    return ranges
-
-
-def _run_sync_job(run_id, module, shop_id, ranges):
-    records = 0
-    with connect() as db:
-        run_source = db.execute("SELECT run_source FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
-    try:
-        for index, (start, end) in enumerate(ranges, 1):
-            with transaction() as db:
-                db.execute("UPDATE sync_runs SET current_from=?,current_to=? WHERE id=?",
-                           (_utc_text(start), _utc_text(end), run_id))
-            if module in AD_SYNC_MODULES:
-                start_date = start.date() if isinstance(start, datetime) else start
-                end_date = end.date() if isinstance(end, datetime) else end
-                result = sync_performance_statistics(shop_id, start_date.isoformat(), end_date.isoformat(), module)
-                records += int(result.get("inserted_or_updated") or 0)
-            else:
-                result = sync_module(module, shop_id, start, end, include_existing_missing=run_source != "auto")
-                records += int(result.get("records") or 0)
-            with transaction() as db:
-                db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",
-                           (index, records, _utc_text(end), run_id))
-    except Exception as error:
-        message = str(error)[:500]
-        with transaction() as db:
-            db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-              status='failed',error=? WHERE id=?""", (message, run_id))
-            _trim_sync_runs(db)
-        try:
-            send_sync_failure(shop_id, module, ranges[0][0], ranges[-1][1], message)
-        except Exception:
-            pass
-        return
-    with transaction() as db:
-        db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-          data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
-                   (_utc_text(ranges[-1][1]), run_id))
-        _trim_sync_runs(db)
-    _evaluate_alerts_after_sync(shop_id, module)
-
-
-def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled_slot=None, now=None):
-    ranges = _sync_ranges(module, start, end)
-    with transaction() as db:
-        if run_source == "auto":
-            cooldown = _utc_text((now or datetime.now(BEIJING)) - timedelta(minutes=5))
-            if db.execute("""SELECT 1 FROM sync_runs
-              WHERE shop_id=? AND module=? AND scheduled_slot=? AND run_source='auto'
-              AND status='failed' AND datetime(COALESCE(finished_at,started_at))>=datetime(?)""",
-                          (shop_id, module, scheduled_slot, cooldown)).fetchone():
-                return None
-        cursor = db.execute("""INSERT OR IGNORE INTO sync_runs(
-          shop_id,module,range_from,range_to,status,progress_total,run_source,scheduled_slot)
-          VALUES(?,?,?,?, 'running',?,?,?)""",
-                            (shop_id, module, _utc_text(start), _utc_text(end), len(ranges),
-                             run_source, scheduled_slot))
-        if cursor.rowcount == 0:
-            return None
-        run_id = cursor.lastrowid
-        _trim_sync_runs(db, scheduled_slot=scheduled_slot)
-    threading.Thread(target=_run_sync_job, args=(run_id, module, shop_id, ranges), daemon=True).start()
-    return run_id
-
-
-def auto_sync_slot(now, interval_hours):
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=BEIJING)
-    now = now.astimezone(BEIJING)
-    return now.replace(hour=(now.hour // interval_hours) * interval_hours,
-                       minute=0, second=0, microsecond=0)
-
-
-def run_auto_sync_once(now=None):
-    now = now or datetime.now(BEIJING)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=BEIJING)
-    now = now.astimezone(BEIJING)
-    with connect() as db:
-        settings = db.execute("""SELECT * FROM shop_auto_sync_settings
-          WHERE enabled=1 ORDER BY shop_id,rowid""").fetchall()
-    started = []
-    for setting in settings:
-        slot = auto_sync_slot(now, setting["interval_hours"])
-        end = now
-        start = (now - timedelta(days=setting["range_days"] - 1)).replace(
-            hour=0, minute=0, second=0, microsecond=0)
-        run_id = _create_sync_job(setting["module"], setting["shop_id"], start, end,
-                                  "auto", slot.isoformat(), now)
-        if run_id:
-            started.append(run_id)
-    return started
-
-
-def _auto_sync_scheduler():
-    while not _auto_sync_stop.wait(20):
-        try:
-            run_auto_sync_once()
-        except Exception:
-            pass
-
-
-def _start_auto_sync_scheduler():
-    global _auto_sync_thread
-    if _auto_sync_thread and _auto_sync_thread.is_alive():
-        return
-    _auto_sync_stop.clear()
-    _auto_sync_thread = threading.Thread(target=_auto_sync_scheduler, name="auto-sync-scheduler", daemon=True)
-    _auto_sync_thread.start()
-
-
-def _stop_auto_sync_scheduler():
-    _auto_sync_stop.set()
-
-
-@app.post("/api/sync/{module}")
-async def sync(module: str, request: Request, shop_id: int):
-    if module not in SYNC_MODULES: raise HTTPException(404, "未知模块")
-    if shop_id not in (1, 2): raise HTTPException(400, "请选择店铺")
-    body = await request.json()
-    start, end = default_range()
-    try:
-        if body.get("from"):
-            start = datetime.fromisoformat(body["from"]).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
-        if body.get("to"):
-            end = datetime.fromisoformat(body["to"]).replace(hour=23, minute=59, second=59, tzinfo=ZoneInfo("Asia/Shanghai"))
-    except ValueError as error:
-        raise HTTPException(400, "日期格式无效") from error
-    if start >= end:
-        raise HTTPException(400, "开始日期必须早于结束日期")
-    run_id = _create_sync_job(module, shop_id, start, end)
-    if run_id is None:
-        raise HTTPException(409, "该店铺的同模块拉取任务正在运行")
-    with connect() as db:
-        total = db.execute("SELECT progress_total FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
-    return {"run_id": run_id, "status": "running", "progress_total": total}
-
-
-def _export_range(date_from="", date_to=""):
-    if not date_from and not date_to:
-        return None
-    if "T" in date_from or "T" in date_to:
-        try:
-            start = datetime.fromisoformat(date_from.replace("Z", "+00:00")) if date_from else None
-            end = datetime.fromisoformat(date_to.replace("Z", "+00:00")) if date_to else None
-        except ValueError as error:
-            raise HTTPException(400, "日期格式无效") from error
-        if start and start.tzinfo is None: start = start.replace(tzinfo=timezone.utc)
-        if end and end.tzinfo is None: end = end.replace(tzinfo=timezone.utc)
-        if start and end and start > end:
-            raise HTTPException(400, "开始日期不能晚于结束日期")
-        return date_from or None, date_to or None, date_from or None, date_to or None, False
-    start, end, utc_start, utc_end = _overview_range(date_from or None, date_to or None)
-    return start.isoformat(), end.isoformat(), utc_start, utc_end, True
-
-
-@app.get("/api/export/orders")
-def export_orders(shop_id: int = 0, date_from: str = "", date_to: str = ""):
-    if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
-    clause, args = _shop_clause(shop_id)
-    export_range = _export_range(date_from, date_to)
-    range_clause = ""
-    if export_range:
-        _, _, utc_start, utc_end, exclusive_end = export_range
-        if utc_start:
-            range_clause += " AND o.created_at>=?"; args.append(utc_start)
-        if utc_end:
-            range_clause += f" AND o.created_at{'<' if exclusive_end else '<='}?"; args.append(utc_end)
-    def lines():
-        with connect() as db:
-            rules = load_product_rules(db)
-            shops_value = [dict(r) for r in db.execute("SELECT id,name FROM shops ORDER BY id")
-                           if shop_id not in (1, 2) or r["id"] == shop_id]
-            through = db.execute(f"SELECT MAX(o.created_at) FROM orders o WHERE {ACTIVE}{clause}{range_clause}", args).fetchone()[0]
-            yield json.dumps({"type":"metadata","shops":shops_value,"timezone":"数据库UTC；显示北京时间",
-                              "range":{"from":export_range[0],"to":export_range[1]} if export_range else {"from":None,"to":None},
-                              "order_definition":"COUNT DISTINCT posting_number","piece_definition":"SUM quantity",
-                              "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
-            current_key = current = None
-            for raw in db.execute(f"""
-              SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,
-                o.shipped_at,o.delivered_at,o.status_changed_at,o.status_raw,o.cancel_reason_raw,
-                o.shipped,o.data_anomaly,o.amount_original,o.amount_currency,
-                i.sku item_sku,i.offer_id item_offer_id,i.product_name_raw item_product_name_raw,
-                i.quantity item_quantity,i.unit_price item_unit_price,i.price_currency item_price_currency
-              FROM orders o JOIN shops s ON s.id=o.shop_id
-              LEFT JOIN order_items i ON i.shop_id=o.shop_id AND i.posting_number=o.posting_number
-              WHERE {ACTIVE}{clause}{range_clause} ORDER BY o.created_at
-                ,o.shop_id,o.posting_number,i.sku,i.offer_id
-            """, args):
-                key = raw["shop_id"], raw["posting_number"]
-                if key != current_key:
-                    if current is not None:
-                        current["sku_types"] = len(current["items"])
-                        current["pieces"] = sum(int(item["quantity"] or 0) for item in current["items"])
-                        yield json.dumps(current, ensure_ascii=False) + "\n"
-                    current_key = key
-                    current = _translated_order(raw)
-                    current["items"] = []
-                if raw["item_sku"] is not None:
-                    item = {"sku": raw["item_sku"], "offer_id": raw["item_offer_id"],
-                            "product_name_raw": raw["item_product_name_raw"],
-                            "quantity": raw["item_quantity"], "unit_price": raw["item_unit_price"],
-                            "price_currency": raw["item_price_currency"]}
-                    resolved = resolve_product(rules, item["sku"], item["offer_id"], item["product_name_raw"])
-                    item.update({"product_name": resolved["display_name"],
-                                 "analysis_identity": resolved["identity"]})
-                    current["items"].append(item)
-            if current is not None:
-                current["sku_types"] = len(current["items"])
-                current["pieces"] = sum(int(item["quantity"] or 0) for item in current["items"])
-                yield json.dumps(current, ensure_ascii=False) + "\n"
-    return StreamingResponse(lines(), media_type="application/x-ndjson",
-                             headers={"Content-Disposition":"attachment; filename=orders.jsonl"})
-
-
-@app.get("/api/export/{module}")
-def export_module(module: str, shop_id: int = 0, date_from: str = "", date_to: str = ""):
-    if module not in {"risk", "returns", "complaints"}:
-        raise HTTPException(404, "未知导出模块")
-    if shop_id not in (0, 1, 2): raise HTTPException(400, "未知店铺")
-    tables = {
-        "risk": ("orders o JOIN order_items i USING(shop_id,posting_number)", "o.created_at",
-                 "o.shop_id,o.channel,o.posting_number,o.created_at,i.sku,i.offer_id,i.product_name_raw,i.quantity,o.status_raw,o.shipped,o.cancel_reason_raw"),
-        "returns": ("rfbs_return_records o LEFT JOIN rfbs_return_disputes d ON d.shop_id=o.shop_id AND d.return_number=o.return_number JOIN shops s ON s.id=o.shop_id", "o.created_at",
-                 "o.shop_id,s.name shop_name,o.return_id,o.return_number,o.created_at,o.posting_number,o.sku,o.offer_id,o.product_name,o.status_raw,o.status_name,o.quantity,o.reason_raw,o.reason_name,o.compensation_status,o.product_amount,o.product_currency,o.logistic_return_at,o.buyer_comment_raw,s.settlement_currency,d.refund_type,d.refund_amount,d.refund_currency,d.platform_compensation_rub,d.platform_compensated_at,d.logistics_compensation_cny,d.logistics_compensated_at,d.process_status,d.return_method,d.iml_return_number,d.iml_system_sn,d.buyer_tracking_number,d.handling_method,d.video_recorded,d.outbound_order_number,d.return_result,d.notes,d.created_at manual_created_at,d.updated_at manual_updated_at"),
-        "complaints": ("complaints o JOIN shops s ON s.id=o.shop_id JOIN orders x ON x.shop_id=o.shop_id AND x.posting_number=o.posting_number", "o.complaint_at",
-                 "o.shop_id,s.name shop_name,o.posting_number,o.complaint_number,o.complaint_at,o.channel,o.resolved,o.package_returned,o.compensation_amount,o.compensation_currency,o.notes,o.not_received_return,o.warehouse,o.order_process_status,o.complaint_status,o.compensation_status,o.platform_compensation_rub,o.platform_compensated_at,o.logistics_compensation_cny,o.logistics_compensated_at,s.settlement_currency,x.status_changed_at,(SELECT MAX(r.occurred_at) FROM return_records r WHERE r.shop_id=o.shop_id AND r.posting_number=o.posting_number) fallback_cancelled_at,o.created_at,o.updated_at"),
-    }
-    table, date_column, fields = tables[module]
-    where, args = ["1=1"], []
-    alias = "o"
-    export_range = _export_range(date_from, date_to)
-    if shop_id in (1, 2):
-        where.append(f"{alias}.shop_id=?"); args.append(shop_id)
-    if export_range:
-        _, _, utc_start, utc_end, exclusive_end = export_range
-        if utc_start:
-            where.append(f"{date_column}>=?"); args.append(utc_start)
-        if utc_end:
-            where.append(f"{date_column}{'<' if exclusive_end else '<='}?"); args.append(utc_end)
-    if module == "risk":
-        where.append(ACTIVE)
-    sql_where = " AND ".join(where)
-
-    def lines():
-        with connect() as db:
-            selected = [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")
-                        if shop_id not in (1, 2) or row["id"] == shop_id]
-            through = db.execute(f"SELECT MAX({date_column}) FROM {table} WHERE {sql_where}", args).fetchone()[0]
-            metadata = {"type": "metadata", "module": module, "shops": selected,
-              "range": {"from": export_range[0], "to": export_range[1]} if export_range else {"from": None, "to": None},
-              "timezone": "数据库UTC；页面北京时间", "currencies": "保留记录原始币种，不做跨币种汇总",
-              "order_definition": "不同posting_number", "piece_definition": "SUM(quantity)",
-              "filter": "统计类导出剔除发货前取消；模块互相隔离", "data_through": through}
-            yield json.dumps(metadata, ensure_ascii=False) + "\n"
-            if module == "returns":
-                legacy_where, legacy_args = ["1=1"], []
-                if shop_id in (1, 2):
-                    legacy_where.append("shop_id=?"); legacy_args.append(shop_id)
-                if export_range:
-                    if utc_start:
-                        legacy_where.append("occurred_at>=?"); legacy_args.append(utc_start)
-                    if utc_end:
-                        legacy_where.append(f"occurred_at{'<' if exclusive_end else '<='}?"); legacy_args.append(utc_end)
-                for row in db.execute(f"SELECT shop_id,occurred_at,posting_number,sku,payload FROM return_records WHERE {' AND '.join(legacy_where)} ORDER BY occurred_at", legacy_args):
-                    value, payload = dict(row), json.loads(row["payload"])
-                    product, visual = payload.get("product") or {}, payload.get("visual") or {}
-                    status = visual.get("status") or {}
-                    value.pop("payload")
-                    value.update({"record_type": "取消明细", "quantity": product.get("quantity"),
-                                  "offer_id": product.get("offer_id"), "product_name": product.get("name"),
-                                  "reason_raw": payload.get("return_reason_name"),
-                                  "reason_name": CANCEL_REASON_ZH.get(payload.get("return_reason_name"), payload.get("return_reason_name")),
-                                  "status": status.get("display_name") if isinstance(status, dict) else status})
-                    value.update(_complaint_deadline(value["occurred_at"]))
-                    yield json.dumps(value, ensure_ascii=False) + "\n"
-            rules = load_product_rules(db) if module == "risk" else None
-            for row in db.execute(f"SELECT {fields} FROM {table} WHERE {sql_where} ORDER BY {date_column}", args):
-                value = dict(row)
-                if module == "returns":
-                    value["record_type"] = "退货明细"
-                    value["reason_name"] = CANCEL_REASON_ZH.get(
-                        value["reason_raw"], value["reason_name"] or value["reason_raw"])
-                    value.update(_complaint_deadline(value["created_at"]))
-                    _with_compensation_conversion(db, value)
-                elif module == "complaints":
-                    value["record_type"] = "发货未收货投诉"
-                    value.update(_complaint_deadline(value.pop("status_changed_at"),
-                                                      value.pop("fallback_cancelled_at")))
-                    _with_compensation_conversion(db, value)
-                elif module == "risk":
-                    resolved = resolve_product(rules, value["sku"], value["offer_id"], value.pop("product_name_raw"))
-                    value["analysis_identity"] = resolved["identity"]
-                    value["analysis_product_name"] = resolved["display_name"]
-                    value["cancel_reason_name"] = CANCEL_REASON_ZH.get(
-                        value["cancel_reason_raw"], value["cancel_reason_raw"])
-                yield json.dumps(value, ensure_ascii=False) + "\n"
-            if module == "complaints":
-                received_where, received_args = ["1=1"], []
-                if shop_id in (1, 2):
-                    received_where.append("r.shop_id=?"); received_args.append(shop_id)
-                if export_range:
-                    if utc_start:
-                        received_where.append("r.created_at>=?"); received_args.append(utc_start)
-                    if utc_end:
-                        received_where.append(f"r.created_at{'<' if exclusive_end else '<='}?")
-                        received_args.append(utc_end)
-                for row in db.execute(f"""SELECT r.shop_id,s.name shop_name,r.posting_number,
-                  r.return_number,r.created_at,r.sku,r.offer_id,r.product_name,r.product_amount,
-                  r.product_currency,r.reason_raw,r.reason_name,r.buyer_comment_raw,
-                  d.refund_type,d.refund_amount,d.refund_currency,d.platform_compensation_rub,
-                  d.platform_compensated_at,d.logistics_compensation_cny,d.logistics_compensated_at,
-                  d.process_status,d.return_method,d.iml_return_number,d.iml_system_sn,
-                  d.buyer_tracking_number,d.handling_method,d.video_recorded,d.outbound_order_number,
-                  d.return_result,d.notes,d.created_at manual_created_at,d.updated_at manual_updated_at,
-                  s.settlement_currency FROM rfbs_return_disputes d
-                  JOIN rfbs_return_records r ON r.shop_id=d.shop_id AND r.return_number=d.return_number
-                  JOIN shops s ON s.id=r.shop_id WHERE {' AND '.join(received_where)} ORDER BY r.created_at""",
-                  received_args):
-                    value = dict(row)
-                    value["record_type"] = "已收货纠纷"
-                    value["reason_name"] = CANCEL_REASON_ZH.get(
-                        value["reason_raw"], value["reason_name"] or value["reason_raw"])
-                    value.update(_complaint_deadline(value["created_at"]))
-                    _with_compensation_conversion(db, value)
-                    yield json.dumps(value, ensure_ascii=False) + "\n"
-    return StreamingResponse(lines(), media_type="application/x-ndjson",
-      headers={"Content-Disposition": f"attachment; filename={module}.jsonl"})
 
 
 @app.get("/{path:path}")

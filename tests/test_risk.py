@@ -5,7 +5,8 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 
 from app import db
-from app.main import BUYER_UNCLAIMED_REASONS, _months_before, risk, risk_reasons
+from app.main import BUYER_UNCLAIMED_REASONS, risk, risk_reasons
+from app.routers.common import _months_before
 from tests.support import DatabaseTestCase
 
 

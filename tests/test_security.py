@@ -6,7 +6,9 @@ from unittest.mock import patch
 from fastapi import HTTPException, Response
 
 from app import db, main
-from app.main import _client_ip, login, logout, protect_api, session
+from app.main import protect_api
+from app.routers import auth
+from app.routers.auth import _client_ip, login, logout, session
 from app.security import (clear_login_failures, login_limited, password_hash,
                           password_matches, record_login_failure)
 from tests.support import DatabaseTestCase
@@ -23,8 +25,8 @@ class SecurityTest(DatabaseTestCase):
         self.assertTrue(login_limited("test", 101))
 
     def test_csrf_middleware_protection(self):
-        main.DATA_DIR = db.DATA_DIR
-        csrf, token = "csrf", main._token("csrf")
+        auth.DATA_DIR = db.DATA_DIR
+        csrf, token = "csrf", auth._token("csrf")
 
         async def next_response(_):
             return main.Response(status_code=204)
@@ -54,8 +56,8 @@ class SecurityTest(DatabaseTestCase):
             async def json(self):
                 return {"password": "secret"}
 
-        with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}), \
-             patch("app.main._token", return_value="token"):
+        with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}), \
+             patch("app.routers.auth._token", return_value="token"):
             self.assertEqual(asyncio.run(login(Request(), Response())), {"ok": True})
 
     def test_login_rate_limit_uses_forwarded_client_ip(self):
@@ -75,10 +77,10 @@ class SecurityTest(DatabaseTestCase):
             (Request({}, "192.0.2.9"), "192.0.2.9"),
         ]
         self.assertEqual([_client_ip(request) for request, _ in requests], [expected for _, expected in requests])
-        with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \
-             patch("app.main.login_limited", return_value=False), \
-             patch("app.main.password_matches", return_value=False), \
-             patch("app.main.record_login_failure") as record:
+        with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \
+             patch("app.routers.auth.login_limited", return_value=False), \
+             patch("app.routers.auth.password_matches", return_value=False), \
+             patch("app.routers.auth.record_login_failure") as record:
             for request, _ in requests:
                 with self.assertRaises(HTTPException) as raised:
                     asyncio.run(login(request, Response()))
@@ -96,7 +98,7 @@ class SecurityTest(DatabaseTestCase):
         clear_login_failures(second)
 
     def test_logout_clears_authenticated_session_cookie(self):
-        main.DATA_DIR = db.DATA_DIR
+        auth.DATA_DIR = db.DATA_DIR
         salt, digest = password_hash("secret")
 
         class LoginRequest:
@@ -108,7 +110,7 @@ class SecurityTest(DatabaseTestCase):
                 return {"password": "secret"}
 
         login_response = Response()
-        with patch("app.main._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}):
+        with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}):
             self.assertEqual(asyncio.run(login(LoginRequest(), login_response)), {"ok": True})
         cookie = SimpleCookie()
         cookie.load(login_response.headers["set-cookie"])
@@ -146,8 +148,8 @@ class SecurityTest(DatabaseTestCase):
         })
 
     def test_logout_requires_authentication_and_csrf(self):
-        main.DATA_DIR = db.DATA_DIR
-        token = main._token("csrf")
+        auth.DATA_DIR = db.DATA_DIR
+        token = auth._token("csrf")
 
         def request(csrf_header=None, session_cookie=token):
             headers = []

@@ -7,8 +7,8 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app import db, performance
-from app.main import (performance_campaign_stats, performance_overview, performance_sku_stats,
-                      performance_statistics_sync)
+from app.routers.performance import (performance_campaign_stats, performance_overview,
+                                     performance_sku_stats, performance_statistics_sync)
 from tests.support import DatabaseTestCase, MockRequest
 
 
@@ -129,7 +129,7 @@ class AdStatisticsTest(DatabaseTestCase):
     def test_statistics_sync_route_does_not_return_credentials(self):
         result = {"shop_id": 1, "success": True, "fetched": 1, "inserted_or_updated": 1,
                   "date_from": "2026-08-20", "date_to": "2026-08-20"}
-        with patch("app.main.sync_performance_statistics", return_value=result):
+        with patch("app.sync_jobs.sync_performance_statistics", return_value=result):
             response = asyncio.run(performance_statistics_sync(MockRequest({
                 "shop_id": 1, "date_from": "2026-08-20", "date_to": "2026-08-20",
             })))
@@ -139,7 +139,7 @@ class AdStatisticsTest(DatabaseTestCase):
         self.assertEqual(response["inserted_or_updated"], 1)
 
     def test_statistics_sync_configuration_error_is_clear(self):
-        with patch("app.main.sync_performance_statistics",
+        with patch("app.sync_jobs.sync_performance_statistics",
                    side_effect=performance.PerformanceConfigurationError("Shop 2 尚未配置 Ozon Performance API")):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(performance_statistics_sync(MockRequest({

@@ -4,7 +4,8 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from app import db
-from app.main import BEIJING, _overview_range, _trend_range, order_trend, summary
+from app.main import BEIJING, _trend_range, order_trend, summary
+from app.routers.common import _overview_range
 from tests.support import DatabaseTestCase
 
 

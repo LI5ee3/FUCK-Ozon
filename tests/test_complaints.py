@@ -7,9 +7,10 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 
 from app import db
-from app.main import (_complaint_deadline, export_module, received_disputes, returns,
-                      rfbs_returns, save_complaint, save_received_dispute,
-                      shipping_complaints)
+from app.main import (received_disputes, returns, rfbs_returns, save_complaint,
+                      save_received_dispute, shipping_complaints)
+from app.routers.common import _complaint_deadline
+from app.routers.export import export_module
 from tests.support import DatabaseTestCase, MockRequest as Request
 
 

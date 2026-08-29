@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from app import db, performance
 from app.ozon import client
-from app.main import performance_campaign_sync, performance_campaigns, performance_test
+from app.routers.performance import performance_campaign_sync, performance_campaigns, performance_test
 from tests.support import DatabaseTestCase, MockRequest
 
 
@@ -126,7 +126,7 @@ class PerformanceClientTest(DatabaseTestCase):
 
     def test_sync_route_records_result_without_secrets(self):
         result = {"shop_id": 1, "success": True, "fetched": 2, "inserted_or_updated": 2}
-        with patch("app.main.sync_performance_campaigns", return_value=result):
+        with patch("app.sync_jobs.sync_performance_campaigns", return_value=result):
             response = asyncio.run(performance_campaign_sync(MockRequest({"shop_id": "shop_1"})))
         self.assertEqual(response["inserted_or_updated"], 2)
         with db.connect() as connection:
@@ -136,7 +136,7 @@ class PerformanceClientTest(DatabaseTestCase):
         self.assertNotIn("access_token", json.dumps(response))
 
     def test_missing_configuration_route_returns_clear_error(self):
-        with patch("app.main.list_campaigns",
+        with patch("app.routers.performance.list_campaigns",
                    side_effect=performance.PerformanceConfigurationError(
                        "Shop 1 尚未配置 Ozon Performance API")):
             with self.assertRaises(HTTPException) as raised:

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from app import db
 from app.importer import import_csv
-from app.main import _export_range, export_module, export_orders
+from app.routers.export import _export_range, export_module, export_orders
 from tests.support import DatabaseTestCase
 
 
@@ -83,7 +83,7 @@ class TransferTest(DatabaseTestCase):
                 connection.set_trace_callback(queries.append)
                 yield connection
 
-        with patch("app.main.connect", traced_connect):
+        with patch("app.routers.export.connect", traced_connect):
             exported = asyncio.run(rows(export_orders(1)))
         self.assertEqual([row["posting_number"] for row in exported[1:]], ["ORDER-1", "ORDER-2"])
         self.assertEqual([(row["sku_types"], row["pieces"]) for row in exported[1:]], [(2, 5), (1, 4)])

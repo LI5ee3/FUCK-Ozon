@@ -5,7 +5,8 @@ from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 
 from app import db
-from app.main import _months_before, timeliness
+from app.main import timeliness
+from app.routers.common import _months_before
 from tests.support import DatabaseTestCase
 
 
