@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "./analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import AnalyticsKpiCards from "../components/AnalyticsKpiCards.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -606,25 +607,7 @@ onBeforeUnmount(() => {
     </NAlert>
 
     <template v-if="filters.tab === 'traffic'">
-      <div v-if="traffic" class="analytics-kpi-grid">
-        <NCard
-          v-for="kpi in trafficKpis"
-          :key="kpi.label"
-          :bordered="false"
-          class="analytics-kpi-card"
-          :class="`analytics-tone-${kpi.tone}`"
-        >
-          <div class="analytics-kpi-head">
-            <span>{{ kpi.label }}</span>
-            <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
-          </div>
-          <strong v-if="kpi.lines" class="analytics-kpi-money">
-            <span v-for="(line, index) in kpi.lines" :key="`${kpi.label}-${index}`">{{ line }}</span>
-          </strong>
-          <strong v-else class="analytics-kpi-value">{{ kpi.value }}</strong>
-          <small v-if="kpi.note">{{ kpi.note }}</small>
-        </NCard>
-      </div>
+      <AnalyticsKpiCards v-if="traffic" :items="trafficKpis" />
 
       <NCard :bordered="false" class="analytics-table-card">
         <template #header>
