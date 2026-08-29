@@ -36,7 +36,7 @@ cd oPanel
 2. 优先选择 `python3.14`，否则选择可用的 Python 3.12+。
 3. 检查 `node --version` 和 `npm --version`；Node.js 必须满足 `^22.18.0 || >=24.11.0`，不满足时直接停止，不自动安装 Homebrew Node。
 4. 在项目根目录创建或更新 `.venv`，安装 `requirements.txt`。
-5. 执行 `scripts/build-frontend.sh`：使用 `npm ci`、Vue type-check 和 Vite build，将完整产物写入 `frontend/dist.next/` 并验证 `index.html`、JS/CSS assets 和 `/assets/` 引用。
+5. 执行 `scripts/test.sh` 和 `scripts/build-frontend.sh`：安装前端依赖，运行 Python/Vue/Profit 测试与类型检查，再将完整产物写入 `frontend/dist.next/` 并验证 `index.html`、JS/CSS assets 和 `/assets/` 引用。
 6. 创建或检查 `.env`，并执行 `chmod 600 .env`。
 7. 使用现有 `app.security.migrate_env_password` 迁移旧版 `ADMIN_PASSWORD`。
 8. 使用现有 `app.security.password_hash` 生成缺失的 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`。首次自动生成的管理员密码只在终端显示一次，请立即安全保存。

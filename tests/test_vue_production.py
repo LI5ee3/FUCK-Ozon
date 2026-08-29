@@ -81,13 +81,17 @@ class VueProductionTest(unittest.TestCase):
 
     def test_production_scripts_and_gitignore_use_staged_dist(self):
         build = (ROOT / "scripts/build-frontend.sh").read_text()
+        test = (ROOT / "scripts/test.sh").read_text()
         update = (ROOT / "scripts/update.sh").read_text()
         ignored = (ROOT / ".gitignore").read_text()
-        self.assertIn("npm ci", build)
+        self.assertIn("npm ci", test)
         self.assertIn("--outDir dist.next", build)
-        self.assertNotIn("npm install", build)
+        self.assertNotIn("npm ci", build)
         self.assertIn("build-frontend.sh", update)
         self.assertIn("status='running'", update)
+        deploy = update[update.index('git -C "$ROOT" pull --ff-only'):]
+        self.assertLess(deploy.index('scripts/test.sh'), deploy.index('scripts/stop.sh'))
+        self.assertLess(deploy.index('scripts/build-frontend.sh'), deploy.index('scripts/stop.sh'))
         for path in ("frontend/dist.next/", "frontend/dist.previous/", "frontend/dist.failed/"):
             self.assertIn(path, ignored)
 

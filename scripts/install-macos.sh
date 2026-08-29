@@ -58,6 +58,7 @@ fi
 printf '使用 Python：%s\n' "$("$PYTHON" --version 2>&1)"
 "$PYTHON" -m venv "$VENV"
 "$VENV_PYTHON" -m pip install -r "$ROOT/requirements.txt"
+"$ROOT/scripts/test.sh"
 "$ROOT/scripts/build-frontend.sh"
 
 touch "$ENV_FILE"

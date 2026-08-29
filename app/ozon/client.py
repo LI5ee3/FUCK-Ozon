@@ -5,6 +5,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -58,7 +59,19 @@ def _post(shop_id, path, payload):
                 return json.load(response)
         except urllib.error.HTTPError as error:
             if (error.code == 429 or 500 <= error.code < 600) and attempt < 6:
-                time.sleep(min(30, 2 ** (attempt + 1)))
+                delay = min(30, 2 ** (attempt + 1))
+                retry_after = error.headers.get("Retry-After") if error.headers else None
+                try:
+                    if str(retry_after).isdigit():
+                        delay = min(30, int(retry_after))
+                    elif retry_after:
+                        retry_at = parsedate_to_datetime(retry_after)
+                        if retry_at.tzinfo is None:
+                            retry_at = retry_at.replace(tzinfo=timezone.utc)
+                        delay = min(30, max(0, (retry_at - datetime.now(timezone.utc)).total_seconds()))
+                except (TypeError, ValueError, OverflowError):
+                    pass
+                time.sleep(delay)
                 continue
             try:
                 message = json.loads(error.read()).get("message", "Ozon API请求失败")

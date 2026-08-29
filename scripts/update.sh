@@ -53,6 +53,9 @@ if [ ! -x "$VENV_PYTHON" ]; then
 fi
 "$VENV_PYTHON" -m pip install -r "$ROOT/requirements.txt"
 
+"$ROOT/scripts/test.sh"
+"$ROOT/scripts/build-frontend.sh"
+
 if ! command -v launchctl >/dev/null 2>&1; then
   printf '%s\n' '错误：找不到 launchctl，无法安全更新用户级服务。' >&2
   exit 1
@@ -65,8 +68,6 @@ if ! curl -fsS --max-time 10 http://127.0.0.1:38652/api/session >/dev/null; then
   printf '%s\n' '错误：固定地址当前未正常响应，拒绝执行 production update。' >&2
   exit 1
 fi
-
-"$ROOT/scripts/build-frontend.sh"
 
 if [ ! -f "$ROOT/data/opanel.db" ]; then
   printf '%s\n' '错误：找不到 production SQLite 数据库，拒绝重启。' >&2

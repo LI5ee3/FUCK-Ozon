@@ -35,8 +35,6 @@ fi
 
 rm -rf "$STAGING"
 cd "$FRONTEND"
-npm ci
-npm run type-check
 npm run build -- --outDir dist.next
 
 if [ ! -f "$STAGING/index.html" ]; then

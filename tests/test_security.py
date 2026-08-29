@@ -60,7 +60,7 @@ class SecurityTest(DatabaseTestCase):
              patch("app.routers.auth._token", return_value="token"):
             self.assertEqual(asyncio.run(login(Request(), Response())), {"ok": True})
 
-    def test_login_rate_limit_uses_forwarded_client_ip(self):
+    def test_login_rate_limit_uses_only_trusted_forwarded_client_ip(self):
         class Request:
             url = type("URL", (), {"scheme": "https"})()
 
@@ -73,8 +73,11 @@ class SecurityTest(DatabaseTestCase):
 
         requests = [
             (Request({"CF-Connecting-IP": " 198.51.100.7 "}), "198.51.100.7"),
-            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "1.2.3.4"),
+            (Request({"CF-Connecting-IP": "198.51.100.8"}, "192.0.2.8"), "192.0.2.8"),
             (Request({}, "192.0.2.9"), "192.0.2.9"),
+            (Request({"CF-Connecting-IP": "not-an-ip"}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "203.0.113.7"}), "203.0.113.7"),
+            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "127.0.0.1"),
         ]
         self.assertEqual([_client_ip(request) for request, _ in requests], [expected for _, expected in requests])
         with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \
@@ -96,6 +99,15 @@ class SecurityTest(DatabaseTestCase):
         self.assertFalse(login_limited(second, 101))
         clear_login_failures(first)
         clear_login_failures(second)
+
+    def test_session_secret_cache_follows_data_dir(self):
+        auth.DATA_DIR = db.DATA_DIR
+        first = auth._secret()
+        self.assertIs(first, auth._secret())
+        self.assertEqual((db.DATA_DIR / "session_secret").stat().st_mode & 0o777, 0o600)
+        auth.DATA_DIR = db.DATA_DIR / "other"
+        self.assertNotEqual(auth._secret(), first)
+        auth.DATA_DIR = db.DATA_DIR
 
     def test_logout_clears_authenticated_session_cookie(self):
         auth.DATA_DIR = db.DATA_DIR

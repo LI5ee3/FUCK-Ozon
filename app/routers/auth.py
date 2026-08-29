@@ -13,15 +13,21 @@ from ..security import (clear_login_failures, login_limited, password_matches,
 
 
 router = APIRouter()
+_secret_path = None
+_secret_value = None
 
 
 def _secret():
+    global _secret_path, _secret_value
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     path = DATA_DIR / "session_secret"
+    if path == _secret_path:
+        return _secret_value
     if not path.exists():
         path.write_text(secrets.token_hex(32))
-        path.chmod(0o600)
-    return path.read_text().strip().encode()
+    path.chmod(0o600)
+    _secret_path, _secret_value = path, path.read_text().strip().encode()
+    return _secret_value
 
 
 def _token(csrf):
@@ -48,15 +54,26 @@ def session(request: Request):
 
 
 def _client_ip(request):
-    headers = {str(key).lower(): value for key, value in request.headers.items()}
-    for header in ("cf-connecting-ip", "x-forwarded-for"):
-        for value in str(headers.get(header) or "").split(","):
-            try:
-                return str(ipaddress.ip_address(value.strip()))
-            except ValueError:
-                continue
     host = request.client.host if request.client else None
-    return str(host).strip() if host else "unknown"
+    peer = str(host).strip() if host else "unknown"
+    try:
+        trusted_proxy = ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        trusted_proxy = False
+    if not trusted_proxy:
+        return peer
+
+    headers = {str(key).lower(): value for key, value in request.headers.items()}
+    values = [headers.get("cf-connecting-ip"), headers.get("x-forwarded-for")]
+    for index, value in enumerate(values):
+        value = str(value or "").strip()
+        if not value or (index == 1 and "," in value):
+            continue
+        try:
+            return str(ipaddress.ip_address(value))
+        except ValueError:
+            continue
+    return peer
 
 
 @router.post("/api/login")

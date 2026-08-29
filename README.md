@@ -83,7 +83,7 @@ npm run dev
 ./scripts/check.sh
 ```
 
-该脚本依次运行仓库 unittest、Vue type-check、Profit Node test 和 staged production build；不会启动生产服务、操作真实数据库或读取 Ozon 店铺数据。
+该脚本依次运行仓库 unittest、Vue type-check、Vue unit tests、Profit Node test 和 staged production build；不会启动生产服务、操作真实数据库或读取 Ozon 店铺数据。
 
 ## macOS + Apple Silicon 部署
 
@@ -97,7 +97,7 @@ cd oPanel
 ./scripts/install-macos.sh
 ```
 
-安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），检查受支持的 Node.js/npm，创建 `.venv`、安装 `requirements.txt`，用 `npm ci`、Vue type-check 和 staged production build 生成并激活 `frontend/dist`，再创建或检查 `.env`、设置权限为 `600`、完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，最后安装用户级 launchd 服务并验证：
+安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），检查受支持的 Node.js/npm，创建 `.venv`、安装 `requirements.txt`，通过测试门禁后生成并激活 staged `frontend/dist`，再创建或检查 `.env`、设置权限为 `600`、完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，最后安装用户级 launchd 服务并验证：
 
 ```text
 http://127.0.0.1:38652
@@ -116,7 +116,7 @@ http://127.0.0.1:38652
 ./scripts/update.sh
 ```
 
-`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、production staged Vue build、running-sync 只读检查、服务停止、`dist` 激活、启动和固定地址 serving 验证；前端构建失败或存在运行中同步任务时不会重启现有服务，也不会覆盖 `.env` 或删除 `data/`。
+`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、完整测试门禁、production staged Vue build、running-sync 只读检查、服务停止、`dist` 激活、启动和固定地址 serving 验证；测试或构建失败、存在运行中同步任务时不会重启现有服务，也不会覆盖 `.env` 或删除 `data/`。
 
 ### 3. Cloudflare Tunnel
 

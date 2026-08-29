@@ -1,6 +1,7 @@
 import json
 import threading
 import urllib.error
+from email.message import Message
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -32,6 +33,32 @@ class OzonSyncTest(DatabaseTestCase):
             with self.assertRaises(RuntimeError):
                 _post(1, "/test", {})
         self.assertEqual(request.call_count, 7)
+
+    def test_retry_after_precedes_backoff_and_is_capped(self):
+        for value in ("120", "Thu, 31 Dec 2099 23:59:59 GMT"):
+            with self.subTest(value=value):
+                headers = Message()
+                headers["Retry-After"] = value
+                error = urllib.error.HTTPError("https://example.test", 429, "rate limited", headers, None)
+                with patch("app.ozon.client.urllib.request.urlopen", side_effect=error), \
+                     patch("app.ozon.client._wait_for_request_slot"), \
+                     patch("app.ozon.client.time.sleep") as sleep:
+                    with self.assertRaises(RuntimeError):
+                        _post(1, "/test", {})
+                error.close()
+                self.assertEqual([call.args[0] for call in sleep.call_args_list], [30] * 6)
+
+    def test_invalid_retry_after_uses_exponential_backoff(self):
+        headers = Message()
+        headers["Retry-After"] = "invalid"
+        error = urllib.error.HTTPError("https://example.test", 503, "unavailable", headers, None)
+        with patch("app.ozon.client.urllib.request.urlopen", side_effect=error), \
+             patch("app.ozon.client._wait_for_request_slot"), \
+             patch("app.ozon.client.time.sleep") as sleep:
+            with self.assertRaises(RuntimeError):
+                _post(1, "/test", {})
+        error.close()
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [2, 4, 8, 16, 30, 30])
 
     def test_cursor_pages_supports_total_without_has_next(self):
         pages = [
