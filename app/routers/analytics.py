@@ -104,16 +104,17 @@ def get_product_queries(shop_id: int = 0, sku: str = "", page: int = 1, size: in
                         if row.get("dimensions") and str(row["dimensions"][0].get("id") or "").isdigit()]
             if not skus:
                 continue
-            # ponytail: Ozon accepts at most 1000 SKUs; split only if a shop actually exceeds that ceiling.
-            body = product_queries(shop["id"], date_from_utc, date_to_utc, skus[:1000])
-            for row in body.get("items") or []:
-                items.append({"shop_id": shop["id"], "shop_name": shop["name"],
-                              "sku": str(row.get("sku") or ""), "name": row.get("name") or "",
-                              "offer_id": row.get("offer_id") or "", "category": row.get("category") or "",
-                              "position": row.get("position"), "unique_search_users": row.get("unique_search_users"),
-                              "unique_view_users": row.get("unique_view_users"),
-                              "view_conversion": row.get("view_conversion"), "gmv": row.get("gmv"),
-                              "currency": row.get("currency") or ""})
+            # ponytail: Ozon accepts at most 1000 SKUs; keep each request within that ceiling.
+            for offset in range(0, len(skus), 1000):
+                body = product_queries(shop["id"], date_from_utc, date_to_utc, skus[offset:offset + 1000])
+                for row in body.get("items") or []:
+                    items.append({"shop_id": shop["id"], "shop_name": shop["name"],
+                                  "sku": str(row.get("sku") or ""), "name": row.get("name") or "",
+                                  "offer_id": row.get("offer_id") or "", "category": row.get("category") or "",
+                                  "position": row.get("position"), "unique_search_users": row.get("unique_search_users"),
+                                  "unique_view_users": row.get("unique_view_users"),
+                                  "view_conversion": row.get("view_conversion"), "gmv": row.get("gmv"),
+                                  "currency": row.get("currency") or ""})
     except Exception as error:
         raise HTTPException(502, str(error)[:300]) from error
     items.sort(key=lambda row: (-int(row["unique_search_users"] or 0), row["shop_id"], row["sku"]))

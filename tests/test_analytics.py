@@ -77,6 +77,45 @@ class AnalyticsApiTest(DatabaseTestCase):
         self.assertEqual(result["items"][0]["query"], "phone")
         self.assertEqual(details.call_args.args[4], 0)
 
+    @patch("app.routers.analytics._analytics_shops", return_value=[{"id": 1, "name": "店铺1"}])
+    @patch("app.routers.analytics.product_queries")
+    @patch("app.routers.analytics.analytics_data")
+    def test_product_queries_batch_all_skus_and_page_after_global_sort(self, traffic, products, _shops):
+        for count in (999, 1000, 1001, 2001):
+            with self.subTest(count=count):
+                skus = list(range(100000, 100000 + count))
+                traffic.reset_mock()
+                products.reset_mock()
+                traffic.return_value = {"result": {"data": [
+                    {"dimensions": [{"id": str(sku)}]} for sku in skus
+                ]}}
+                search_users = {sku: count - index for index, sku in enumerate(skus)}
+                products.side_effect = lambda _shop_id, _from, _to, batch: {
+                    "items": [{"sku": sku, "unique_search_users": search_users[sku]} for sku in batch]
+                }
+
+                result = get_product_queries(1, "", 2, 50, "2026-08-01", "2026-08-07")
+                batches = [call.args[3] for call in products.call_args_list]
+                self.assertEqual([len(batch) for batch in batches], [1000] * (count // 1000) + ([count % 1000] if count % 1000 else []))
+                self.assertEqual([sku for batch in batches for sku in batch], skus)
+                self.assertTrue(all(len(batch) <= 1000 for batch in batches))
+                self.assertEqual(result["total"], count)
+                self.assertEqual([int(row["sku"]) for row in result["items"]], skus[50:100])
+
+    @patch("app.routers.analytics._analytics_shops", return_value=[{"id": 1, "name": "店铺1"}])
+    @patch("app.routers.analytics.product_queries", side_effect=[
+        {"items": []}, RuntimeError("second batch failed")
+    ])
+    @patch("app.routers.analytics.analytics_data")
+    def test_product_queries_batch_failure_is_explicit(self, traffic, _products, _shops):
+        traffic.return_value = {"result": {"data": [
+            {"dimensions": [{"id": str(sku)}]} for sku in range(1001)
+        ]}}
+        with self.assertRaises(HTTPException) as raised:
+            get_product_queries(1, "", 1, 50, "2026-08-01", "2026-08-07")
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertIn("second batch failed", raised.exception.detail)
+
     @patch("app.routers.analytics.analytics_data", side_effect=RuntimeError("Ozon analytics unavailable"))
     def test_traffic_failure_is_explicit(self, _request):
         with self.assertRaises(HTTPException) as raised:
