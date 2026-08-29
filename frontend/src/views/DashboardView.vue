@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "./dashboard.css";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "./analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNode, type VNodeChild } from "vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";

@@ -85,6 +85,23 @@ class VueProductionTest(unittest.TestCase):
         self.assertNotIn("morphicons.js", build)
         self.assertNotIn('/assets/morphicons.js', verify)
 
+    def test_core_route_styles_follow_lazy_views(self):
+        global_style = (ROOT / "frontend/src/style.css").read_text()
+        for view_name, css_name, prefix in (
+            ("DashboardView.vue", "dashboard.css", "dashboard"),
+            ("OrdersView.vue", "orders.css", "orders"),
+            ("AnalyticsView.vue", "analytics.css", "analytics"),
+        ):
+            view = (ROOT / "frontend/src/views" / view_name).read_text()
+            css = ROOT / "frontend/src/views" / css_name
+            self.assertIn(f'import "./{css_name}";', view)
+            self.assertTrue(css.is_file())
+            self.assertRegex(css.read_text(), rf"(?m)^\.{prefix}-")
+            self.assertNotRegex(global_style, rf"(?m)^\.{prefix}(?:-|\s|\{{|,)")
+
+        for view_name in ("ComplaintsView.vue", "ReturnsView.vue", "RiskView.vue", "TimelinessView.vue"):
+            self.assertIn('import "./analytics.css";', (ROOT / "frontend/src/views" / view_name).read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
