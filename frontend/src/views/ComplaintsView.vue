@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import "./analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import ComplaintCompensationFields from "../components/ComplaintCompensationFields.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -1230,18 +1231,20 @@ onBeforeUnmount(() => {
           <label class="complaints-field">订单处理状态<NInput v-model:value="shippingForm.orderProcessStatus" placeholder="如：已核实 / 待处理" /></label>
           <label class="complaints-field">投诉状态<NInput v-model:value="shippingForm.complaintStatus" placeholder="如：已受理 / 平台审核中" /></label>
           <label class="complaints-field">赔付状态<NInput v-model:value="shippingForm.compensationStatus" placeholder="如：已批准 / 待打款" /></label>
-          <fieldset class="complaints-compensation">
-            <legend>Ozon 平台赔偿</legend>
-            <label class="complaints-field">平台赔偿金额（RUB）<NInputNumber v-model:value="shippingForm.platformCompensation" :min="0.01" :precision="2" placeholder="0.00" /></label>
-            <label class="complaints-field">平台赔偿北京时间<input v-model="shippingForm.platformAt" class="complaints-native-input" type="datetime-local" /></label>
-            <div class="complaints-compensation-result">{{ shippingPlatformConversion }}</div>
-          </fieldset>
-          <fieldset class="complaints-compensation">
-            <legend>物流商赔偿</legend>
-            <label class="complaints-field">物流商赔偿金额（CNY）<NInputNumber v-model:value="shippingForm.logisticsCompensation" :min="0.01" :precision="2" placeholder="0.00" /></label>
-            <label class="complaints-field">物流商赔偿北京时间<input v-model="shippingForm.logisticsAt" class="complaints-native-input" type="datetime-local" /></label>
-            <div class="complaints-compensation-result">{{ shippingLogisticsConversion }}</div>
-          </fieldset>
+          <ComplaintCompensationFields
+            v-model:amount="shippingForm.platformCompensation"
+            v-model:at="shippingForm.platformAt"
+            title="Ozon 平台赔偿"
+            currency="RUB"
+            :preview="shippingPlatformConversion"
+          />
+          <ComplaintCompensationFields
+            v-model:amount="shippingForm.logisticsCompensation"
+            v-model:at="shippingForm.logisticsAt"
+            title="物流商赔偿"
+            currency="CNY"
+            :preview="shippingLogisticsConversion"
+          />
           <label class="complaints-field">未收到退件<NSelect v-model:value="shippingForm.notReceivedReturn" :options="booleanOptions" /></label>
           <label class="complaints-field">是否完结<NSelect v-model:value="shippingForm.resolved" :options="booleanOptions" /></label>
           <label class="complaints-field complaints-notes">备注<NInput v-model:value="shippingForm.notes" type="textarea" :autosize="{ minRows: 3 }" placeholder="填写处理备注…" /></label>
@@ -1261,18 +1264,20 @@ onBeforeUnmount(() => {
           <label class="complaints-field">是否退款<NSelect v-model:value="receivedForm.refundType" :options="refundTypeOptions" /></label>
           <label class="complaints-field">退款金额<NInputNumber v-model:value="receivedForm.refundAmount" :min="0" :precision="2" placeholder="0.00" /></label>
           <label class="complaints-field">退款币种<NInput v-model:value="receivedForm.refundCurrency" readonly /></label>
-          <fieldset class="complaints-compensation">
-            <legend>Ozon 平台赔偿</legend>
-            <label class="complaints-field">平台赔偿金额（RUB）<NInputNumber v-model:value="receivedForm.platformCompensation" :min="0.01" :precision="2" placeholder="0.00" /></label>
-            <label class="complaints-field">平台赔偿北京时间<input v-model="receivedForm.platformAt" class="complaints-native-input" type="datetime-local" /></label>
-            <div class="complaints-compensation-result">{{ receivedPlatformConversion }}</div>
-          </fieldset>
-          <fieldset class="complaints-compensation">
-            <legend>物流商赔偿</legend>
-            <label class="complaints-field">物流商赔偿金额（CNY）<NInputNumber v-model:value="receivedForm.logisticsCompensation" :min="0.01" :precision="2" placeholder="0.00" /></label>
-            <label class="complaints-field">物流商赔偿北京时间<input v-model="receivedForm.logisticsAt" class="complaints-native-input" type="datetime-local" /></label>
-            <div class="complaints-compensation-result">{{ receivedLogisticsConversion }}</div>
-          </fieldset>
+          <ComplaintCompensationFields
+            v-model:amount="receivedForm.platformCompensation"
+            v-model:at="receivedForm.platformAt"
+            title="Ozon 平台赔偿"
+            currency="RUB"
+            :preview="receivedPlatformConversion"
+          />
+          <ComplaintCompensationFields
+            v-model:amount="receivedForm.logisticsCompensation"
+            v-model:at="receivedForm.logisticsAt"
+            title="物流商赔偿"
+            currency="CNY"
+            :preview="receivedLogisticsConversion"
+          />
           <label class="complaints-field">处理状态<NInput v-model:value="receivedForm.processStatus" placeholder="如：处理中 / 待核实 / 已完结" /></label>
           <label class="complaints-field">退货方式<NSelect v-model:value="receivedForm.returnMethod" :options="returnMethodOptions" /></label>
           <label class="complaints-field">IML退货单号<NInput v-model:value="receivedForm.imlReturnNumber" placeholder="IML 单号" /></label>
