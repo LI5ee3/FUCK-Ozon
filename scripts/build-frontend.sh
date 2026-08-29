@@ -5,29 +5,8 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 FRONTEND="$ROOT/frontend"
 STAGING="$FRONTEND/dist.next"
 
-if ! command -v node >/dev/null 2>&1; then
-  printf '%s\n' '错误：找不到 Node.js，请安装受支持的 Node.js 后重试。' >&2
-  exit 1
-fi
-if ! command -v npm >/dev/null 2>&1; then
-  printf '%s\n' '错误：找不到 npm，请安装受支持的 npm 后重试。' >&2
-  exit 1
-fi
+"$ROOT/scripts/check-node.sh"
 
-NODE_VERSION=$(node --version)
-NPM_VERSION=$(npm --version)
-printf 'Node.js：%s\n' "$NODE_VERSION"
-printf 'npm：%s\n' "$NPM_VERSION"
-# ponytail: lockfile-derived engine floor; update when dependency engines change.
-if ! node -e '
-  const [major, minor] = process.versions.node.split(".").map(Number);
-  const supported = (major === 22 && minor >= 18) ||
-    (major === 24 && minor >= 11) || major >= 25;
-  process.exit(supported ? 0 : 1);
-'; then
-  printf '%s\n' '错误：Node.js 版本不兼容；frontend/package-lock.json 要求 Node.js 22.18.x 或 >=24.11.0。' >&2
-  exit 1
-fi
 if [ ! -f "$FRONTEND/package.json" ] || [ ! -f "$FRONTEND/package-lock.json" ]; then
   printf '%s\n' '错误：frontend/package.json 或 package-lock.json 不存在。' >&2
   exit 1

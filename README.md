@@ -87,7 +87,7 @@ npm run dev
 
 ## macOS + Apple Silicon 部署
 
-生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、Node.js/npm、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22.18.x 或 >=24.11.0。
+生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、Node.js/npm、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22（>=22.18）、Node.js 24（>=24.11）或 Node.js >=25。
 
 完整部署说明见 [`docs/macos-deployment.md`](docs/macos-deployment.md)。
 

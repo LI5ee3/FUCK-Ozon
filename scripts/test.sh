@@ -4,6 +4,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PYTHON="$ROOT/.venv/bin/python"
 
+"$ROOT/scripts/check-node.sh"
+
 if [ ! -x "$PYTHON" ]; then
   PYTHON=$(command -v python3 || command -v python || true)
 fi

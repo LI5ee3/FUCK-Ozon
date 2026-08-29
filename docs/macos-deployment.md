@@ -22,7 +22,7 @@ http://127.0.0.1:38652
 
 ## 1. 安装 oPanel
 
-准备 macOS、Python 3.14（优先）或 Python 3.12+，以及 Node.js 22.18.x 或 >=24.11.0 和 npm，并确保可以访问 Ozon API：
+准备 macOS、Python 3.14（优先）或 Python 3.12+，以及 Node.js 22（>=22.18）、Node.js 24（>=24.11）或 Node.js >=25 和 npm，并确保可以访问 Ozon API：
 
 ```sh
 git clone https://github.com/LI5ee3/oPanel.git
@@ -34,7 +34,7 @@ cd oPanel
 
 1. 确认当前系统为 macOS，并检查 `38652` 是否已被监听。
 2. 优先选择 `python3.14`，否则选择可用的 Python 3.12+。
-3. 检查 `node --version` 和 `npm --version`；Node.js 必须满足 `^22.18.0 || >=24.11.0`，不满足时直接停止，不自动安装 Homebrew Node。
+3. 检查 `node --version` 和 `npm --version`；Node.js 必须为 22（>=22.18）、24（>=24.11）或 >=25，不满足时直接停止，不自动安装 Homebrew Node。
 4. 在项目根目录创建或更新 `.venv`，安装 `requirements.txt`。
 5. 执行 `scripts/test.sh` 和 `scripts/build-frontend.sh`：安装前端依赖，运行 Python/Vue/Profit 测试与类型检查，再将完整产物写入 `frontend/dist.next/` 并验证 `index.html`、JS/CSS assets 和 `/assets/` 引用。
 6. 创建或检查 `.env`，并执行 `chmod 600 .env`。
