@@ -18,5 +18,6 @@ withDefaults(
     :icon="getIcon(icon)"
     :size="size"
     :stroke-width="strokeWidth"
+    reduced-motion="user"
   />
 </template>
