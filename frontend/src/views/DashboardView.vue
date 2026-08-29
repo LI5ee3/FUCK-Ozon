@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NAlert,
   NButton,
@@ -34,7 +36,7 @@ import { beijingToday, shiftDays, subtractMonths, type DateRange } from "../util
 
 type DatePreset = "today" | "3days" | "7days" | "3months" | "all" | "";
 type Insight = {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   suffix?: string;
@@ -160,7 +162,7 @@ function trendDate(bucket: TrendBucket, granularityValue: Granularity): string {
   return granularityValue === "day" ? bucket.from.slice(5) : `${bucket.from.slice(5)} ~ ${bucket.to.slice(5)}`;
 }
 
-const kpis = computed(() => {
+const kpis = computed<Array<{ label: string; value: string; note: string; icon: IconName; tone: string }>>(() => {
   if (!summary.value) return [];
   const data = summary.value;
   return [

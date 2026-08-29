@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -43,7 +45,7 @@ type ReturnsFilters = {
 type ApiBase = Pick<ReturnsFilters, "shopId" | "from" | "to">;
 type TagType = "default" | "info" | "success" | "warning" | "error";
 type ReturnsKpi = {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   badge: string;
@@ -120,7 +122,7 @@ const cancelKpis = computed<ReturnsKpi[]>(() => {
       note: "所有取消记录中的商品累计件数",
       tone: "lavender",
     },
-    ...summary.shops.map((shop) => ({
+    ...summary.shops.map((shop): ReturnsKpi => ({
       icon: "shoppingBag",
       label: `${shop.shop_name} 取消`,
       value: `${formatInteger(shop.records)} 条 / ${formatInteger(shop.quantity)} 件`,
@@ -142,7 +144,7 @@ const rfbsKpis = computed<ReturnsKpi[]>(() => {
       note: "包含有效申请编号的退货申请单",
       tone: "lavender",
     },
-    ...summary.shops.map((shop) => ({
+    ...summary.shops.map((shop): ReturnsKpi => ({
       icon: "shoppingBag",
       label: `${shop.shop_name} 退货`,
       value: `${formatInteger(shop.records)} 条申请`,
@@ -417,7 +419,7 @@ function renderCopyButton(
       event.stopPropagation();
       void copyValue(value);
     },
-  }, withIcon ? [h("morph-icon", { icon: "copy", size: "12", "stroke-width": "2" }), label] : label);
+  }, withIcon ? [h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }), label] : label);
 }
 
 function renderMetaButton(label: string, value: string | null, title: string): VNodeChild {
@@ -454,7 +456,7 @@ function renderDeadline(row: { complaint_deadline: string | null; complaint_dead
     due_soon: "即将截止",
   };
   return h("span", { class: `returns-deadline returns-deadline--${status}` }, [
-    h("morph-icon", { icon: status === "overdue" ? "alertCircle" : "clock", size: "11", "stroke-width": "2" }),
+    h(MorphIcon, { icon: status === "overdue" ? "alertCircle" : "clock", size: "11", strokeWidth: "2" }),
     h("span", `投诉截止：${row.complaint_deadline || "—"}`),
     labels[status] ? h("b", labels[status]) : null,
   ]);
@@ -551,7 +553,7 @@ function renderRfbsReason(row: RfbsReturnRecord): VNodeChild {
     h("span", { class: "returns-logistics-sub" }, ["退件结果：", h("b", display(row.return_result))]),
     comment
       ? h("details", { class: "returns-buyer-details" }, [
-          h("summary", [h("morph-icon", { icon: "messageSquare", size: "11", "stroke-width": "2" }), "买家留言原文"]),
+          h("summary", [h(MorphIcon, { icon: "messageSquare", size: "11", strokeWidth: "2" }), "买家留言原文"]),
           h("p", { lang: "ru" }, comment),
         ])
       : null,

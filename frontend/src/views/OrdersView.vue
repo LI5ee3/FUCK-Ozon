@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -66,7 +68,7 @@ const channelOptions = [
   { label: "realFBS", value: "realFBS" },
   { label: "WHD", value: "WHD" },
 ];
-const statusFilters: ReadonlyArray<{ key: OrderStatusFilter; label: string; icon: string; countKey: keyof OrderStatusCounts }> = [
+const statusFilters: ReadonlyArray<{ key: OrderStatusFilter; label: string; icon: IconName; countKey: keyof OrderStatusCounts }> = [
   { key: "", label: "全部订单", icon: "layers", countKey: "all" },
   { key: "pending", label: "待备货", icon: "box", countKey: "pending" },
   { key: "shipping", label: "运输中", icon: "truck", countKey: "shipping" },
@@ -286,7 +288,7 @@ function tagType(order: Order): TagType {
   return "warning";
 }
 
-function statusIcon(order: Order): string {
+function statusIcon(order: Order): IconName {
   if (order.status_raw === "已取消" || order.data_anomaly) return "alertTriangle";
   if (order.status_raw === "已签收") return "checkCircle";
   if (/运输|配送|发货|待取件/.test(order.status_raw)) return "truck";
@@ -297,10 +299,10 @@ function channelClass(channel: Channel): string {
   return channel === "FBP" ? "orders-channel-tag--fbp" : channel === "realFBS" ? "orders-channel-tag--fbs" : "orders-channel-tag--whd";
 }
 
-function renderTag(label: string, type: TagType, className = "", icon = ""): VNodeChild {
+function renderTag(label: string, type: TagType, className = "", icon: IconName | "" = ""): VNodeChild {
   return h(NTag, { bordered: false, round: true, size: "small", type, class: className }, {
     default: () => icon
-      ? h("span", { class: "orders-tag-content" }, [h("morph-icon", { icon, size: "13", "stroke-width": "2" }), label])
+      ? h("span", { class: "orders-tag-content" }, [h(MorphIcon, { icon, size: "13", strokeWidth: "2" }), label])
       : label,
   });
 }
@@ -355,7 +357,7 @@ function renderProductCell(order: Order): VNodeChild {
     ]),
     order.cancel_reason_raw
       ? h("div", { class: "orders-cancel-reason", title: order.cancel_reason_raw }, [
-          h("morph-icon", { icon: "alertTriangle", size: "12", "stroke-width": "2" }),
+          h(MorphIcon, { icon: "alertTriangle", size: "12", strokeWidth: "2" }),
           order.cancel_reason_raw,
         ])
       : null,
@@ -366,7 +368,7 @@ function renderStatusCell(order: Order): VNodeChild {
   return h("div", { class: "orders-status-cell" }, [
     renderTag(order.status_raw || "未知状态", tagType(order), "orders-status-tag", statusIcon(order)),
     h("span", { class: "orders-time-stamp" }, [
-      h("morph-icon", { icon: "clock", size: "12", "stroke-width": "1.8" }),
+      h(MorphIcon, { icon: "clock", size: "12", strokeWidth: "1.8" }),
       formatBeijingDateTime(order.created_at),
     ]),
     h("small", { class: "orders-count-meta" }, `${formatInteger(order.sku_types)} 种 SKU · 共 ${formatInteger(order.pieces)} 件`),

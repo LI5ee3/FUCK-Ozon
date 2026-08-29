@@ -232,4 +232,4 @@ tail -f logs/opanel.stderr.log
 本项目前端交互与图标体系引用并改进了以下优秀的开源项目：
 
 - **[Tabler Icons](https://tabler.io/icons)** (by [Paweł Kuna](https://github.com/codecalm))：全站统一采用其 24×24 规范矢量图标定义，遵循 **[MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)**（见 [`frontend/public/assets/TABLER_ICONS_LICENSE`](frontend/public/assets/TABLER_ICONS_LICENSE)）。
-- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：基于其 Apple Spring 弹簧物理形变与几何重采样算法，为本项目定制封装了零外部依赖、自包含内置 52 款图标的纯原生 `<morph-icon>` Web Component（见 [`frontend/public/assets/morphicons.js`](frontend/public/assets/morphicons.js)），遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。
+- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：官方 `morphicons` npm 依赖，经 `morphicons/vue` 的 `MorphIcon` 组件提供 Apple Spring 弹簧物理形变动画；oPanel 实际使用的 Tabler Icons path 数据收敛在轻量注册表 [`frontend/src/icons/tabler.ts`](frontend/src/icons/tabler.ts)，遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。

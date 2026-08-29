@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -44,7 +46,7 @@ type AnalyticsFilters = {
 };
 type TrafficMetric = Exclude<keyof AnalyticsTrafficShopSummary, "shop_id" | "shop_name" | "currency">;
 type AnalyticsKpi = {
-  icon: string;
+  icon: IconName;
   label: string;
   value?: string;
   lines?: string[];

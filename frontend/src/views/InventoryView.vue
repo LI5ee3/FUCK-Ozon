@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NAlert,
   NButton,
@@ -74,7 +76,7 @@ const emptyDescription = computed(() => {
   if (hasActiveFilters.value) return "当前筛选条件下没有库存或近期销量记录";
   return "当前店铺暂无库存或近期销量记录；库存为 0 的 SKU 会正常显示。";
 });
-const summaryCards = computed(() => {
+const summaryCards = computed<Array<{ icon: IconName; label: string; value: string; note: string; tone: string }>>(() => {
   const value = summary.value;
   if (!value) return [];
   return [
@@ -236,7 +238,7 @@ function riskTagType(risk: InventoryRiskCode): TagType {
   return "default";
 }
 
-function riskIcon(risk: InventoryRiskCode): string {
+function riskIcon(risk: InventoryRiskCode): IconName {
   if (risk === "out_of_stock" || risk === "urgent_replenishment") return "alertTriangle";
   if (risk === "replenish") return "shoppingBag";
   if (risk === "sufficient") return "check";
@@ -333,7 +335,7 @@ function renderDecision(row: InventoryRow): VNodeChild {
       class: `inventory-risk-tag inventory-risk-tag--${row.risk_code}`,
     }, {
       default: () => h("span", { class: "inventory-tag-content" }, [
-        h("morph-icon", { icon: riskIcon(row.risk_code), size: "12", "stroke-width": "2" }),
+        h(MorphIcon, { icon: riskIcon(row.risk_code), size: "12", strokeWidth: "2" }),
         row.risk_status,
       ]),
     }),
@@ -353,7 +355,7 @@ function sortTitle(label: string, key: InventorySortKey, channel?: Channel): VNo
     onClick: () => toggleSort(key),
   }, [
     h("span", { class: channel ? `inventory-channel-label inventory-channel-label--${channelClass(channel)}` : "" }, label),
-    h("morph-icon", { icon, size: "13", "stroke-width": "1.7" }),
+    h(MorphIcon, { icon, size: "13", strokeWidth: "1.7" }),
   ]);
 }
 

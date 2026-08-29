@@ -64,7 +64,7 @@ input {
   font: inherit;
 }
 
-morph-icon {
+.morph-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -598,7 +598,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.dashboard-panel-heading h2 morph-icon {
+.dashboard-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -1511,7 +1511,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.transfer-panel-heading h2 morph-icon {
+.transfer-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -1919,7 +1919,7 @@ morph-icon {
 
 .transfer-history-state > span,
 .transfer-history-state > .n-spin,
-.transfer-history-state > morph-icon {
+.transfer-history-state > .morph-icon {
   display: inline-flex;
   margin: 0 6px;
   vertical-align: middle;
@@ -2033,7 +2033,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.inventory-heading h2 morph-icon { color: var(--opanel-primary); }
+.inventory-heading h2 .morph-icon { color: var(--opanel-primary); }
 
 .inventory-heading p,
 .inventory-updated {
@@ -2600,7 +2600,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.analytics-panel-heading h2 morph-icon {
+.analytics-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -2918,7 +2918,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.ads-panel-heading h2 morph-icon {
+.ads-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -3053,7 +3053,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.ad-campaigns-panel-heading h2 morph-icon {
+.ad-campaigns-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -3226,7 +3226,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.ad-skus-panel-heading h2 morph-icon {
+.ad-skus-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -4256,7 +4256,7 @@ morph-icon {
   letter-spacing: -0.015em;
 }
 
-.returns-panel-header h2 morph-icon {
+.returns-panel-header h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -4631,7 +4631,7 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.complaints-panel-header h2 morph-icon {
+.complaints-panel-header h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -5210,7 +5210,7 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.alerts-panel-header h2 morph-icon {
+.alerts-panel-header h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -5507,7 +5507,7 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.profit-panel-heading h2 morph-icon {
+.profit-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -6380,8 +6380,8 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.rules-panel-heading h2 morph-icon,
-.rules-conflicts-head morph-icon {
+.rules-panel-heading h2 .morph-icon,
+.rules-conflicts-head .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -6846,7 +6846,7 @@ button.returns-meta-chip:hover {
   font-size: 16px;
 }
 
-.push-card-heading h2 morph-icon {
+.push-card-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -7271,8 +7271,8 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.dingtalk-panel-heading h2 morph-icon,
-.dingtalk-spec-head morph-icon {
+.dingtalk-panel-heading h2 .morph-icon,
+.dingtalk-spec-head .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -7581,7 +7581,7 @@ button.returns-meta-chip:hover {
   letter-spacing: -0.015em;
 }
 
-.settings-panel-heading h2 morph-icon {
+.settings-panel-heading h2 .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -7636,7 +7636,7 @@ button.returns-meta-chip:hover {
   line-height: 1.55;
 }
 
-.settings-hint-box morph-icon {
+.settings-hint-box .morph-icon {
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--opanel-primary);
@@ -7654,7 +7654,7 @@ button.returns-meta-chip:hover {
   gap: 5px;
 }
 
-.settings-input-tag morph-icon {
+.settings-input-tag .morph-icon {
   color: var(--opanel-primary);
 }
 
@@ -7737,7 +7737,7 @@ button.returns-meta-chip:hover {
   color: var(--opanel-text);
 }
 
-.settings-shop-badge morph-icon {
+.settings-shop-badge .morph-icon {
   flex-shrink: 0;
   color: var(--opanel-primary);
 }
@@ -7834,7 +7834,7 @@ button.returns-meta-chip:hover {
   line-height: 1.45;
 }
 
-.settings-probe-error morph-icon {
+.settings-probe-error .morph-icon {
   flex-shrink: 0;
   margin-top: 1px;
 }

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NAlert,
   NButton,
@@ -65,7 +67,7 @@ const intervalOptions = [1, 2, 3, 4, 6, 8, 12, 24].map((value) => ({
   label: `${value} 小时`,
   value,
 }));
-const autoModules: ReadonlyArray<{ module: AutoSyncModule; label: string; icon: string }> = [
+const autoModules: ReadonlyArray<{ module: AutoSyncModule; label: string; icon: IconName }> = [
   { module: "orders", label: "订单", icon: "shoppingBag" },
   { module: "returns", label: "退货", icon: "rotateCcw" },
   { module: "stock", label: "库存", icon: "stock" },
@@ -77,7 +79,7 @@ const manualModules: ReadonlyArray<{
   label: string;
   description: string;
   hint: string;
-  icon: string;
+  icon: IconName;
 }> = [
   { module: "orders", label: "订单数据", description: "拉取订单、商品明细及订单状态数据", hint: "受顶部时间范围影响", icon: "shoppingBag" },
   { module: "returns", label: "退货数据", description: "拉取退货与客户售后申请记录", hint: "受顶部时间范围影响", icon: "rotateCcw" },
@@ -143,7 +145,7 @@ const exchangeActivePreset = computed<DatePreset | "">(() => findActivePreset(ex
 const enabledCount = computed(() => autoSettings.value.filter((row) => Boolean(row.enabled)).length);
 const failedCount = computed(() => syncRuns.value.filter((row) => row.status === "failed").length);
 const lastSuccess = computed(() => syncRuns.value.find((row) => row.status === "success") ?? null);
-const summaryCards = computed(() => [
+const summaryCards = computed<Array<{ icon: IconName; label: string; value: string; note: string; tone: SummaryTone }>>(() => [
   {
     icon: "sync",
     label: "自动拉取配置",
@@ -189,7 +191,7 @@ const historyColumns: DataTableColumns<SyncRun> = [
     key: "shop_name",
     width: 150,
     render: (row) => h("div", { class: "sync-history-shop" }, [
-      h("morph-icon", { icon: "store", size: "15", "stroke-width": "1.8" }),
+      h(MorphIcon, { icon: "store", size: "15", strokeWidth: "1.8" }),
       h("strong", row.shop_name),
     ]),
   },

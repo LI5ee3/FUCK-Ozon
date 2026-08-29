@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
 import { NAlert, NCard, NInputNumber, NSelect, NTag } from "naive-ui";
 import { useShop } from "../composables/useShop";
 import {

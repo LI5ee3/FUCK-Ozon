@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -260,7 +261,7 @@ function renderSku(row: AdSkuItem): VNodeChild {
         event.stopPropagation();
         void copyValue(row.sku);
       },
-    }, [h("morph-icon", { icon: "copy", size: "12", "stroke-width": "2" }), `SKU ${row.sku}`]),
+    }, [h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }), `SKU ${row.sku}`]),
   ]);
 }
 

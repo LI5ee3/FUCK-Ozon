@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNode, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -42,7 +44,7 @@ type RiskFilters = {
   to: string;
 };
 type RiskKpi = {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   badge?: string;
@@ -289,7 +291,7 @@ function rateTone(value: number | null): "safe" | "warning" | "danger" {
   return value != null && value >= 0.15 ? "danger" : value != null && value >= 0.05 ? "warning" : "safe";
 }
 
-function rateIcon(value: number | null): string {
+function rateIcon(value: number | null): IconName {
   return value != null && value >= 0.15 ? "alertTriangle" : value != null && value >= 0.05 ? "alertCircle" : "check";
 }
 
@@ -330,10 +332,10 @@ function renderRiskIdentity(row: RiskItem): VNodeChild {
         event.stopPropagation();
         void copyValue(row.primary_offer_id as string);
       },
-    }, [h("morph-icon", { icon: "gitMerge", size: "11", "stroke-width": "2" }), "主货号 ", h("b", row.primary_offer_id)]));
+    }, [h(MorphIcon, { icon: "gitMerge", size: "11", strokeWidth: "2" }), "主货号 ", h("b", row.primary_offer_id)]));
     meta.push(h("span", { class: "risk-member-badge" }, formatInteger(row.member_count) + " 个成员"));
   } else {
-    meta.push(h("span", { class: "risk-sku-badge" }, [h("morph-icon", { icon: "tag", size: "11", "stroke-width": "1.8" }), "SKU ", h("b", row.sku || "—")]));
+    meta.push(h("span", { class: "risk-sku-badge" }, [h(MorphIcon, { icon: "tag", size: "11", strokeWidth: "1.8" }), "SKU ", h("b", row.sku || "—")]));
   }
   return h("div", { class: "risk-product-cell" }, [
     h("strong", { class: "risk-product-name", title: row.product_name || "商品名称暂无" }, row.product_name || "商品名称暂无"),
@@ -353,7 +355,7 @@ function renderRiskStats(label: string, stats: RiskStats | null): VNodeChild {
     h("strong", { class: "risk-cell-title" }, label),
     h("span", { class: "risk-valid-count" }, ["有效 ", h("b", formatInteger(stats.valid)), " 件"]),
     h("span", { class: "risk-rate-pill risk-rate-pill--" + tone }, [
-      h("morph-icon", { icon: rateIcon(stats.cancelled_rate), size: "11", "stroke-width": "2.2" }),
+      h(MorphIcon, { icon: rateIcon(stats.cancelled_rate), size: "11", strokeWidth: "2.2" }),
       h("strong", formatRiskRate(stats.cancelled_rate)),
       h("small", "(" + formatInteger(stats.cancelled) + "件)"),
     ]),
@@ -373,7 +375,7 @@ function renderReasonIdentity(row: RiskReasonRow): VNodeChild {
       title: "点击展开此原因关联订单",
       onClick: () => { void toggleReason(row.reason_raw); },
     }, {
-      default: () => [h("morph-icon", { icon: "alertTriangle", size: "13", "stroke-width": "2" }), h("span", row.reason_name)],
+      default: () => [h(MorphIcon, { icon: "alertTriangle", size: "13", strokeWidth: "2" }), h("span", row.reason_name)],
     }),
     h("span", { class: "risk-reason-raw" }, row.reason_raw),
   ]);

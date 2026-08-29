@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -39,7 +41,7 @@ type TimelinessFilters = {
 };
 type TagType = "default" | "info" | "success" | "warning" | "error";
 type TimelinessKpi = {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   badge?: string;
@@ -344,7 +346,7 @@ function renderStatCell(
 ): VNodeChild {
   if (!samples) {
     return h("div", { class: "timeliness-stat-empty" }, [
-      h("morph-icon", { icon: "clock", size: "13", "stroke-width": "1.8" }),
+      h(MorphIcon, { icon: "clock", size: "13", strokeWidth: "1.8" }),
       h("span", "暂无有效样本"),
     ]);
   }
@@ -356,14 +358,14 @@ function renderStatCell(
     class: "timeliness-p50-tag",
   }, {
     default: () => [
-      h("morph-icon", { icon: "clock", size: "12", "stroke-width": "2.2" }),
+      h(MorphIcon, { icon: "clock", size: "12", strokeWidth: "2.2" }),
       h("b", "P50"),
       ` ${formatHours(p50)}`,
     ],
   });
   const sampleTag = insufficient
     ? h(NTag, { bordered: false, round: true, size: "small", type: "warning", class: "timeliness-sample-tag" }, {
-        default: () => [h("morph-icon", { icon: "alertTriangle", size: "11", "stroke-width": "2" }), "样本不足"],
+        default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "样本不足"],
       })
     : h("span", { class: "timeliness-sample-text" }, `样本 ${formatInteger(samples)}`);
   return h("div", { class: "timeliness-stat-wrap" }, [
@@ -383,7 +385,7 @@ function renderDetailTime(row: TimelinessItem, type: "ship" | "delivery"): VNode
     return h("div", { class: "timeliness-time-cell" }, [
       h("strong", { class: "timeliness-time-value" }, value ? formatBeijingDateTime(value) : "—"),
       h(NTag, { bordered: false, round: true, size: "small", type: "error", class: "timeliness-time-tag" }, {
-        default: () => [h("morph-icon", { icon: "alertTriangle", size: "11", "stroke-width": "2" }), "数据异常"],
+        default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "数据异常"],
       }),
     ]);
   }
@@ -396,7 +398,7 @@ function renderDetailTime(row: TimelinessItem, type: "ship" | "delivery"): VNode
   return h("div", { class: "timeliness-time-cell" }, [
     h("strong", { class: "timeliness-time-value" }, formatBeijingDateTime(value)),
     h(NTag, { bordered: false, round: true, size: "small", type: tagType, class: "timeliness-time-tag" }, {
-      default: () => [h("morph-icon", { icon, size: "11", "stroke-width": "2" }), `耗时 ${formatHours(duration)}`],
+      default: () => [h(MorphIcon, { icon, size: "11", strokeWidth: "2" }), `耗时 ${formatHours(duration)}`],
     }),
   ]);
 }
@@ -408,7 +410,7 @@ function renderOrderNumber(row: TimelinessItem): VNodeChild {
     title: "点击复制订单号",
     onClick: () => { void copyValue(row.posting_number); },
   }, [
-    h("morph-icon", { icon: "copy", size: "12", "stroke-width": "2" }),
+    h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }),
     row.posting_number,
   ]);
 }

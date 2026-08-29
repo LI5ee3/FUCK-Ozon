@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NButton,
   NDropdown,
@@ -29,7 +31,7 @@ const { selectedShopId, options: shopOptions, load: loadShops, selectShop } = us
 const { isDark, toggle: toggleTheme } = useTheme();
 
 const pageTitle = computed(() => String(route.meta.title ?? "oPanel"));
-const pageIcon = computed(() => String(route.meta.icon ?? "dashboard"));
+const pageIcon = computed(() => (route.meta.icon ?? "dashboard") as IconName);
 const collapsed = ref(false);
 const loggingOut = ref(false);
 const logoSrc = "/assets/logo.svg";

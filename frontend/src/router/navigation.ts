@@ -1,11 +1,13 @@
 import { h } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
 import type { MenuOption } from "naive-ui";
+import type { IconName } from "../icons/tabler";
 
 export interface NavigationItem {
   name: string;
   label: string;
   path: string;
-  icon: string;
+  icon: IconName;
   description: string;
 }
 
@@ -69,6 +71,6 @@ export const menuOptions: MenuOption[] = navigationGroups.map((group) => ({
   children: group.items.map((item) => ({
     label: item.label,
     key: item.path,
-    icon: () => h("morph-icon", { icon: item.icon, size: "18", "stroke-width": "1.8" }),
+    icon: () => h(MorphIcon, { icon: item.icon, size: "18", strokeWidth: "1.8" }),
   })),
 }));

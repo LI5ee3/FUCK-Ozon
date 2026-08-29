@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -628,7 +630,7 @@ function renderCopyButton(
   title: string,
   className = "",
   label = value || "",
-  icon = "copy",
+  icon: IconName = "copy",
 ): VNodeChild {
   if (!value || !value.trim()) return h("span", { class: `complaints-missing ${className}` }, "—");
   return h("button", {
@@ -639,7 +641,7 @@ function renderCopyButton(
       event.stopPropagation();
       void copyValue(value);
     },
-  }, [h("morph-icon", { icon, size: "12", "stroke-width": "2" }), label]);
+  }, [h(MorphIcon, { icon, size: "12", strokeWidth: "2" }), label]);
 }
 
 function renderMetaChip(label: string, value: string | null | undefined): VNodeChild {
@@ -659,7 +661,7 @@ function deadlineText(row: { complaint_deadline: string | null; complaint_deadli
 function renderDeadline(row: { complaint_deadline: string | null; complaint_deadline_status: ComplaintDeadlineStatus }): VNodeChild {
   const status = row.complaint_deadline_status || "missing";
   return h("span", { class: `complaints-deadline complaints-deadline--${status}` }, [
-    h("morph-icon", { icon: status === "overdue" ? "alertCircle" : "clock", size: "11", "stroke-width": "2" }),
+    h(MorphIcon, { icon: status === "overdue" ? "alertCircle" : "clock", size: "11", strokeWidth: "2" }),
     h("span", `投诉截止：${row.complaint_deadline || "—"}`),
     deadlineLabels[status] ? h("b", deadlineLabels[status]) : null,
   ]);
@@ -698,7 +700,7 @@ function renderShippingIdentity(row: ShippingComplaintOrder): VNodeChild {
     renderCopyButton(row.posting_number, "点击复制订单号", "complaints-order-number", row.posting_number),
     row.data_anomaly
       ? h(NTag, { size: "small", round: true, bordered: false, type: "warning", class: "complaints-anomaly-tag" }, {
-          default: () => [h("morph-icon", { icon: "alertTriangle", size: "11", "stroke-width": "2" }), "数据异常"],
+          default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "数据异常"],
         })
       : null,
   ]);
@@ -736,7 +738,7 @@ function renderComplaintList(row: ShippingComplaintOrder): VNodeChild {
           title: "点击查看/编辑投诉明细",
           onClick: () => openShippingEditor(row, complaint),
         }, [
-          h("strong", [h("morph-icon", { icon: "fileText", size: "11", "stroke-width": "2" }), complaint.complaint_number]),
+          h("strong", [h(MorphIcon, { icon: "fileText", size: "11", strokeWidth: "2" }), complaint.complaint_number]),
           h("small", [
             renderTag(complaint.resolved === 1 ? "success" : "warning", complaint.resolved === 1 ? "已完结" : "处理中", "complaints-inline-status"),
             ` · ${formatBeijingDateTime(complaint.complaint_at)}`,
@@ -747,7 +749,7 @@ function renderComplaintList(row: ShippingComplaintOrder): VNodeChild {
       type: "button",
       class: "complaints-action-button",
       onClick: () => openShippingEditor(row),
-    }, [h("morph-icon", { icon: "plus", size: "12", "stroke-width": "2" }), "新建投诉"]),
+    }, [h(MorphIcon, { icon: "plus", size: "12", strokeWidth: "2" }), "新建投诉"]),
   ]);
 }
 
@@ -782,7 +784,7 @@ function renderReceivedReason(row: ReceivedDisputeRecord): VNodeChild {
     h("span", { class: "complaints-reason-chip", title: display(row.reason_raw) }, display(row.reason_name || row.reason_raw, "平台未提供原因")),
     comment
       ? h("details", { class: "complaints-buyer-details" }, [
-          h("summary", [h("morph-icon", { icon: "messageSquare", size: "11", "stroke-width": "2" }), "买家留言原文"]),
+          h("summary", [h(MorphIcon, { icon: "messageSquare", size: "11", strokeWidth: "2" }), "买家留言原文"]),
           h("p", { lang: "ru" }, comment),
         ])
       : null,
@@ -810,7 +812,7 @@ function renderReceivedState(row: ReceivedDisputeRecord): VNodeChild {
       type: "button",
       class: "complaints-action-button",
       onClick: () => openReceivedEditor(row),
-    }, [h("morph-icon", { icon: "edit", size: "12", "stroke-width": "2" }), "编辑"]),
+    }, [h(MorphIcon, { icon: "edit", size: "12", strokeWidth: "2" }), "编辑"]),
   ]);
 }
 

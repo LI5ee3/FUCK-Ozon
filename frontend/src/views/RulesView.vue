@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NAlert,
   NButton,
@@ -27,7 +29,7 @@ import type {
 
 type SummaryTone = "azure" | "mint" | "peach" | "lavender";
 type SummaryCard = {
-  icon: string;
+  icon: IconName;
   label: string;
   badge: string;
   value: number;
@@ -114,7 +116,7 @@ const shortNameColumns: DataTableColumns<ProductShortName> = [
       title: "点击复制 SKU",
       onClick: () => { void copySku(row.sku); },
     }, [
-      h("morph-icon", { icon: "copy", size: "12", "stroke-width": "2" }),
+      h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }),
       h("strong", row.sku),
     ]),
   },
@@ -143,7 +145,7 @@ const shortNameColumns: DataTableColumns<ProductShortName> = [
         type: "primary",
         disabled: Boolean(deletingShortSku.value),
         onClick: () => editShortName(row),
-      }, { default: () => [h("morph-icon", { icon: "edit", size: "12", "stroke-width": "2" }), "编辑"] }),
+      }, { default: () => [h(MorphIcon, { icon: "edit", size: "12", strokeWidth: "2" }), "编辑"] }),
       h(NButton, {
         size: "small",
         text: true,
@@ -151,7 +153,7 @@ const shortNameColumns: DataTableColumns<ProductShortName> = [
         loading: deletingShortSku.value === row.sku,
         disabled: Boolean(deletingShortSku.value && deletingShortSku.value !== row.sku),
         onClick: () => { void removeShortName(row.sku); },
-      }, { default: () => [h("morph-icon", { icon: "trash", size: "12", "stroke-width": "2" }), "删除"] }),
+      }, { default: () => [h(MorphIcon, { icon: "trash", size: "12", strokeWidth: "2" }), "删除"] }),
     ]),
   },
 ];

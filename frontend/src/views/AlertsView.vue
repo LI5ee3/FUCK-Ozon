@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import {
@@ -46,7 +48,7 @@ type AlertFilters = {
   page: number;
 };
 type SummaryTone = "warning" | "danger" | "peach" | "lavender" | "safe";
-type SummaryCard = { icon: string; label: string; value: string; note: string; tone: SummaryTone };
+type SummaryCard = { icon: IconName; label: string; value: string; note: string; tone: SummaryTone };
 
 const PAGE_SIZE = 50;
 const route = useRoute();
@@ -504,7 +506,7 @@ const eventColumns: DataTableColumns<AlertEvent> = [
           disabled: acknowledgingId.value !== null && acknowledgingId.value !== row.id,
           onClick: () => void acknowledgeRow(row),
         }, {
-          icon: () => h("morph-icon", { icon: "check", size: "12", "stroke-width": "2" }),
+          icon: () => h(MorphIcon, { icon: "check", size: "12", strokeWidth: "2" }),
           default: () => "已读",
         })
       : "—",

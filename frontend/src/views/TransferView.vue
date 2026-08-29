@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import { NButton, NCard, NDatePicker, NEmpty, NSelect, NSpin } from "naive-ui";
 import { getErrorMessage } from "../api/client";
 import {
@@ -57,7 +59,7 @@ const exportModules: ReadonlyArray<{
   module: ExportModule;
   title: string;
   description: string;
-  icon: string;
+  icon: IconName;
   tone: "blue" | "peach" | "lavender" | "mint";
 }> = [
   { module: "orders", title: "订单数据", description: "包含订单号、履约渠道、创单时间、发货状态及交易金额", icon: "package", tone: "blue" },

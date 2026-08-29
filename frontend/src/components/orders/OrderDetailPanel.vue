@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MorphIcon from "../MorphIcon.vue";
 import type { Order } from "../../types/api";
 import { formatBeijingDateTime, formatHours, formatInteger, formatMoney } from "../../utils/format";
 

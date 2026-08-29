@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, reactive } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
 import {
   NAlert,
   NButton,

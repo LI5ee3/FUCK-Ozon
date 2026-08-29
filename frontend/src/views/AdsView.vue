@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
 import { NAlert, NButton, NCard, NDatePicker, NEmpty, NSpin, useMessage } from "naive-ui";
@@ -14,7 +16,7 @@ import { isShopSelection, queryValue } from "../utils/query";
 
 type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
 type AdsFilters = { shopId: ShopSelection; from: string; to: string };
-type AdsKpi = { icon: string; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "blue" };
+type AdsKpi = { icon: IconName; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "blue" };
 
 const route = useRoute();
 const router = useRouter();

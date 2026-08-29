@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import MorphIcon from "../components/MorphIcon.vue";
+import type { IconName } from "../icons/tabler";
 import {
   NAlert,
   NButton,
@@ -18,7 +20,7 @@ import { formatBeijingDateTime } from "../utils/format";
 
 type DingTalkTone = "azure" | "peach" | "mint" | "lavender" | "warning";
 type SummaryCard = {
-  icon: string;
+  icon: IconName;
   label: string;
   value: string;
   note: string;
@@ -92,7 +94,7 @@ function statusTone(status: DingTalkRunStatus | null): DingTalkTone {
   return "warning";
 }
 
-function statusIcon(status: DingTalkRunStatus | null): string {
+function statusIcon(status: DingTalkRunStatus | null): IconName {
   if (!status) return "rotateCcw";
   if (status === "success") return "checkCircle";
   if (status === "failed") return "alertCircle";
