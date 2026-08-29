@@ -35,6 +35,7 @@ class ProductRulesTest(DatabaseTestCase):
             rules = load_product_rules(connection)
             count = connection.execute("SELECT COUNT(*) FROM product_short_names WHERE key_type='sku'").fetchone()[0]
         self.assertEqual(count, 1)
+        self.assertEqual(rules["names"][("OFFER-1", "SKU-1")], "平台商品")
         self.assertEqual(resolve_product(rules, "SKU-1", "OFFER-1", "Новый\u00a0原名")["display_name"],
                          "更新短名")
         self.assertEqual(resolve_product(rules, "OTHER", "OFFER-1", "Новый\u00a0原名")["display_name"], "原名")

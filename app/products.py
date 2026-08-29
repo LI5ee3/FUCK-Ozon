@@ -15,10 +15,13 @@ def load_product_rules(db):
     for row in db.execute("SELECT group_id,key_type,key_value FROM product_group_members"):
         if row["group_id"] in groups:
             members[(row["key_type"], row["key_value"])] = row["group_id"]
-    names = {}
-    for row in db.execute("""SELECT offer_id,sku,product_name_raw,source FROM order_items
-      WHERE NULLIF(offer_id,'') IS NOT NULL ORDER BY (source='api') DESC"""):
-        names.setdefault((row["offer_id"], row["sku"]), clean_product_name(row["product_name_raw"]))
+    names = {(row["offer_id"], row["sku"]): clean_product_name(row["product_name_raw"])
+             for row in db.execute("""WITH preferred AS (
+               SELECT offer_id,sku,
+                 COALESCE(MIN(CASE WHEN source='api' THEN rowid END),MIN(rowid)) item_rowid
+               FROM order_items WHERE NULLIF(offer_id,'') IS NOT NULL GROUP BY offer_id,sku)
+             SELECT i.offer_id,i.sku,i.product_name_raw FROM preferred p
+             JOIN order_items i ON i.rowid=p.item_rowid""")}
     inferred = {}
     for offer_id, sku in names:
         group_id = members.get(("offer_id", offer_id))
