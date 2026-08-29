@@ -10,17 +10,18 @@ FRONTEND = ROOT / "frontend/src"
 class FrontendContractsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.router = (FRONTEND / "router/index.ts").read_text()
-        cls.client = (FRONTEND / "api/client.ts").read_text()
-        cls.ads = (FRONTEND / "api/ads.ts").read_text()
+        cls.router = (FRONTEND / "app/router/index.ts").read_text()
+        cls.client = (FRONTEND / "shared/api/client.ts").read_text()
+        cls.ads = (FRONTEND / "features/advertising/api.ts").read_text()
         cls.frontend_text = "\n".join(
             path.read_text() for path in FRONTEND.rglob("*") if path.is_file()
         )
 
     def test_all_frontend_network_requests_use_authenticated_client(self):
-        for path in (FRONTEND / "api").glob("*.ts"):
-            if path.name != "client.ts":
-                self.assertNotRegex(path.read_text(), r"\bfetch\s*\(")
+        api_files = [FRONTEND / "shared/api/shops.ts", FRONTEND / "app/auth/api.ts"]
+        api_files.extend((FRONTEND / "features").glob("*/api.ts"))
+        for path in api_files:
+            self.assertNotRegex(path.read_text(), r"\bfetch\s*\(")
         self.assertIn('credentials: "include"', self.client)
         self.assertIn('headers.set("X-CSRF-Token", csrfToken)', self.client)
         self.assertIn("UNAUTHORIZED_EVENT", self.client)
@@ -29,16 +30,16 @@ class FrontendContractsTest(unittest.TestCase):
         self.assertIn("/api/performance/overview", self.ads)
         self.assertIn("/api/performance/campaign-stats", self.ads)
         self.assertIn("/api/performance/sku-stats", self.ads)
-        self.assertNotIn("/api/analytics/data", (FRONTEND / "views/AdsView.vue").read_text())
-        for module, endpoint in (
-            ("risk.ts", "/api/risk"),
-            ("returns.ts", "/api/returns"),
-            ("complaints.ts", "/api/exception-complaints/shipping"),
-            ("dingtalk.ts", "/api/dingtalk/settings"),
+        self.assertNotIn("/api/analytics/data", (FRONTEND / "features/advertising/AdsView.vue").read_text())
+        for path, endpoint in (
+            ("features/risk/api.ts", "/api/risk"),
+            ("features/returns/api.ts", "/api/returns"),
+            ("features/complaints/api.ts", "/api/exception-complaints/shipping"),
+            ("features/dingtalk/api.ts", "/api/dingtalk/settings"),
         ):
-            self.assertIn(endpoint, (FRONTEND / "api" / module).read_text())
+            self.assertIn(endpoint, (FRONTEND / path).read_text())
         self.assertEqual(
-            re.search(r'export type ExportModule = ([^;]+);', (FRONTEND / "api/transfer.ts").read_text()).group(1),
+            re.search(r'export type ExportModule = ([^;]+);', (FRONTEND / "features/transfer/api.ts").read_text()).group(1),
             '"orders" | "risk" | "returns" | "complaints"',
         )
 
@@ -59,7 +60,7 @@ class FrontendContractsTest(unittest.TestCase):
                     self.assertNotIn(value.strip(), self.frontend_text)
 
     def test_notification_api_contracts_are_preserved(self):
-        api = (FRONTEND / "api/push-subscriptions.ts").read_text()
+        api = (FRONTEND / "features/push-subscriptions/api.ts").read_text()
         for path in (
             "/api/ozon/notifications/push-types",
             "/api/ozon/notifications/check",

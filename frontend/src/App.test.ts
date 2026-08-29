@@ -2,15 +2,15 @@ import { flushPromises, shallowMount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterView } from "vue-router";
 import App from "./App.vue";
-import LoginView from "./views/LoginView.vue";
-import { UNAUTHORIZED_EVENT } from "./api/client";
+import LoginView from "./app/auth/LoginView.vue";
+import { UNAUTHORIZED_EVENT } from "./shared/api/client";
 
 const getSession = vi.hoisted(() => vi.fn());
-vi.mock("./api/auth", () => ({
+vi.mock("./app/auth/api", () => ({
   getSession,
   login: vi.fn(),
 }));
-vi.mock("./composables/useTheme", () => ({
+vi.mock("./shared/composables/useTheme", () => ({
   useTheme: () => ({ isDark: { value: false }, init: vi.fn() }),
 }));
 

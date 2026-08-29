@@ -248,7 +248,7 @@ class InventoryForecastTest(DatabaseTestCase):
     def test_inventory_policy_remains_backend_owned(self):
         root = Path(__file__).parents[1]
         backend = (root / "app/main.py").read_text()
-        inventory = (root / "frontend/src/views/InventoryView.vue").read_text()
+        inventory = (root / "frontend/src/features/inventory/InventoryView.vue").read_text()
         self.assertIn("FORECAST_LEAD_TIME_DAYS = 25", backend)
         self.assertIn("FORECAST_TARGET_COVER_DAYS = 60", backend)
         self.assertIn("FORECAST_OVERSTOCK_DAYS = 90", backend)

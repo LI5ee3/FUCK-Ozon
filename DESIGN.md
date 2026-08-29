@@ -5,7 +5,7 @@ description: "High-density e-commerce analytics system combining Apple HIG minim
 
 colors:
   # Source of truth: frontend/src/theme/tokens.ts, the --opanel-* variables in
-  # frontend/src/style.css (:root and :root[data-theme="dark"]), and
+  # frontend/src/styles/tokens.css (:root and :root[data-theme="dark"]), and
   # frontend/src/theme/naive-theme.ts (maps the same tokens onto Naive UI).
 
   # Brand & Core Interactive (Apple Action Blue)
@@ -66,7 +66,7 @@ alignment:
   optical-icon-centering: true
 
 typography:
-  # One stack for all text (style.css body); no separate display face is loaded.
+  # One stack for all text (styles/base.css body); no separate display face is loaded.
   font-family-body: "SF Pro Text, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI', Roboto, sans-serif"
   font-family-mono: "'SF Mono', ui-monospace, Menlo, Monaco, Consolas, monospace"
 
@@ -114,10 +114,10 @@ physics:
   press-scale: "0.95 – 0.995 depending on component"
   # Icon state changes morph via <MorphIcon>; motion respects the user's
   # reduced-motion preference (reduced-motion="user").
-  icon-morph: "src/components/MorphIcon.vue (morphicons/vue)"
+  icon-morph: "src/shared/components/MorphIcon.vue (morphicons/vue)"
 
 iconography:
-  system: "Tabler Icons 24x24 stroke paths — hand-curated registry in frontend/src/icons/tabler.ts (add new icons there), rendered through frontend/src/components/MorphIcon.vue, a thin wrapper over morphicons/vue MorphIcon"
+  system: "Tabler Icons 24x24 stroke paths — hand-curated registry in frontend/src/shared/icons/tabler.ts (add new icons there), rendered through frontend/src/shared/components/MorphIcon.vue, a thin wrapper over morphicons/vue MorphIcon"
   stroke: "views pass stroke-width 1.8–2; component default is 1.5"
   morphing: "icon swaps animate as morphs; honors prefers-reduced-motion"
 ---
@@ -127,7 +127,7 @@ iconography:
 ### 1. Tint-Harmonic Palette × Apple HIG Synergy
 - **Open Macaron Harmonic Tints**: Replaces sterile, fatiguing dashboard tables with breathable, low-saturation card shells derived from the semantic status colors via `color-mix`, so light and dark themes adapt automatically from one definition. High-contrast ink text sits on every shell.
 - **Apple Architectural Rigor**: 1px crisp hairlines (`rgba(0,0,0,0.08)` / `rgba(255,255,255,0.08)`), negative display tracking (`-0.015em` to `-0.025em`), and 18px card radii.
-- **Single Token Source**: `frontend/src/theme/tokens.ts` (consumed by `naive-theme.ts` for Naive UI overrides) and the `--opanel-*` variables in `frontend/src/style.css` mirror each other; never hardcode theme hexes in views.
+- **Single Token Source**: `frontend/src/theme/tokens.ts` (consumed by `naive-theme.ts` for Naive UI overrides) and the `--opanel-*` variables in `frontend/src/styles/tokens.css` mirror each other; never hardcode theme hexes in views.
 
 ### 2. High-Density Data Clarity
 - All numeric metrics, currency amounts, order numbers, and timestamps enforce `font-variant-numeric: tabular-nums` to eliminate visual jitter and guarantee columnar alignment.
@@ -141,12 +141,12 @@ iconography:
 ### 4. Fluid Motion & Morphing Icons
 - Transitions use the shared fluid easing `--opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1)`.
 - Press feedback is tactile but per-component (scale 0.95–0.995 depending on surface size); there is no global spring curve.
-- **Icon morphing is a core behavior**: icon state changes (theme toggle, status flips, menu icons) go through `<MorphIcon>` (`frontend/src/components/MorphIcon.vue`), which animates the swap as a morph and honors the user's reduced-motion setting.
+- **Icon morphing is a core behavior**: icon state changes (theme toggle, status flips, menu icons) go through `<MorphIcon>` (`frontend/src/shared/components/MorphIcon.vue`), which animates the swap as a morph and honors the user's reduced-motion setting.
 
 ### 5. NCard KPI Card Anatomy & Grid Standards
 All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel-line` border and `--opanel-shadow-sm` via CSS, 18px radius) sharing one anatomy and a per-domain class prefix:
 
-- **Shared components**: `components/AnalyticsKpiCards.vue` (reused by Risk, Returns, Timeliness, and Complaints through the shared `views/analytics.css`), `components/AlertSummaryCards.vue`, `components/SyncSummaryCards.vue`; the Dashboard builds its cards inline on the same pattern (`views/dashboard.css`). Domain stylesheets `orders.css` and `complaints.css` follow the same conventions — complaints adds deadline badges, copy buttons, and compensation previews on the same primitives.
+- **Feature components**: `features/analytics/components/AnalyticsKpiCards.vue`, `features/alerts/components/AlertSummaryCards.vue`, `features/sync/components/SyncSummaryCards.vue`; the Dashboard builds its cards inline on the same pattern (`features/dashboard/dashboard.css`). Domain stylesheets `features/orders/orders.css` and `features/complaints/complaints.css` follow the same conventions — complaints adds deadline badges, copy buttons, and compensation previews on the same primitives.
 - **Card Head**: left label `span` (13px, weight 550, muted) + top-right icon badge (`{prefix}-icon-badge`, `32x32px`, 8px radius, tone-tinted).
 - **Metric Value (`strong`)**: `{prefix}-kpi-value` — `28px`, weight 750, letter-spacing `-0.025em`, `tabular-nums`. Multi-line money variant: `{prefix}-kpi-money` (15px, column flex).
 - **Metric Note (`small`)**: `12px`, muted secondary text.

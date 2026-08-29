@@ -10,9 +10,9 @@ import {
   NSpin,
 } from "naive-ui";
 import { RouterView } from "vue-router";
-import LoginView from "./views/LoginView.vue";
-import { useAuth } from "./composables/useAuth";
-import { useTheme } from "./composables/useTheme";
+import LoginView from "./app/auth/LoginView.vue";
+import { useAuth } from "./app/auth/useAuth";
+import { useTheme } from "./shared/composables/useTheme";
 import { darkThemeOverrides, lightThemeOverrides } from "./theme/naive-theme";
 
 const { authenticated, error, loading, login, ready, restoreSession } = useAuth();

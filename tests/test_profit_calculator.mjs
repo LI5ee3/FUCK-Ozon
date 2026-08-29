@@ -4,7 +4,7 @@ import {
   PROFIT_COST_KEYS,
   calculateProfit,
   normalizeProfitPrice,
-} from "../frontend/src/utils/profit.ts";
+} from "../frontend/src/features/profit/calculator.ts";
 
 function assertClose(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} is not close to ${expected}`);

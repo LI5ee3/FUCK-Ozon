@@ -1,0 +1,307 @@
+.timeliness-view {
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.timeliness-toolbar {
+  margin-bottom: 18px;
+}
+
+.timeliness-date-control {
+  min-width: 0;
+}
+
+.timeliness-kpi-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.timeliness-kpi-label .n-tag {
+  font-size: 10px;
+}
+
+.timeliness-table-card {
+  background: var(--opanel-panel-solid) !important;
+}
+
+.timeliness-matrix-card .n-card__content {
+  padding-top: 16px;
+}
+
+.timeliness-matrix-table .n-data-table-wrapper {
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.timeliness-matrix-table .n-data-table-td {
+  vertical-align: middle;
+}
+
+.timeliness-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.timeliness-detail-filter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.timeliness-search-input {
+  width: min(100%, 280px);
+}
+
+.timeliness-identity-cell,
+.timeliness-detail-identity,
+.timeliness-completeness-cell,
+.timeliness-stat-wrap,
+.timeliness-time-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeliness-identity-cell,
+.timeliness-detail-identity {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.timeliness-shop-name,
+.timeliness-shop-badge,
+.timeliness-time-value,
+.timeliness-copy-value {
+  color: var(--opanel-text);
+}
+
+.timeliness-shop-name {
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.timeliness-shop-badge {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.timeliness-channel-tag {
+  border: 1px solid transparent !important;
+  font-weight: 650;
+}
+
+.timeliness-channel-tag--fbp {
+  background: var(--opanel-primary-soft) !important;
+  border-color: color-mix(in srgb, var(--opanel-primary) 20%, transparent) !important;
+  color: var(--opanel-primary) !important;
+}
+
+.timeliness-channel-tag--fbs {
+  background: color-mix(in srgb, var(--opanel-success) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--opanel-success) 24%, transparent) !important;
+  color: var(--opanel-success) !important;
+}
+
+.timeliness-channel-tag--whd {
+  background: color-mix(in srgb, var(--opanel-warning) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--opanel-warning) 26%, transparent) !important;
+  color: var(--opanel-warning) !important;
+}
+
+.timeliness-completeness-cell {
+  gap: 6px;
+}
+
+.timeliness-complete-total,
+.timeliness-sample-text,
+.timeliness-cell-time,
+.timeliness-sub-stats,
+.timeliness-pager {
+  font-variant-numeric: tabular-nums;
+}
+
+.timeliness-complete-total {
+  color: var(--opanel-muted);
+  font-size: 12.5px;
+}
+
+.timeliness-complete-total b,
+.timeliness-sub-stats b {
+  color: var(--opanel-text);
+  font-weight: 700;
+}
+
+.timeliness-complete-chips,
+.timeliness-p50-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.timeliness-complete-chip {
+  font-variant-numeric: tabular-nums;
+}
+
+.timeliness-complete-chip.is-warning {
+  color: var(--opanel-warning) !important;
+}
+
+.timeliness-sub-label {
+  color: var(--opanel-muted);
+  font-size: 10px;
+}
+
+.timeliness-complete-chip.is-warning .timeliness-sub-label,
+.timeliness-complete-chip.is-warning b {
+  color: var(--opanel-warning);
+}
+
+.timeliness-stat-wrap {
+  gap: 6px;
+}
+
+.timeliness-p50-tag,
+.timeliness-sample-tag,
+.timeliness-time-tag {
+  width: fit-content;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeliness-p50-tag {
+  font-weight: 750;
+}
+
+.timeliness-sample-tag {
+  gap: 3px;
+}
+
+.timeliness-sample-text,
+.timeliness-sub-stats,
+.timeliness-stat-empty {
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+}
+
+.timeliness-sub-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.timeliness-p90-stat {
+  color: var(--opanel-muted);
+}
+
+.timeliness-stat-empty {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.timeliness-cell-time {
+  color: var(--opanel-text);
+  font-size: 12px;
+}
+
+.timeliness-time-cell {
+  align-items: flex-start;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeliness-time-value {
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.timeliness-time-tag {
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.timeliness-empty-time {
+  padding: 2px 0;
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.timeliness-copy-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--opanel-primary);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.timeliness-copy-value:hover {
+  color: var(--opanel-primary-focus);
+  text-decoration: underline;
+}
+
+.timeliness-copy-value:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--opanel-primary) 45%, transparent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (max-width: 900px) {
+  .timeliness-detail-header {
+    flex-direction: column;
+  }
+
+  .timeliness-detail-filter {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .timeliness-search-input {
+    flex: 1 1 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .timeliness-toolbar {
+    padding: 16px;
+  }
+
+  .timeliness-date-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timeliness-date-control .analytics-date-picker {
+    width: 100%;
+  }
+
+  .timeliness-date-control .analytics-date-presets {
+    width: 100%;
+  }
+
+  .timeliness-detail-filter > .n-button {
+    flex: 1;
+  }
+}

@@ -116,22 +116,26 @@ class VueProductionTest(unittest.TestCase):
         self.assertNotIn('/assets/morphicons.js', verify)
 
     def test_core_route_styles_follow_lazy_views(self):
-        global_style = (ROOT / "frontend/src/style.css").read_text()
-        for view_name, css_name, prefix in (
-            ("DashboardView.vue", "dashboard.css", "dashboard"),
-            ("OrdersView.vue", "orders.css", "orders"),
-            ("AnalyticsView.vue", "analytics.css", "analytics"),
-            ("ComplaintsView.vue", "complaints.css", "complaints"),
+        global_style = "\n".join(
+            (ROOT / "frontend/src/styles" / name).read_text()
+            for name in ("tokens.css", "base.css", "layout.css", "components.css")
+        )
+        for view_name, css_name, prefix, css_import in (
+            ("features/dashboard/DashboardView.vue", "features/dashboard/dashboard.css", "dashboard", 'import "./dashboard.css";'),
+            ("features/orders/OrdersView.vue", "features/orders/orders.css", "orders", 'import "./orders.css";'),
+            ("features/analytics/AnalyticsView.vue", "styles/analytics.css", "analytics", 'import "../../styles/analytics.css";'),
+            ("features/complaints/ComplaintsView.vue", "features/complaints/complaints.css", "complaints", 'import "./complaints.css";'),
         ):
-            view = (ROOT / "frontend/src/views" / view_name).read_text()
-            css = ROOT / "frontend/src/views" / css_name
-            self.assertIn(f'import "./{css_name}";', view)
+            view = (ROOT / "frontend/src" / view_name).read_text()
+            css = ROOT / "frontend/src" / css_name
+            self.assertIn(css_import, view)
             self.assertTrue(css.is_file())
             self.assertRegex(css.read_text(), rf"(?m)^\.{prefix}-")
             self.assertNotRegex(global_style, rf"(?m)^\.{prefix}(?:-|\s|\{{|,)")
 
         for view_name in ("ComplaintsView.vue", "ReturnsView.vue", "RiskView.vue", "TimelinessView.vue"):
-            self.assertIn('import "./analytics.css";', (ROOT / "frontend/src/views" / view_name).read_text())
+            feature = view_name.removesuffix("View.vue").lower()
+            self.assertIn('import "../../styles/analytics.css";', (ROOT / "frontend/src/features" / feature / view_name).read_text())
 
 
 if __name__ == "__main__":
