@@ -77,6 +77,14 @@ npm run dev
 
 后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产入口现为 `frontend/dist/`，继续使用 `127.0.0.1:38652`、launchd 与 Cloudflare Tunnel。
 
+提交前执行项目级核心检查：
+
+```sh
+./scripts/check.sh
+```
+
+该脚本依次运行仓库 unittest、Vue type-check、Profit Node test 和 staged production build；不会启动生产服务、操作真实数据库或读取 Ozon 店铺数据。
+
 ## macOS + Apple Silicon 部署
 
 生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、Node.js/npm、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22.18.x 或 >=24.11.0。
