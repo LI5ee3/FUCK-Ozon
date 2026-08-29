@@ -109,6 +109,7 @@ class VueProductionTest(unittest.TestCase):
             ("DashboardView.vue", "dashboard.css", "dashboard"),
             ("OrdersView.vue", "orders.css", "orders"),
             ("AnalyticsView.vue", "analytics.css", "analytics"),
+            ("ComplaintsView.vue", "complaints.css", "complaints"),
         ):
             view = (ROOT / "frontend/src/views" / view_name).read_text()
             css = ROOT / "frontend/src/views" / css_name

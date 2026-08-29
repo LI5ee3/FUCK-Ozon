@@ -14,6 +14,7 @@ cd "$ROOT"
 
 cd "$ROOT/frontend"
 npm run type-check
+npm run test:unit
 npm run test:profit
 
 "$ROOT/scripts/build-frontend.sh"

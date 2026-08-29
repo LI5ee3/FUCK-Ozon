@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import "./analytics.css";
+import "./complaints.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
-import ComplaintCompensationFields from "../components/ComplaintCompensationFields.vue";
+import ReceivedDisputeEditor from "../components/complaints/ReceivedDisputeEditor.vue";
+import ShippingComplaintEditor from "../components/complaints/ShippingComplaintEditor.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -14,8 +16,6 @@ import {
   NDatePicker,
   NEmpty,
   NInput,
-  NInputNumber,
-  NModal,
   NSelect,
   NTag,
   useMessage,
@@ -25,10 +25,6 @@ import { getErrorMessage } from "../api/client";
 import {
   listReceivedDisputes,
   listShippingComplaints,
-  saveReceivedDispute,
-  saveShippingComplaint,
-  type ReceivedDisputePayload,
-  type ShippingComplaintPayload,
 } from "../api/complaints";
 import { useShop } from "../composables/useShop";
 import type {
@@ -39,7 +35,6 @@ import type {
   ReceivedDisputesResponse,
   ShippingComplaintOrder,
   ShippingComplaintsResponse,
-  ShopId,
   ShopSelection,
 } from "../types/api";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../utils/format";
@@ -54,7 +49,6 @@ import { isShopSelection, positiveInteger, queryValue } from "../utils/query";
 import { copyText } from "../utils/clipboard";
 
 type ComplaintTab = "shipping" | "received";
-type BoolChoice = "" | "true" | "false";
 type TagType = "default" | "info" | "success" | "warning" | "error";
 type ComplaintFilters = {
   shopId: ShopSelection;
@@ -66,46 +60,6 @@ type ComplaintFilters = {
   page: number;
 };
 type ComplaintApiBase = Pick<ComplaintFilters, "shopId" | "from" | "to">;
-type ShippingComplaintForm = {
-  shopId: ShopId;
-  postingNumber: string;
-  complaintNumber: string;
-  complaintAt: string;
-  channel: string;
-  warehouse: string;
-  orderProcessStatus: string;
-  complaintStatus: string;
-  compensationStatus: string;
-  platformCompensation: number | null;
-  platformAt: string;
-  logisticsCompensation: number | null;
-  logisticsAt: string;
-  notReceivedReturn: BoolChoice;
-  resolved: BoolChoice;
-  notes: string;
-};
-type ReceivedDisputeForm = {
-  shopId: ShopId;
-  returnNumber: string;
-  refundType: string;
-  refundAmount: number | null;
-  refundCurrency: string;
-  platformCompensation: number | null;
-  platformAt: string;
-  logisticsCompensation: number | null;
-  logisticsAt: string;
-  processStatus: string;
-  returnMethod: string;
-  imlReturnNumber: string;
-  imlSystemSn: string;
-  buyerTrackingNumber: string;
-  handlingMethod: string;
-  videoRecorded: BoolChoice;
-  outboundOrderNumber: string;
-  returnResult: string;
-  notes: string;
-};
-
 const PAGE_SIZE = 50;
 const route = useRoute();
 const router = useRouter();
@@ -129,46 +83,6 @@ const receivedStatusOptions = [
   { label: "未记录", value: "unfiled" },
   { label: "处理中", value: "open" },
   { label: "已结束", value: "closed" },
-];
-
-function formatBeijingDateTimeInput(value: string | Date | null | undefined): string {
-  if (!value) return "";
-  const text = formatBeijingDateTime(value instanceof Date ? value.toISOString() : value);
-  return text === "暂无" ? "" : text.replace(" ", "T");
-}
-
-function beijingInputToUtc(value: string): string {
-  if (!value) return "";
-  const date = new Date(`${value}:00+08:00`);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-const booleanOptions = [
-  { label: "未填写", value: "" },
-  { label: "是", value: "true" },
-  { label: "否", value: "false" },
-];
-const refundTypeOptions = [
-  { label: "未填写", value: "" },
-  { label: "部分退款", value: "部分退款" },
-  { label: "全额退款", value: "全额退款" },
-  { label: "多次纠纷", value: "多次纠纷" },
-];
-const returnMethodOptions = [
-  { label: "未填写", value: "" },
-  { label: "未退货", value: "未退货" },
-  { label: "IML", value: "IML" },
-  { label: "FBO二次销售", value: "FBO二次销售" },
-];
-const handlingMethodOptions = [
-  { label: "未填写", value: "" },
-  { label: "退回", value: "退回" },
-  { label: "销毁", value: "销毁" },
-];
-const returnResultOptions = [
-  { label: "未填写", value: "" },
-  { label: "退回国内中", value: "退回国内中" },
-  { label: "已签收", value: "已签收" },
-  { label: "已销毁", value: "已销毁" },
 ];
 
 function defaultDateRange(): DateRange {
@@ -223,56 +137,12 @@ const shippingError = ref("");
 const receivedError = ref("");
 const shippingEditorShow = ref(false);
 const receivedEditorShow = ref(false);
-const shippingSaving = ref(false);
-const receivedSaving = ref(false);
 const selectedShipping = ref<ShippingComplaintOrder | null>(null);
 const selectedShippingComplaint = ref<ComplaintRecord | null>(null);
 const selectedReceived = ref<ReceivedDisputeRecord | null>(null);
-const shippingForm = reactive<ShippingComplaintForm>({
-  shopId: 1,
-  postingNumber: "",
-  complaintNumber: "",
-  complaintAt: "",
-  channel: "",
-  warehouse: "",
-  orderProcessStatus: "",
-  complaintStatus: "",
-  compensationStatus: "",
-  platformCompensation: null,
-  platformAt: "",
-  logisticsCompensation: null,
-  logisticsAt: "",
-  notReceivedReturn: "",
-  resolved: "",
-  notes: "",
-});
-const receivedForm = reactive<ReceivedDisputeForm>({
-  shopId: 1,
-  returnNumber: "",
-  refundType: "",
-  refundAmount: null,
-  refundCurrency: "",
-  platformCompensation: null,
-  platformAt: "",
-  logisticsCompensation: null,
-  logisticsAt: "",
-  processStatus: "",
-  returnMethod: "",
-  imlReturnNumber: "",
-  imlSystemSn: "",
-  buyerTrackingNumber: "",
-  handlingMethod: "",
-  videoRecorded: "",
-  outboundOrderNumber: "",
-  returnResult: "",
-  notes: "",
-});
 let shippingRequestId = 0;
 let receivedRequestId = 0;
-let shippingSaveId = 0;
-let receivedSaveId = 0;
 let routeReady = false;
-let mounted = false;
 let ignoreNextShopChange = false;
 let loadedApiBase: ComplaintApiBase | null = null;
 
@@ -289,50 +159,6 @@ const activeDataThrough = computed(() => filters.tab === "shipping"
   : receivedData.value?.data_through ?? null);
 const shippingPageCount = computed(() => pageCountFor(shippingData.value));
 const receivedPageCount = computed(() => pageCountFor(receivedData.value));
-const shippingPlatformConversion = computed(() => compensationPreview(
-  shippingForm.platformCompensation,
-  shippingForm.platformAt,
-  selectedShippingComplaint.value?.platform_compensation_rub,
-  selectedShippingComplaint.value?.platform_compensated_at,
-  selectedShippingComplaint.value?.platform_compensation_missing_rate,
-  selectedShippingComplaint.value?.platform_compensation_converted_currency,
-  selectedShippingComplaint.value?.platform_compensation_converted_amount,
-  selectedShippingComplaint.value?.platform_compensation_base_rates,
-  "RUB",
-));
-const shippingLogisticsConversion = computed(() => compensationPreview(
-  shippingForm.logisticsCompensation,
-  shippingForm.logisticsAt,
-  selectedShippingComplaint.value?.logistics_compensation_cny,
-  selectedShippingComplaint.value?.logistics_compensated_at,
-  selectedShippingComplaint.value?.logistics_compensation_missing_rate,
-  selectedShippingComplaint.value?.logistics_compensation_converted_currency,
-  selectedShippingComplaint.value?.logistics_compensation_converted_amount,
-  selectedShippingComplaint.value?.logistics_compensation_base_rates,
-  "CNY",
-));
-const receivedPlatformConversion = computed(() => compensationPreview(
-  receivedForm.platformCompensation,
-  receivedForm.platformAt,
-  selectedReceived.value?.platform_compensation_rub,
-  selectedReceived.value?.platform_compensated_at,
-  selectedReceived.value?.platform_compensation_missing_rate,
-  selectedReceived.value?.platform_compensation_converted_currency,
-  selectedReceived.value?.platform_compensation_converted_amount,
-  selectedReceived.value?.platform_compensation_base_rates,
-  "RUB",
-));
-const receivedLogisticsConversion = computed(() => compensationPreview(
-  receivedForm.logisticsCompensation,
-  receivedForm.logisticsAt,
-  selectedReceived.value?.logistics_compensation_cny,
-  selectedReceived.value?.logistics_compensated_at,
-  selectedReceived.value?.logistics_compensation_missing_rate,
-  selectedReceived.value?.logistics_compensation_converted_currency,
-  selectedReceived.value?.logistics_compensation_converted_amount,
-  selectedReceived.value?.logistics_compensation_base_rates,
-  "CNY",
-));
 
 function presetRange(preset: (typeof datePresets)[number]["key"]): DateRange {
   const today = beijingToday();
@@ -585,39 +411,6 @@ function formatConvertedMoney(amount: string | null | undefined, currency: strin
   return Number.isFinite(numeric) ? `${numeric.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency || ""}` : "—";
 }
 
-function sameAmount(left: number | null, right: string | number | null | undefined): boolean {
-  if (left == null) return right == null || right === "";
-  return right != null && right !== "" && Number(left) === Number(right);
-}
-
-function sameDateTimeInput(input: string, original: string | null | undefined): boolean {
-  if (!input) return !original;
-  if (!original) return false;
-  const left = Date.parse(beijingInputToUtc(input));
-  const right = Date.parse(original);
-  return Number.isFinite(left) && Number.isFinite(right) && left === right;
-}
-
-function compensationPreview(
-  amount: number | null,
-  time: string,
-  originalAmount: string | number | null | undefined,
-  originalTime: string | null | undefined,
-  missingRate: boolean | undefined,
-  target: string | null | undefined,
-  converted: string | null | undefined,
-  rates: Record<string, string> | undefined,
-  source: string,
-): string {
-  if (amount == null) return "折算金额：—";
-  if (!sameAmount(amount, originalAmount) || !sameDateTimeInput(time, originalTime)) return "保存后按赔偿时点重新计算";
-  if (missingRate) return "缺少赔偿时点汇率";
-  if (!converted || !target) return "折算金额：—";
-  if (source === target) return `折算金额：${formatConvertedMoney(converted, target)}\n店铺币种相同，无需折算`;
-  const rateText = Object.entries(rates || {}).map(([key, value]) => `${key.replace("_", "/")} ${value}`).join("｜");
-  return `折算金额：${formatConvertedMoney(converted, target)}${rateText ? `\n采用基础汇率：${rateText}` : ""}`;
-}
-
 async function copyValue(value: string): Promise<void> {
   try {
     await copyText(value);
@@ -655,10 +448,6 @@ const deadlineLabels: Partial<Record<ComplaintDeadlineStatus, string>> = {
   due_today: "今日截止",
   due_soon: "即将截止",
 };
-
-function deadlineText(row: { complaint_deadline: string | null; complaint_deadline_status: ComplaintDeadlineStatus }): string {
-  return `投诉截止：${row.complaint_deadline || "—"}${deadlineLabels[row.complaint_deadline_status] ? ` · ${deadlineLabels[row.complaint_deadline_status]}` : ""}`;
-}
 
 function renderDeadline(row: { complaint_deadline: string | null; complaint_deadline_status: ComplaintDeadlineStatus }): VNodeChild {
   const status = row.complaint_deadline_status || "missing";
@@ -841,146 +630,23 @@ function receivedRowKey(row: ReceivedDisputeRecord): string {
   return `${row.shop_id}:${row.return_number}`;
 }
 
-function boolChoice(value: number | null | undefined): BoolChoice {
-  return value == null ? "" : String(Boolean(value)) as BoolChoice;
-}
-
-function nullableBool(value: BoolChoice): boolean | null {
-  return value === "" ? null : value === "true";
-}
-
-function numberOrNull(value: string | number | null | undefined): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function openShippingEditor(row: ShippingComplaintOrder, complaint: ComplaintRecord | null = null): void {
   selectedShipping.value = row;
   selectedShippingComplaint.value = complaint;
-  Object.assign(shippingForm, {
-    shopId: row.shop_id,
-    postingNumber: row.posting_number,
-    complaintNumber: complaint?.complaint_number || "",
-    complaintAt: formatBeijingDateTimeInput(complaint?.complaint_at) || formatBeijingDateTimeInput(new Date()),
-    channel: complaint?.channel || "",
-    warehouse: complaint?.warehouse || "",
-    orderProcessStatus: complaint?.order_process_status || "",
-    complaintStatus: complaint?.complaint_status || "",
-    compensationStatus: complaint?.compensation_status || "",
-    platformCompensation: numberOrNull(complaint?.platform_compensation_rub),
-    platformAt: formatBeijingDateTimeInput(complaint?.platform_compensated_at),
-    logisticsCompensation: numberOrNull(complaint?.logistics_compensation_cny),
-    logisticsAt: formatBeijingDateTimeInput(complaint?.logistics_compensated_at),
-    notReceivedReturn: boolChoice(complaint?.not_received_return),
-    resolved: boolChoice(complaint?.resolved),
-    notes: complaint?.notes || "",
-  });
   shippingEditorShow.value = true;
 }
 
 function openReceivedEditor(row: ReceivedDisputeRecord): void {
   selectedReceived.value = row;
-  Object.assign(receivedForm, {
-    shopId: row.shop_id,
-    returnNumber: row.return_number,
-    refundType: row.refund_type || "",
-    refundAmount: row.refund_amount,
-    refundCurrency: row.refund_currency || row.settlement_currency,
-    platformCompensation: numberOrNull(row.platform_compensation_rub),
-    platformAt: formatBeijingDateTimeInput(row.platform_compensated_at),
-    logisticsCompensation: numberOrNull(row.logistics_compensation_cny),
-    logisticsAt: formatBeijingDateTimeInput(row.logistics_compensated_at),
-    processStatus: row.process_status || "",
-    returnMethod: row.return_method || "",
-    imlReturnNumber: row.iml_return_number || "",
-    imlSystemSn: row.iml_system_sn || "",
-    buyerTrackingNumber: row.buyer_tracking_number || "",
-    handlingMethod: row.handling_method || "",
-    videoRecorded: boolChoice(row.video_recorded),
-    outboundOrderNumber: row.outbound_order_number || "",
-    returnResult: row.return_result || "",
-    notes: row.notes || "",
-  });
   receivedEditorShow.value = true;
 }
 
-async function submitShipping(): Promise<void> {
-  if (shippingSaving.value) return;
-  if (!shippingForm.complaintNumber.trim() || !shippingForm.complaintAt || !shippingForm.channel.trim()) {
-    message.error("投诉编号、投诉时间和投诉渠道为必填项");
-    return;
-  }
-  const currentSave = ++shippingSaveId;
-  shippingSaving.value = true;
-  const body: ShippingComplaintPayload = {
-    shop_id: shippingForm.shopId,
-    posting_number: shippingForm.postingNumber,
-    complaint_number: shippingForm.complaintNumber.trim(),
-    complaint_at: beijingInputToUtc(shippingForm.complaintAt),
-    channel: shippingForm.channel.trim(),
-    not_received_return: nullableBool(shippingForm.notReceivedReturn),
-    warehouse: shippingForm.warehouse.trim(),
-    order_process_status: shippingForm.orderProcessStatus.trim(),
-    complaint_status: shippingForm.complaintStatus.trim(),
-    compensation_status: shippingForm.compensationStatus.trim(),
-    platform_compensation_rub: shippingForm.platformCompensation,
-    platform_compensated_at: beijingInputToUtc(shippingForm.platformAt),
-    logistics_compensation_cny: shippingForm.logisticsCompensation,
-    logistics_compensated_at: beijingInputToUtc(shippingForm.logisticsAt),
-    resolved: nullableBool(shippingForm.resolved),
-    package_returned: null,
-    notes: shippingForm.notes,
-  };
-  try {
-    await saveShippingComplaint(body);
-    if (currentSave !== shippingSaveId || !mounted) return;
-    message.success("投诉已保存");
-    shippingEditorShow.value = false;
-    await loadShipping(tabRequestFilters(currentFilters(), "shipping"));
-  } catch (cause) {
-    if (currentSave === shippingSaveId && mounted) message.error(getErrorMessage(cause));
-  } finally {
-    if (currentSave === shippingSaveId) shippingSaving.value = false;
-  }
+function refreshShippingAfterSave(): void {
+  void loadShipping(tabRequestFilters(currentFilters(), "shipping"));
 }
 
-async function submitReceived(): Promise<void> {
-  if (receivedSaving.value) return;
-  const currentSave = ++receivedSaveId;
-  receivedSaving.value = true;
-  const body: ReceivedDisputePayload = {
-    shop_id: receivedForm.shopId,
-    return_number: receivedForm.returnNumber,
-    refund_type: receivedForm.refundType,
-    refund_amount: receivedForm.refundAmount,
-    refund_currency: receivedForm.refundCurrency.trim(),
-    platform_compensation_rub: receivedForm.platformCompensation,
-    platform_compensated_at: beijingInputToUtc(receivedForm.platformAt),
-    logistics_compensation_cny: receivedForm.logisticsCompensation,
-    logistics_compensated_at: beijingInputToUtc(receivedForm.logisticsAt),
-    process_status: receivedForm.processStatus.trim(),
-    return_method: receivedForm.returnMethod,
-    iml_return_number: receivedForm.imlReturnNumber.trim(),
-    iml_system_sn: receivedForm.imlSystemSn.trim(),
-    buyer_tracking_number: receivedForm.buyerTrackingNumber.trim(),
-    handling_method: receivedForm.handlingMethod,
-    video_recorded: nullableBool(receivedForm.videoRecorded),
-    outbound_order_number: receivedForm.outboundOrderNumber.trim(),
-    return_result: receivedForm.returnResult,
-    notes: receivedForm.notes,
-  };
-  try {
-    await saveReceivedDispute(body);
-    if (currentSave !== receivedSaveId || !mounted) return;
-    message.success("已收货纠纷已保存");
-    receivedEditorShow.value = false;
-    await loadReceived(tabRequestFilters(currentFilters(), "received"));
-  } catch (cause) {
-    if (currentSave === receivedSaveId && mounted) message.error(getErrorMessage(cause));
-  } finally {
-    if (currentSave === receivedSaveId) receivedSaving.value = false;
-  }
+function refreshReceivedAfterSave(): void {
+  void loadReceived(tabRequestFilters(currentFilters(), "received"));
 }
 
 watch(() => route.fullPath, () => {
@@ -1007,7 +673,6 @@ watch(selectedShopId, (shopId) => {
 });
 
 onMounted(() => {
-  mounted = true;
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
   if (!queryMatches(route.query, next)) {
@@ -1018,11 +683,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  mounted = false;
   shippingRequestId += 1;
   receivedRequestId += 1;
-  shippingSaveId += 1;
-  receivedSaveId += 1;
 });
 </script>
 
@@ -1219,81 +881,16 @@ onBeforeUnmount(() => {
       </div>
     </NCard>
 
-    <NModal v-model:show="shippingEditorShow" preset="card" class="complaints-modal" :style="{ width: 'min(720px, 92vw)' }" :mask-closable="!shippingSaving" :title="selectedShippingComplaint ? `编辑投诉 ${selectedShippingComplaint.complaint_number}` : `为 ${selectedShipping?.posting_number || ''} 新建投诉`">
-      <p class="complaints-modal-subtitle">投诉编号、投诉时间和投诉渠道为必填项</p>
-      <form class="complaints-form" @submit.prevent="submitShipping">
-        <div class="complaints-form-grid">
-          <label class="complaints-field">投诉编号<NInput v-model:value="shippingForm.complaintNumber" :readonly="Boolean(selectedShippingComplaint)" /></label>
-          <label class="complaints-field">投诉时间<input v-model="shippingForm.complaintAt" class="complaints-native-input" type="datetime-local" required /></label>
-          <label class="complaints-field">投诉渠道<NInput v-model:value="shippingForm.channel" placeholder="如：Ozon Support / 官方工单" /></label>
-          <div class="complaints-field"><span>固定投诉截止日期</span><div class="complaints-readonly-field">{{ selectedShipping ? deadlineText(selectedShipping) : "—" }}</div></div>
-          <label class="complaints-field">所在仓库<NInput v-model:value="shippingForm.warehouse" placeholder="如：中国前置仓 / 本地仓" /></label>
-          <label class="complaints-field">订单处理状态<NInput v-model:value="shippingForm.orderProcessStatus" placeholder="如：已核实 / 待处理" /></label>
-          <label class="complaints-field">投诉状态<NInput v-model:value="shippingForm.complaintStatus" placeholder="如：已受理 / 平台审核中" /></label>
-          <label class="complaints-field">赔付状态<NInput v-model:value="shippingForm.compensationStatus" placeholder="如：已批准 / 待打款" /></label>
-          <ComplaintCompensationFields
-            v-model:amount="shippingForm.platformCompensation"
-            v-model:at="shippingForm.platformAt"
-            title="Ozon 平台赔偿"
-            currency="RUB"
-            :preview="shippingPlatformConversion"
-          />
-          <ComplaintCompensationFields
-            v-model:amount="shippingForm.logisticsCompensation"
-            v-model:at="shippingForm.logisticsAt"
-            title="物流商赔偿"
-            currency="CNY"
-            :preview="shippingLogisticsConversion"
-          />
-          <label class="complaints-field">未收到退件<NSelect v-model:value="shippingForm.notReceivedReturn" :options="booleanOptions" /></label>
-          <label class="complaints-field">是否完结<NSelect v-model:value="shippingForm.resolved" :options="booleanOptions" /></label>
-          <label class="complaints-field complaints-notes">备注<NInput v-model:value="shippingForm.notes" type="textarea" :autosize="{ minRows: 3 }" placeholder="填写处理备注…" /></label>
-        </div>
-        <div class="complaints-form-actions">
-          <NButton type="primary" attr-type="submit" :loading="shippingSaving"><template #icon><morph-icon icon="check" size="14" stroke-width="2" /></template>保存</NButton>
-          <NButton attr-type="button" :disabled="shippingSaving" @click="shippingEditorShow = false">取消</NButton>
-        </div>
-      </form>
-    </NModal>
-
-    <NModal v-model:show="receivedEditorShow" preset="card" class="complaints-modal" :style="{ width: 'min(720px, 92vw)' }" :mask-closable="!receivedSaving" title="编辑已收货纠纷">
-      <p class="complaints-modal-subtitle">{{ selectedReceived ? `${selectedReceived.return_number} · ${selectedReceived.shop_name}` : "请选择一条退货申请" }}</p>
-      <form class="complaints-form" @submit.prevent="submitReceived">
-        <div class="complaints-form-grid">
-          <div class="complaints-field"><span>固定投诉截止日期</span><div class="complaints-readonly-field">{{ selectedReceived ? deadlineText(selectedReceived) : "—" }}</div></div>
-          <label class="complaints-field">是否退款<NSelect v-model:value="receivedForm.refundType" :options="refundTypeOptions" /></label>
-          <label class="complaints-field">退款金额<NInputNumber v-model:value="receivedForm.refundAmount" :min="0" :precision="2" placeholder="0.00" /></label>
-          <label class="complaints-field">退款币种<NInput v-model:value="receivedForm.refundCurrency" readonly /></label>
-          <ComplaintCompensationFields
-            v-model:amount="receivedForm.platformCompensation"
-            v-model:at="receivedForm.platformAt"
-            title="Ozon 平台赔偿"
-            currency="RUB"
-            :preview="receivedPlatformConversion"
-          />
-          <ComplaintCompensationFields
-            v-model:amount="receivedForm.logisticsCompensation"
-            v-model:at="receivedForm.logisticsAt"
-            title="物流商赔偿"
-            currency="CNY"
-            :preview="receivedLogisticsConversion"
-          />
-          <label class="complaints-field">处理状态<NInput v-model:value="receivedForm.processStatus" placeholder="如：处理中 / 待核实 / 已完结" /></label>
-          <label class="complaints-field">退货方式<NSelect v-model:value="receivedForm.returnMethod" :options="returnMethodOptions" /></label>
-          <label class="complaints-field">IML退货单号<NInput v-model:value="receivedForm.imlReturnNumber" placeholder="IML 单号" /></label>
-          <label class="complaints-field">IML系统SN<NInput v-model:value="receivedForm.imlSystemSn" placeholder="IML 系统序列号" /></label>
-          <label class="complaints-field">买家邮寄追踪号<NInput v-model:value="receivedForm.buyerTrackingNumber" placeholder="买家寄出物流单号" /></label>
-          <label class="complaints-field">处理方式<NSelect v-model:value="receivedForm.handlingMethod" :options="handlingMethodOptions" /></label>
-          <label class="complaints-field">是否拍视频<NSelect v-model:value="receivedForm.videoRecorded" :options="booleanOptions" /></label>
-          <label class="complaints-field">出库订单编号<NInput v-model:value="receivedForm.outboundOrderNumber" placeholder="关联出库单号" /></label>
-          <label class="complaints-field">退件结果<NSelect v-model:value="receivedForm.returnResult" :options="returnResultOptions" /></label>
-          <label class="complaints-field complaints-notes">备注<NInput v-model:value="receivedForm.notes" type="textarea" :autosize="{ minRows: 3 }" placeholder="填写纠纷备注…" /></label>
-        </div>
-        <div class="complaints-form-actions">
-          <NButton type="primary" attr-type="submit" :loading="receivedSaving"><template #icon><morph-icon icon="check" size="14" stroke-width="2" /></template>保存</NButton>
-          <NButton attr-type="button" :disabled="receivedSaving" @click="receivedEditorShow = false">取消</NButton>
-        </div>
-      </form>
-    </NModal>
+    <ShippingComplaintEditor
+      v-model:show="shippingEditorShow"
+      :row="selectedShipping"
+      :complaint="selectedShippingComplaint"
+      @saved="refreshShippingAfterSave"
+    />
+    <ReceivedDisputeEditor
+      v-model:show="receivedEditorShow"
+      :row="selectedReceived"
+      @saved="refreshReceivedAfterSave"
+    />
   </section>
 </template>
