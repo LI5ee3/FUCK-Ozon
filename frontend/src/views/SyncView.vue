@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, type VNodeChild } from "vue";
 import MorphIcon from "../components/MorphIcon.vue";
+import SyncSummaryCards from "../components/SyncSummaryCards.vue";
 import type { IconName } from "../icons/tabler";
 import {
   NAlert,
@@ -593,14 +594,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="sync-summary-grid">
-      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="sync-summary-card" :class="card.tone">
-        <div class="sync-summary-icon"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></div>
-        <span>{{ card.label }}</span>
-        <strong>{{ card.value }}</strong>
-        <small>{{ card.note }}</small>
-      </NCard>
-    </div>
+    <SyncSummaryCards :items="summaryCards" />
 
     <div class="sync-main-grid">
       <NCard :bordered="false" class="sync-panel sync-manual-panel">
