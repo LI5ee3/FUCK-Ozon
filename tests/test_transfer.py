@@ -1,6 +1,8 @@
 import asyncio
 import json
 import unittest
+from contextlib import contextmanager
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -57,6 +59,38 @@ class TransferTest(DatabaseTestCase):
                          ("2026-08-01T01:00:00Z", "2026-08-02T00:00:00Z"))
         self.assertEqual((risk["analysis_identity"], risk["analysis_product_name"]),
                          ("SKU-1", "Product"))
+
+    def test_order_export_streams_multiple_orders_and_items_with_one_join_query(self):
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO orders(
+              shop_id,posting_number,channel,created_at,status_raw,shipped,source)
+              VALUES(1,?,'FBP',?,'已签收',1,'api')""", [
+                ("ORDER-1", "2026-08-01T00:00:00Z"),
+                ("ORDER-2", "2026-08-02T00:00:00Z"),
+            ])
+            connection.executemany("""INSERT INTO order_items(
+              shop_id,posting_number,channel,sku,offer_id,product_name_raw,quantity,source)
+              VALUES(1,?,'FBP',?,?,?,?, 'api')""", [
+                ("ORDER-1", "SKU-1", "OFFER-1", "One", 2),
+                ("ORDER-1", "SKU-2", "OFFER-2", "Two", 3),
+                ("ORDER-2", "SKU-3", "OFFER-3", "Three", 4),
+            ])
+        queries = []
+
+        @contextmanager
+        def traced_connect():
+            with db.connect() as connection:
+                connection.set_trace_callback(queries.append)
+                yield connection
+
+        with patch("app.main.connect", traced_connect):
+            exported = asyncio.run(rows(export_orders(1)))
+        self.assertEqual([row["posting_number"] for row in exported[1:]], ["ORDER-1", "ORDER-2"])
+        self.assertEqual([(row["sku_types"], row["pieces"]) for row in exported[1:]], [(2, 5), (1, 4)])
+        self.assertEqual([[item["sku"] for item in row["items"]] for row in exported[1:]],
+                         [["SKU-1", "SKU-2"], ["SKU-3"]])
+        self.assertEqual(sum("LEFT JOIN order_items i" in query for query in queries), 1)
+        self.assertFalse(any("FROM order_items WHERE shop_id" in query for query in queries))
 
     def test_returns_export_filters_cancel_and_application_dates_separately(self):
         payload = json.dumps({"product": {"quantity": 1}})

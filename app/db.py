@@ -6,7 +6,7 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 DB_PATH = DATA_DIR / os.getenv("DB_NAME", "opanel.db")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 DEFAULT_DAILY_TEMPLATE = """{{统计日期}} 取消与退货订单汇总
 
 {{店铺明细}}"""
@@ -200,6 +200,17 @@ def _migrate_v5_to_v6(db):
     db.execute("PRAGMA user_version=6")
 
 
+def _migrate_v6_to_v7(db):
+    db.execute("""UPDATE sync_runs SET status='failed',
+      error=COALESCE(error,'数据库升级时检测到重复运行任务，任务已中断，请重新拉取'),
+      finished_at=COALESCE(finished_at,strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+      WHERE status='running' AND id NOT IN (
+        SELECT MAX(id) FROM sync_runs WHERE status='running' GROUP BY shop_id,module)""")
+    db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_one_running ON sync_runs(shop_id,module)
+      WHERE status='running'""")
+    db.execute("PRAGMA user_version=7")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -221,6 +232,9 @@ def init_db():
             if version == 5:
                 _migrate_v5_to_v6(db)
                 version = 6
+            if version == 6:
+                _migrate_v6_to_v7(db)
+                version = 7
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -374,6 +388,8 @@ def init_db():
           ON ozon_webhook_events(shop_id,applied_at,occurred_at);
         CREATE UNIQUE INDEX idx_auto_sync_once ON sync_runs(shop_id,module,scheduled_slot)
           WHERE run_source='auto' AND status IN ('running','success') AND scheduled_slot IS NOT NULL;
+        CREATE UNIQUE INDEX idx_sync_one_running ON sync_runs(shop_id,module)
+          WHERE status='running';
         PRAGMA user_version={SCHEMA_VERSION};
         PRAGMA optimize;
         """)

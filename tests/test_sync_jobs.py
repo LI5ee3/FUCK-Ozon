@@ -1,14 +1,17 @@
+import asyncio
 from datetime import datetime
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException
+
 from app import db
-from app.main import (_run_sync_job, _sync_ranges, _trim_sync_runs,
+from app.main import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_sync_runs,
                       auto_sync_slot, run_auto_sync_once,
-                      save_auto_sync_settings)
+                      save_auto_sync_settings, sync as start_sync)
 from app.ozon.client import BEIJING
-from tests.support import DatabaseTestCase
+from tests.support import DatabaseTestCase, MockRequest
 
 
 MODULES = ("orders", "returns", "stock")
@@ -62,6 +65,32 @@ class AutoSyncTest(DatabaseTestCase):
             pairs = {tuple(row) for row in connection.execute(
                 "SELECT shop_id,module FROM sync_runs WHERE id IN (?,?)", started)}
         self.assertEqual(pairs, {(1, "returns"), (2, "orders")})
+
+    def test_database_blocks_duplicate_manual_job_but_allows_other_pairs(self):
+        start = datetime(2026, 8, 1, tzinfo=BEIJING)
+        end = datetime(2026, 8, 2, tzinfo=BEIJING)
+        with patch("app.main.threading.Thread") as thread:
+            first = _create_sync_job("orders", 1, start, end)
+            duplicate = _create_sync_job("orders", 1, start, end)
+            other_module = _create_sync_job("returns", 1, start, end)
+            other_shop = _create_sync_job("orders", 2, start, end)
+        self.assertIsNotNone(first)
+        self.assertIsNone(duplicate)
+        self.assertTrue(other_module and other_shop)
+        self.assertEqual(thread.call_count, 3)
+
+    def test_manual_job_blocks_auto_and_api_returns_stable_conflict(self):
+        save_auto_sync_settings(settings({(1, "orders")}))
+        start = datetime(2026, 8, 1, tzinfo=BEIJING)
+        end = datetime(2026, 8, 2, tzinfo=BEIJING)
+        with patch("app.main.threading.Thread"):
+            _create_sync_job("orders", 1, start, end)
+            automatic = run_auto_sync_once(datetime(2026, 8, 24, 10, 25, tzinfo=BEIJING))
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(start_sync("orders", MockRequest({}), 1))
+        self.assertEqual(automatic, [])
+        self.assertEqual((raised.exception.status_code, raised.exception.detail),
+                         (409, "该店铺的同模块拉取任务正在运行"))
 
     def test_failed_slot_retries_only_after_five_minutes(self):
         save_auto_sync_settings(settings({(1, "orders")}))

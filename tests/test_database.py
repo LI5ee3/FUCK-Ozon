@@ -19,6 +19,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             item_pk = [row[1] for row in sorted(
                 connection.execute("PRAGMA table_info(order_items)"), key=lambda row: row[5]) if row[5]]
         self.assertIn("idx_auto_sync_once", indexes)
+        self.assertIn("idx_sync_one_running", indexes)
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
         self.assertEqual(settings, (1, 0, "09:00", "1,2,3,4,5,6,7", DEFAULT_DAILY_TEMPLATE))
         self.assertEqual(auto, 10)
@@ -33,7 +34,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
         self.assertEqual(before, after)
-        self.assertEqual(after[0], 6)
+        self.assertEqual(after[0], 7)
 
     def test_nonempty_old_database_is_rejected(self):
         old_path = Path(self.temp.name) / "old.db"
@@ -58,7 +59,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
         db.init_db()
         with db.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 6)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
             self.assertEqual(connection.execute(
                 "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
             self.assertIsNotNone(connection.execute(
@@ -69,3 +70,17 @@ class DatabaseSchemaTest(DatabaseTestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_campaign_daily'").fetchone())
             self.assertIsNotNone(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_sku_daily'").fetchone())
+
+    def test_v6_migration_keeps_duplicate_running_history_and_adds_unique_index(self):
+        with db.transaction() as connection:
+            connection.execute("DROP INDEX idx_sync_one_running")
+            connection.execute("INSERT INTO sync_runs(shop_id,module,status) VALUES(1,'orders','running')")
+            connection.execute("INSERT INTO sync_runs(shop_id,module,status) VALUES(1,'orders','running')")
+            connection.execute("PRAGMA user_version=6")
+        db.init_db()
+        with db.connect() as connection:
+            rows = connection.execute("SELECT status,error FROM sync_runs ORDER BY id").fetchall()
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+        self.assertEqual([row["status"] for row in rows], ["failed", "running"])
+        self.assertIn("数据库升级", rows[0]["error"])
+        self.assertEqual(version, 7)

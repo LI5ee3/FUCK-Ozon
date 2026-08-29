@@ -8,6 +8,12 @@ from ..db import connect, transaction
 from .mappings import (PUSH_CANCEL_TYPES, PUSH_ORDER_TYPES, PUSH_POSTING_TYPES,
                        PUSH_STATE_TYPES, PUSH_STATUS_ZH, PUSH_STOCK_TYPES)
 
+_PENDING_TYPES = ("TYPE_NEW_POSTING", "TYPE_FBO_POSTING_NEW")
+_WORKER_RETRY_SECONDS = 30
+_worker_stop = threading.Event()
+_worker_wake = threading.Event()
+_worker_thread = None
+
 
 def _canonical_json(record):
     return json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -344,19 +350,55 @@ def complete_webhook_posting(shop_id, event_key):
         raise
 
 
-def _complete_webhook_posting_async(shop_id, event_key):
-    try:
-        complete_webhook_posting(shop_id, event_key)
-    except Exception:
-        pass
+def process_pending_webhook_postings(limit=100, stop_event=None):
+    with connect() as db:
+        rows = db.execute("""SELECT shop_id,event_key FROM ozon_webhook_events
+          WHERE applied_at IS NULL AND message_type IN (?,?)
+          ORDER BY occurred_at IS NULL,occurred_at,received_at,shop_id,event_key LIMIT ?""",
+                          (*_PENDING_TYPES, limit)).fetchall()
+    for row in rows:
+        if stop_event and stop_event.is_set():
+            break
+        try:
+            complete_webhook_posting(row["shop_id"], row["event_key"])
+        except Exception:
+            pass
+    return len(rows)
+
+
+def _webhook_worker():
+    while not _worker_stop.is_set():
+        _worker_wake.clear()
+        try:
+            process_pending_webhook_postings(stop_event=_worker_stop)
+        except Exception:
+            pass
+        _worker_wake.wait(_WORKER_RETRY_SECONDS)
+
+
+def start_webhook_worker():
+    global _worker_thread
+    if _worker_thread and _worker_thread.is_alive():
+        return
+    _worker_stop.clear()
+    _worker_thread = threading.Thread(target=_webhook_worker, name="ozon-webhook-worker", daemon=True)
+    _worker_thread.start()
+
+
+def stop_webhook_worker():
+    global _worker_thread
+    _worker_stop.set()
+    _worker_wake.set()
+    if _worker_thread:
+        _worker_thread.join()
+        _worker_thread = None
 
 
 def process_webhook_event(shop_id, payload, received_at=None):
     row = persist_webhook_event(shop_id, payload, received_at)
-    if row["message_type"] in {"TYPE_NEW_POSTING", "TYPE_FBO_POSTING_NEW"}:
+    if row["message_type"] in _PENDING_TYPES:
         if not row["applied_at"]:
-            threading.Thread(target=_complete_webhook_posting_async,
-                             args=(shop_id, row["event_key"]), daemon=True).start()
+            _worker_wake.set()
         return row
     if not row["applied_at"]:
         with transaction() as db:

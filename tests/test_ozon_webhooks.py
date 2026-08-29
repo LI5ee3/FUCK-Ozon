@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -100,6 +101,84 @@ class OzonWebhookTest(DatabaseTestCase):
         self.assertEqual(tuple(order), ("realFBS", "运输中", 7.0))
         self.assertEqual(tuple(item), ("11", "商品", 2))
         self.assertIsNotNone(applied)
+
+    def test_new_posting_only_wakes_shared_worker_and_stays_idempotent(self):
+        payload = {"message_type": "TYPE_NEW_POSTING", "posting_number": "P-PENDING",
+                   "in_process_at": "2026-08-01T01:00:00Z", "uuid": "pending-one"}
+        with patch("app.ozon.webhooks.threading.Thread") as thread:
+            webhooks.process_webhook_event(1, payload)
+            duplicate = webhooks.process_webhook_event(1, payload)
+        thread.assert_not_called()
+        self.assertFalse(duplicate["new"])
+        with db.connect() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM ozon_webhook_events WHERE event_key='pending-one'").fetchone()[0], 1)
+
+    def test_pending_worker_continues_after_failure_and_retries(self):
+        for posting in ("P-FAIL", "P-NEXT"):
+            webhooks.persist_webhook_event(1, {
+                "message_type": "TYPE_NEW_POSTING", "posting_number": posting,
+                "in_process_at": "2026-08-01T01:00:00Z", "uuid": posting,
+            })
+        attempts = {"P-FAIL": 0}
+
+        def detail(_shop_id, _path, body):
+            posting = body["posting_number"]
+            if posting == "P-FAIL" and attempts[posting] == 0:
+                attempts[posting] += 1
+                raise RuntimeError("temporary")
+            return {"result": {"posting_number": posting, "integration_type_flow": "aggregator",
+                               "status": "awaiting_packaging", "products": []}}
+
+        with patch("app.ozon.client._post", side_effect=detail):
+            webhooks.process_pending_webhook_postings()
+            with db.connect() as connection:
+                rows = {row["event_key"]: tuple(row)[1:] for row in connection.execute(
+                    "SELECT event_key,applied_at,error FROM ozon_webhook_events ORDER BY event_key")}
+            self.assertIsNone(rows["P-FAIL"][0])
+            self.assertEqual(rows["P-FAIL"][1], "temporary")
+            self.assertIsNotNone(rows["P-NEXT"][0])
+            webhooks.process_pending_webhook_postings()
+        with db.connect() as connection:
+            row = connection.execute(
+                "SELECT applied_at,error FROM ozon_webhook_events WHERE event_key='P-FAIL'").fetchone()
+        self.assertIsNotNone(row["applied_at"])
+        self.assertIsNone(row["error"])
+
+    def test_worker_start_processes_pending_from_previous_process(self):
+        webhooks.persist_webhook_event(1, {
+            "message_type": "TYPE_NEW_POSTING", "posting_number": "P-RESTART",
+            "in_process_at": "2026-08-01T01:00:00Z", "uuid": "restart-pending",
+        })
+        detail = {"result": {"posting_number": "P-RESTART", "integration_type_flow": "aggregator",
+                             "status": "awaiting_packaging", "products": []}}
+        try:
+            with patch("app.ozon.client._post", return_value=detail):
+                webhooks.start_webhook_worker()
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    with db.connect() as connection:
+                        applied = connection.execute(
+                            "SELECT applied_at FROM ozon_webhook_events WHERE event_key='restart-pending'").fetchone()[0]
+                    if applied:
+                        break
+                    time.sleep(.01)
+        finally:
+            webhooks.stop_webhook_worker()
+        self.assertIsNotNone(applied)
+
+    def test_service_lifespan_starts_and_stops_webhook_worker(self):
+        async def run():
+            with patch("app.main.migrate_env_password"), patch("app.main.start_scheduler"), \
+                 patch("app.main.stop_scheduler"), patch("app.main._start_auto_sync_scheduler"), \
+                 patch("app.main._stop_auto_sync_scheduler"), \
+                 patch("app.main.start_webhook_worker") as start, \
+                 patch("app.main.stop_webhook_worker") as stop:
+                async with main.lifespan(main.app):
+                    start.assert_called_once_with()
+                stop.assert_called_once_with()
+
+        asyncio.run(run())
 
     def test_fbs_and_fbo_cancel_fields_and_earliest_time(self):
         self.order("P-CANCEL")

@@ -6,6 +6,7 @@ import json
 import math
 import re
 import secrets
+import sqlite3
 import statistics
 import threading
 import time
@@ -35,7 +36,8 @@ from .ozon.client import (BEIJING, _env, notification_check, notification_delete
 from .ozon.mappings import (CANCEL_REASON_ZH, PUSH_EVENT_TYPES, RFBS_RETURN_STATUS_ZH,
                             RETURN_STATUS_ZH, STATUS_ZH)
 from .ozon.sync import default_range, sync_module
-from .ozon.webhooks import process_webhook_event, webhook_validation_error
+from .ozon.webhooks import (process_webhook_event, start_webhook_worker,
+                            stop_webhook_worker, webhook_validation_error)
 from .performance import (PerformanceConfigurationError, list_campaigns,
                            sync_performance_campaigns, sync_performance_statistics)
 from .products import clean_product_name, load_product_rules, resolve_product
@@ -101,9 +103,13 @@ async def lifespan(app: FastAPI):
         _trim_sync_runs(db)
     start_scheduler()
     _start_auto_sync_scheduler()
-    yield
-    stop_scheduler()
-    _stop_auto_sync_scheduler()
+    start_webhook_worker()
+    try:
+        yield
+    finally:
+        stop_webhook_worker()
+        stop_scheduler()
+        _stop_auto_sync_scheduler()
 
 
 class ViteStaticFiles(StaticFiles):
@@ -2148,6 +2154,8 @@ async def performance_campaign_sync(request: Request):
     shop_id = _performance_shop_id((await request.json()).get("shop_id"))
     try:
         return await run_in_threadpool(_run_performance_campaign_sync, shop_id)
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(409, "该店铺的同模块拉取任务正在运行") from error
     except PerformanceConfigurationError as error:
         raise HTTPException(400, str(error)) from error
     except Exception as error:
@@ -2409,6 +2417,8 @@ async def performance_statistics_sync(request: Request):
         raise HTTPException(400, "未知广告统计模块")
     try:
         return await run_in_threadpool(_run_performance_statistics_sync, shop_id, start, end, module)
+    except sqlite3.IntegrityError as error:
+        raise HTTPException(409, "该店铺的同模块拉取任务正在运行") from error
     except PerformanceConfigurationError as error:
         raise HTTPException(400, str(error)) from error
     except ValueError as error:
@@ -2531,9 +2541,6 @@ def _create_sync_job(module, shop_id, start, end, run_source="manual", scheduled
     ranges = _sync_ranges(module, start, end)
     with transaction() as db:
         if run_source == "auto":
-            if db.execute("SELECT 1 FROM sync_runs WHERE shop_id=? AND module=? AND status='running'",
-                          (shop_id, module)).fetchone():
-                return None
             cooldown = _utc_text((now or datetime.now(BEIJING)) - timedelta(minutes=5))
             if db.execute("""SELECT 1 FROM sync_runs
               WHERE shop_id=? AND module=? AND scheduled_slot=? AND run_source='auto'
@@ -2619,6 +2626,8 @@ async def sync(module: str, request: Request, shop_id: int):
     if start >= end:
         raise HTTPException(400, "开始日期必须早于结束日期")
     run_id = _create_sync_job(module, shop_id, start, end)
+    if run_id is None:
+        raise HTTPException(409, "该店铺的同模块拉取任务正在运行")
     with connect() as db:
         total = db.execute("SELECT progress_total FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
     return {"run_id": run_id, "status": "running", "progress_total": total}
@@ -2664,26 +2673,40 @@ def export_orders(shop_id: int = 0, date_from: str = "", date_to: str = ""):
                               "range":{"from":export_range[0],"to":export_range[1]} if export_range else {"from":None,"to":None},
                               "order_definition":"COUNT DISTINCT posting_number","piece_definition":"SUM quantity",
                               "filter":"剔除状态为已取消且无发货证据的订单","data_through":through}, ensure_ascii=False) + "\n"
+            current_key = current = None
             for raw in db.execute(f"""
               SELECT o.shop_id,s.name shop_name,o.posting_number,o.channel,o.created_at,
                 o.shipped_at,o.delivered_at,o.status_changed_at,o.status_raw,o.cancel_reason_raw,
-                o.shipped,o.data_anomaly,o.amount_original,o.amount_currency
+                o.shipped,o.data_anomaly,o.amount_original,o.amount_currency,
+                i.sku item_sku,i.offer_id item_offer_id,i.product_name_raw item_product_name_raw,
+                i.quantity item_quantity,i.unit_price item_unit_price,i.price_currency item_price_currency
               FROM orders o JOIN shops s ON s.id=o.shop_id
+              LEFT JOIN order_items i ON i.shop_id=o.shop_id AND i.posting_number=o.posting_number
               WHERE {ACTIVE}{clause}{range_clause} ORDER BY o.created_at
+                ,o.shop_id,o.posting_number,i.sku,i.offer_id
             """, args):
-                value = _translated_order(raw)
-                value["items"] = []
-                for item_raw in db.execute("""SELECT sku,offer_id,product_name_raw,quantity,
-                  unit_price,price_currency FROM order_items WHERE shop_id=? AND posting_number=?
-                  ORDER BY sku,offer_id""", (value["shop_id"], value["posting_number"])):
-                    item = dict(item_raw)
+                key = raw["shop_id"], raw["posting_number"]
+                if key != current_key:
+                    if current is not None:
+                        current["sku_types"] = len(current["items"])
+                        current["pieces"] = sum(int(item["quantity"] or 0) for item in current["items"])
+                        yield json.dumps(current, ensure_ascii=False) + "\n"
+                    current_key = key
+                    current = _translated_order(raw)
+                    current["items"] = []
+                if raw["item_sku"] is not None:
+                    item = {"sku": raw["item_sku"], "offer_id": raw["item_offer_id"],
+                            "product_name_raw": raw["item_product_name_raw"],
+                            "quantity": raw["item_quantity"], "unit_price": raw["item_unit_price"],
+                            "price_currency": raw["item_price_currency"]}
                     resolved = resolve_product(rules, item["sku"], item["offer_id"], item["product_name_raw"])
                     item.update({"product_name": resolved["display_name"],
                                  "analysis_identity": resolved["identity"]})
-                    value["items"].append(item)
-                value["sku_types"] = len(value["items"])
-                value["pieces"] = sum(int(item["quantity"] or 0) for item in value["items"])
-                yield json.dumps(value, ensure_ascii=False) + "\n"
+                    current["items"].append(item)
+            if current is not None:
+                current["sku_types"] = len(current["items"])
+                current["pieces"] = sum(int(item["quantity"] or 0) for item in current["items"])
+                yield json.dumps(current, ensure_ascii=False) + "\n"
     return StreamingResponse(lines(), media_type="application/x-ndjson",
                              headers={"Content-Disposition":"attachment; filename=orders.jsonl"})
 
