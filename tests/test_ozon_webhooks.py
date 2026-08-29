@@ -136,6 +136,19 @@ class OzonWebhookTest(DatabaseTestCase):
             row = connection.execute("SELECT status_raw,status_changed_at,shipped,delivered_at FROM orders WHERE posting_number='P-STATE'").fetchone()
         self.assertEqual(tuple(row), ("已签收", "2026-08-01T10:00:00Z", 1, "2026-08-01T10:00:00Z"))
 
+    def test_old_cancellation_does_not_overwrite_newer_state(self):
+        with db.transaction() as connection:
+            add_order(connection, 1, "P-OLD-CANCEL", "realFBS", status_raw="已签收", shipped=1,
+                      status_changed_at="2026-08-01T10:00:00Z", delivered_at="2026-08-01T10:00:00Z")
+        webhooks.process_webhook_event(1, {
+            "message_type": "TYPE_POSTING_CANCELLED", "posting_number": "P-OLD-CANCEL",
+            "changed_state_date": "2026-08-01T09:00:00Z", "uuid": "old-cancel",
+        })
+        with db.connect() as connection:
+            row = connection.execute("""SELECT status_raw,status_changed_at,delivered_at FROM orders
+              WHERE posting_number='P-OLD-CANCEL'""").fetchone()
+        self.assertEqual(tuple(row), ("已签收", "2026-08-01T10:00:00Z", "2026-08-01T10:00:00Z"))
+
     def test_event_waits_for_late_order_and_is_reapplied(self):
         payload = {"message_type": "TYPE_POSTING_CANCELLED", "posting_number": "P-LATE",
                    "changed_state_date": "2026-08-01T10:00:00Z", "reason": {"id": 7, "message": "late"},

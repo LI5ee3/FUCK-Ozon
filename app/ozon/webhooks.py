@@ -214,6 +214,11 @@ def _apply_cancellation(db, row):
     if not cancellation:
         cancellation = {"occurred_at": _cancel_time(payload, row["message_type"]),
                         "reason_id": None, "reason_raw": None}
+    current_at = client._timestamp(order["status_changed_at"])
+    if (order["status_raw"] not in ("已取消", "cancelled", "canceled") and current_at
+            and datetime.fromisoformat(cancellation["occurred_at"].replace("Z", "+00:00"))
+            <= datetime.fromisoformat(current_at.replace("Z", "+00:00"))):
+        return True
     reason_id, reason_raw = _cancel_reason(payload)
     db.execute("""UPDATE orders SET status_raw='已取消',status_changed_at=?,
       cancel_reason_id=COALESCE(?,cancel_reason_id),cancel_reason_raw=COALESCE(?,cancel_reason_raw),
