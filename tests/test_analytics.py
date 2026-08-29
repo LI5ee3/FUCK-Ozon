@@ -6,8 +6,8 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app import ozon
-from app.main import (BEIJING, _analytics_range, get_analytics_data,
-                      get_product_queries, get_product_query_details)
+from app.routers.analytics import (BEIJING, _analytics_range, get_analytics_data,
+                                    get_product_queries, get_product_query_details)
 from tests.support import DatabaseTestCase
 
 
@@ -32,7 +32,7 @@ class AnalyticsApiTest(DatabaseTestCase):
         start, end = _analytics_range(now=datetime(2026, 8, 26, 12, tzinfo=BEIJING))
         self.assertEqual((start.isoformat(), end.isoformat()), ("2026-07-25", "2026-08-23"))
 
-    @patch("app.main.analytics_data")
+    @patch("app.routers.analytics.analytics_data")
     def test_traffic_keeps_shop_identity_and_zero_rates(self, request):
         request.side_effect = [
             {"result": {"data": [{"dimensions": [{"id": "101", "name": "A"}],
@@ -51,9 +51,9 @@ class AnalyticsApiTest(DatabaseTestCase):
         self.assertIsNone(first["cart_rate"])
         self.assertIsNone(first["order_rate"])
 
-    @patch("app.main.product_query_details")
-    @patch("app.main.product_queries")
-    @patch("app.main.analytics_data")
+    @patch("app.routers.analytics.product_query_details")
+    @patch("app.routers.analytics.product_queries")
+    @patch("app.routers.analytics.analytics_data")
     def test_search_currency_and_details_are_on_demand(self, traffic, products, details):
         traffic.side_effect = [
             {"result": {"data": [{"dimensions": [{"id": "101"}]}]}},
@@ -77,7 +77,7 @@ class AnalyticsApiTest(DatabaseTestCase):
         self.assertEqual(result["items"][0]["query"], "phone")
         self.assertEqual(details.call_args.args[4], 0)
 
-    @patch("app.main.analytics_data", side_effect=RuntimeError("Ozon analytics unavailable"))
+    @patch("app.routers.analytics.analytics_data", side_effect=RuntimeError("Ozon analytics unavailable"))
     def test_traffic_failure_is_explicit(self, _request):
         with self.assertRaises(HTTPException) as raised:
             get_analytics_data(1, "", 1, 50, "2026-08-01", "2026-08-07")

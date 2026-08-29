@@ -29,15 +29,16 @@ from .exchange import (convert_compensation, exchange_rate_status, load_base_rat
                        rates_for_order, sync_exchange_rates)
 from .importer import CHANNELS, import_csv
 from .ozon import (BEIJING, CANCEL_REASON_ZH, RFBS_RETURN_STATUS_ZH,
-                   PUSH_EVENT_TYPES, RETURN_STATUS_ZH, STATUS_ZH, _env, analytics_data,
+                   PUSH_EVENT_TYPES, RETURN_STATUS_ZH, STATUS_ZH, _env,
                    default_range, notification_check,
                    notification_delete, notification_enable, notification_list,
                    notification_set, probe_shop, process_webhook_event, push_type_list,
-                   product_queries, product_query_details, sync_module,
+                   sync_module,
                    webhook_validation_error)
 from .performance import (PerformanceConfigurationError, list_campaigns,
                            sync_performance_campaigns, sync_performance_statistics)
 from .products import clean_product_name, load_product_rules, resolve_product
+from .routers.analytics import router as analytics_router
 from .security import (clear_login_failures, login_limited, migrate_env_password,
                        password_matches, record_login_failure)
 
@@ -105,6 +106,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
+app.include_router(analytics_router)
 
 
 def _secret():
@@ -537,141 +539,6 @@ def _overview_range(date_from=None, date_to=None, now=None):
     utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
     utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
     return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")
-
-
-def _analytics_range(date_from=None, date_to=None, now=None):
-    available_end = (now or datetime.now(BEIJING)).date() - timedelta(days=3)
-    if not date_to:
-        date_to = available_end.isoformat()
-    if not date_from:
-        try:
-            date_from = (date.fromisoformat(date_to) - timedelta(days=29)).isoformat()
-        except (TypeError, ValueError):
-            pass
-    start, end, _, _ = _overview_range(date_from, date_to, now)
-    return start, end
-
-
-def _analytics_shops(shop_id):
-    if shop_id not in (0, 1, 2):
-        raise HTTPException(400, "未知店铺")
-    with connect() as db:
-        return [dict(row) for row in db.execute("SELECT id,name FROM shops ORDER BY id")
-                if not shop_id or row["id"] == shop_id]
-
-
-def _analytics_sku(sku):
-    value = str(sku or "").strip()
-    if value and (not value.isdigit() or int(value) <= 0):
-        raise HTTPException(400, "SKU必须为正整数")
-    return value
-
-
-def _analytics_row(row, shop):
-    values = list(row.get("metrics") or []) + [0] * 6
-    dimension = (row.get("dimensions") or [{}])[0]
-    return {
-        "shop_id": shop["id"], "shop_name": shop["name"],
-        "sku": str(dimension.get("id") or ""), "name": dimension.get("name") or "",
-        "impressions": values[0], "product_views": values[1], "cart_adds": values[2],
-        "unique_visitors": values[3], "ordered_units": values[4], "revenue": values[5],
-        "currency": "RUB",
-        "view_rate": values[1] / values[0] if values[0] else None,
-        "cart_rate": values[2] / values[1] if values[1] else None,
-        "order_rate": values[4] / values[2] if values[2] else None,
-    }
-
-
-@app.get("/api/analytics/data")
-def get_analytics_data(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
-                       date_from: Annotated[str | None, Query(alias="from")] = None,
-                       date_to: Annotated[str | None, Query(alias="to")] = None):
-    page, size = _paging(page, size)
-    start, end = _analytics_range(date_from, date_to)
-    sku = _analytics_sku(sku)
-    shops = _analytics_shops(shop_id)
-    items, summaries = [], []
-    try:
-        for shop in shops:
-            result = analytics_data(shop["id"], start.isoformat(), end.isoformat(), sku).get("result") or {}
-            rows = [_analytics_row(row, shop) for row in result.get("data") or []]
-            items.extend(rows)
-            totals = _analytics_row({"dimensions": [{}], "metrics": result.get("totals") or []}, shop)
-            totals.pop("sku"); totals.pop("name")
-            summaries.append(totals)
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-    items.sort(key=lambda row: (-float(row["impressions"] or 0), row["shop_id"], row["sku"]))
-    total, offset = len(items), (page - 1) * size
-    return {"shops": summaries, "items": items[offset:offset + size], "total": total,
-            "page": page, "size": size, "data_through": end.isoformat()}
-
-
-@app.get("/api/analytics/product-queries")
-def get_product_queries(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
-                        date_from: Annotated[str | None, Query(alias="from")] = None,
-                        date_to: Annotated[str | None, Query(alias="to")] = None):
-    page, size = _paging(page, size)
-    start, end = _analytics_range(date_from, date_to)
-    sku = _analytics_sku(sku)
-    shops = _analytics_shops(shop_id)
-    date_from_utc, date_to_utc = f"{start.isoformat()}T00:00:00Z", f"{end.isoformat()}T23:59:59Z"
-    items = []
-    try:
-        for shop in shops:
-            if sku:
-                skus = [int(sku)]
-            else:
-                source = analytics_data(shop["id"], start.isoformat(), end.isoformat()).get("result") or {}
-                skus = [int(row["dimensions"][0]["id"]) for row in source.get("data") or []
-                        if row.get("dimensions") and str(row["dimensions"][0].get("id") or "").isdigit()]
-            if not skus:
-                continue
-            # ponytail: Ozon accepts at most 1000 SKUs; split only if a shop actually exceeds that ceiling.
-            body = product_queries(shop["id"], date_from_utc, date_to_utc, skus[:1000])
-            for row in body.get("items") or []:
-                items.append({"shop_id": shop["id"], "shop_name": shop["name"],
-                              "sku": str(row.get("sku") or ""), "name": row.get("name") or "",
-                              "offer_id": row.get("offer_id") or "", "category": row.get("category") or "",
-                              "position": row.get("position"), "unique_search_users": row.get("unique_search_users"),
-                              "unique_view_users": row.get("unique_view_users"),
-                              "view_conversion": row.get("view_conversion"), "gmv": row.get("gmv"),
-                              "currency": row.get("currency") or ""})
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-    items.sort(key=lambda row: (-int(row["unique_search_users"] or 0), row["shop_id"], row["sku"]))
-    total, offset = len(items), (page - 1) * size
-    return {"items": items[offset:offset + size], "total": total, "page": page, "size": size,
-            "data_through": end.isoformat()}
-
-
-@app.get("/api/analytics/product-queries/details")
-def get_product_query_details(shop_id: int = 0, sku: str = "", page: int = 1, size: int = 50,
-                              date_from: Annotated[str | None, Query(alias="from")] = None,
-                              date_to: Annotated[str | None, Query(alias="to")] = None):
-    if shop_id not in (1, 2):
-        raise HTTPException(400, "请选择具体店铺")
-    page, size = _paging(page, size)
-    start, end = _analytics_range(date_from, date_to)
-    sku = _analytics_sku(sku)
-    if not sku:
-        raise HTTPException(400, "请选择SKU")
-    try:
-        body = product_query_details(shop_id, f"{start.isoformat()}T00:00:00Z",
-                                     f"{end.isoformat()}T23:59:59Z", [int(sku)], page - 1, size)
-    except Exception as error:
-        raise HTTPException(502, str(error)[:300]) from error
-    with connect() as db:
-        shop_name = db.execute("SELECT name FROM shops WHERE id=?", (shop_id,)).fetchone()[0]
-    items = [{"shop_id": shop_id, "shop_name": shop_name, "sku": str(row.get("sku") or sku),
-              "query": row.get("query") or "", "position": row.get("position"),
-              "unique_search_users": row.get("unique_search_users"),
-              "unique_view_users": row.get("unique_view_users"),
-              "view_conversion": row.get("view_conversion"), "order_count": row.get("order_count"),
-              "gmv": row.get("gmv"), "currency": row.get("currency") or ""}
-             for row in body.get("queries") or []]
-    return {"items": items, "total": int(body.get("total") or len(items)), "page": page,
-            "size": size, "data_through": end.isoformat()}
 
 
 def _compensation_pair(body, amount_key, time_key):
