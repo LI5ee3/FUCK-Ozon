@@ -601,11 +601,13 @@ def _beijing_date(value):
     return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(BEIJING).date()
 
 
-def _group_by_bucket(rows, granularity):
+def _group_by_bucket_and_channel(rows, granularity):
     grouped = {}
     for row in rows:
         key = _bucket_start(_beijing_date(row["created_at"]), granularity)
-        grouped.setdefault(key, []).append(row)
+        bucket = grouped.setdefault(key, {"rows": [], "channels": {}})
+        bucket["rows"].append(row)
+        bucket["channels"].setdefault(row["channel"], []).append(row)
     return grouped
 
 
@@ -714,31 +716,38 @@ def summary(shop_id: int = 0,
         """, args)]
         top_products = _overview_top_products(db, utc_start, utc_end, shop_id)
         rate_periods = load_base_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
-    totals = {"orders": len(rows), "pieces": sum(row["pieces"] for row in rows),
-              "cancelled_orders": sum(row["status_raw"] == "已取消" and row["shipped"] == 1 for row in rows)}
-    totals["cancelled_pieces"] = sum(row["pieces"] for row in rows
-                                     if row["status_raw"] == "已取消" and row["shipped"] == 1)
+    totals = {"orders": 0, "pieces": 0, "cancelled_orders": 0, "cancelled_pieces": 0}
+    channels_by_name = {channel: {"channel": channel, "orders": 0, "pieces": 0, "cancelled_pieces": 0}
+                        for channel in ("FBP", "realFBS", "WHD")}
+    for row in rows:
+        totals["orders"] += 1
+        totals["pieces"] += row["pieces"]
+        cancelled = row["status_raw"] == "已取消" and row["shipped"] == 1
+        if cancelled:
+            totals["cancelled_orders"] += 1
+            totals["cancelled_pieces"] += row["pieces"]
+        channel = channels_by_name.get(row["channel"])
+        if channel is not None:
+            channel["orders"] += 1
+            channel["pieces"] += row["pieces"]
+            if cancelled:
+                channel["cancelled_pieces"] += row["pieces"]
     totals["cancel_rate"] = totals["cancelled_pieces"] / totals["pieces"] if totals["pieces"] else 0
-    channels = []
-    for channel in ("FBP", "realFBS", "WHD"):
-        channel_rows = [row for row in rows if row["channel"] == channel]
-        channels.append({"channel": channel, "orders": len(channel_rows),
-                         "pieces": sum(row["pieces"] for row in channel_rows),
-                         "cancelled_pieces": sum(row["pieces"] for row in channel_rows
-                             if row["status_raw"] == "已取消" and row["shipped"] == 1)})
+    channels = list(channels_by_name.values())
     bucket_dates = []
     cursor = _bucket_start(start, granularity)
     while cursor <= end:
         bucket_dates.append(cursor)
         cursor = _next_bucket(cursor, granularity)
-    grouped_rows = _group_by_bucket(rows, granularity)
+    grouped_rows = _group_by_bucket_and_channel(rows, granularity)
     buckets = []
     for bucket_date in bucket_dates:
         next_date = _next_bucket(bucket_date, granularity)
-        bucket_rows = grouped_rows.get(bucket_date, [])
+        bucket = grouped_rows.get(bucket_date, {"rows": [], "channels": {}})
+        bucket_rows = bucket["rows"]
         channel_values = {}
         for channel in ("FBP", "realFBS", "WHD"):
-            values = [row for row in bucket_rows if row["channel"] == channel]
+            values = bucket["channels"].get(channel, [])
             channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id, rate_periods)}
         buckets.append({"key": bucket_date.isoformat(),
                         "from": max(bucket_date, start).isoformat(),
@@ -807,14 +816,15 @@ def order_trend(shop_id: int = 0, granularity: str = "day"):
     while cursor <= end:
         bucket_dates.append(cursor)
         cursor = _next_bucket(cursor, granularity)
-    grouped_rows = _group_by_bucket(rows, granularity)
+    grouped_rows = _group_by_bucket_and_channel(rows, granularity)
     buckets = []
     for bucket_date in bucket_dates:
         next_date = _next_bucket(bucket_date, granularity)
-        bucket_rows = grouped_rows.get(bucket_date, [])
+        bucket = grouped_rows.get(bucket_date, {"rows": [], "channels": {}})
+        bucket_rows = bucket["rows"]
         channel_values = {}
         for channel in ("FBP", "realFBS", "WHD"):
-            values = [row for row in bucket_rows if row["channel"] == channel]
+            values = bucket["channels"].get(channel, [])
             channel_values[channel] = {"orders": len(values), "gmv": _gmv_summary(values, shop_id, rate_periods)}
         buckets.append({"key": bucket_date.isoformat(),
                         "from": max(bucket_date, start).isoformat(),
@@ -952,9 +962,16 @@ def risk(shop_id: int = 0, grouped: bool = False,
             result[f"{key}_rate"] = result[key] / result["valid"] if result["valid"] else None
         return result
 
+    grouped = {}
+    for row in rows:
+        item = grouped.setdefault((row["shop_id"], row["item_key"]), {"rows": [], "channels": {}})
+        item["rows"].append(row)
+        item["channels"].setdefault(row["channel"], []).append(row)
+
     items = []
-    for item_key in sorted({(row["shop_id"], row["item_key"]) for row in rows}):
-        values = [row for row in rows if (row["shop_id"], row["item_key"]) == item_key]
+    for item_key in sorted(grouped):
+        group = grouped[item_key]
+        values = group["rows"]
         skus = sorted({row["sku"] for row in values if row["sku"]})
         offers = sorted({row["offer_id"] for row in values if row["offer_id"]})
         resolved = values[0]["resolved"]
@@ -965,8 +982,8 @@ def risk(shop_id: int = 0, grouped: bool = False,
                       "search_text": " ".join(skus + offers + [resolved["display_name"]] +
                                                 [row["product_name_raw"] or "" for row in values]),
                       "total": stats(values),
-                      "channels": {channel: stats([row for row in values if row["channel"] == channel])
-                                   if any(row["channel"] == channel for row in values) else None
+                      "channels": {channel: stats(group["channels"][channel])
+                                   if channel in group["channels"] else None
                                    for channel in ("FBP", "realFBS", "WHD")}})
     items.sort(key=lambda row: (-row["total"]["cancelled"], -row["total"]["valid"],
                                 row["shop_id"], row["item_key"]))
@@ -1000,15 +1017,22 @@ def risk_reasons(shop_id: int = 0, reason: str = "",
             AND o.created_at<?{clause}{extra}
           GROUP BY o.shop_id,o.channel,o.posting_number ORDER BY o.posting_number""",
           [utc_start, utc_end, *args])] if reason else []
+    grouped = {}
+    for row in rows:
+        reason = grouped.setdefault(row["reason_raw"], {"rows": [], "channels": {}})
+        reason["rows"].append(row)
+        reason["channels"].setdefault(row["channel"], []).append(row)
+
     items = []
-    for reason_raw in sorted({row["reason_raw"] for row in rows}):
-        values = [row for row in rows if row["reason_raw"] == reason_raw]
+    for reason_raw in sorted(grouped):
+        group = grouped[reason_raw]
+        values = group["rows"]
         items.append({"reason_raw": reason_raw,
                       "reason_name": RISK_REASON_ZH.get(reason_raw, reason_raw),
                       "total": {"orders": sum(row["orders"] for row in values),
                                 "pieces": sum(row["pieces"] for row in values)},
-                      "channels": {channel: {"orders": sum(row["orders"] for row in values if row["channel"] == channel),
-                                             "pieces": sum(row["pieces"] for row in values if row["channel"] == channel)}
+                      "channels": {channel: {"orders": sum(row["orders"] for row in group["channels"].get(channel, [])),
+                                             "pieces": sum(row["pieces"] for row in group["channels"].get(channel, []))}
                                    for channel in ("FBP", "realFBS", "WHD")}})
     items.sort(key=lambda row: (-row["total"]["pieces"], row["reason_raw"]))
     return {"range": {"from": start.isoformat(), "to": end.isoformat()},
