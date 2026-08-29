@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import AlertSummaryCards from "../components/AlertSummaryCards.vue";
 import MorphIcon from "../components/MorphIcon.vue";
 import type { IconName } from "../icons/tabler";
 import type { LocationQuery } from "vue-router";
@@ -560,14 +561,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="alerts-view">
-    <div v-if="summaryCards.length" class="alerts-summary">
-      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="alerts-summary-card" :class="`alerts-tone-${card.tone}`">
-        <div class="alerts-summary-head"><span>{{ card.label }}</span><span class="alerts-summary-icon"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span></div>
-        <strong>{{ card.value }}</strong>
-        <small>{{ card.note }}</small>
-      </NCard>
-    </div>
-    <div v-else-if="summaryLoading" class="alerts-summary-loading"><NSpin size="small" /> <span>预警汇总加载中…</span></div>
+    <AlertSummaryCards :items="summaryCards" :loading="summaryLoading" />
     <NAlert v-if="summaryError" type="error" class="alerts-error" :title="summaryError">
       <div class="alerts-error-content"><span>预警汇总未更新，请重试。</span><NButton size="small" @click="retrySummary">重试</NButton></div>
     </NAlert>
