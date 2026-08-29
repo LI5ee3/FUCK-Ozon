@@ -79,8 +79,8 @@ class AlertTest(DatabaseTestCase):
                 for channel, present, reserved in values]})
 
     def evaluate(self, shop_id, rule_key, configured=False):
-        with patch("app.alerts.dingtalk_configured", return_value=configured), \
-                patch("app.alerts.send_text") as sender:
+        with patch("app.alerts.evaluation.dingtalk_configured", return_value=configured), \
+                patch("app.alerts.evaluation.send_text") as sender:
             result = evaluate_alerts(shop_id, rule_keys=(rule_key,), now=self.now)
         return result, sender
 
@@ -343,8 +343,8 @@ class AlertTest(DatabaseTestCase):
                 self.campaign_daily(connection, 1, "C-1", self.target - timedelta(days=offset), spend=400)
             self.campaign_daily(connection, 1, "C-1", self.target, spend=700)
         self.sync_run(1, "ad_campaign_daily")
-        with patch("app.alerts.dingtalk_configured", return_value=True), \
-                patch("app.alerts.send_text", side_effect=RuntimeError("webhook secret must not leak")):
+        with patch("app.alerts.evaluation.dingtalk_configured", return_value=True), \
+                patch("app.alerts.evaluation.send_text", side_effect=RuntimeError("webhook secret must not leak")):
             result = evaluate_alerts(1, rule_keys=("ad_spend_spike",), now=self.now)
         self.assertEqual((result["triggered"], result["notifications_failed"]), (1, 1))
         with db.connect() as connection:
