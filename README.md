@@ -34,7 +34,7 @@ oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营�
 app/              FastAPI 后端服务、Ozon API 同步、CSV 导入及 SQLite 数据持久化
 frontend/         正式 Vue 3 + TypeScript + Vite production frontend source（构建输出为 frontend/dist）
 frontend/public/assets/
-                  Vue public assets、Morphicons 与第三方 License
+                  Vue public assets 与第三方 License
 data/             SQLite 数据库与会话密钥（自动创建，已加入 .gitignore）
 scripts/          macOS 安装、启动、停止、重启、更新脚本
 deploy/           launchd 服务配置模板

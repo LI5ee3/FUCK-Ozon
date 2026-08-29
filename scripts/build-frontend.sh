@@ -53,12 +53,14 @@ if [ -z "$JS_ASSET" ] || [ -z "$CSS_ASSET" ]; then
   printf '%s\n' '错误：Vue production build 至少需要一个 JS 和一个 CSS asset。' >&2
   exit 1
 fi
-for asset in logo.svg morphicons.js TABLER_ICONS_LICENSE; do
+for source in "$FRONTEND/public/assets"/*; do
+  [ -f "$source" ] || continue
+  asset=${source##*/}
   if [ ! -f "$STAGING/assets/$asset" ]; then
     printf '错误：Vue production build 缺少 assets/%s。\n' "$asset" >&2
     exit 1
   fi
-  if ! cmp -s "$FRONTEND/public/assets/$asset" "$STAGING/assets/$asset"; then
+  if ! cmp -s "$source" "$STAGING/assets/$asset"; then
     printf '错误：构建后的 assets/%s 与 frontend/public/assets/%s 不一致。\n' "$asset" "$asset" >&2
     exit 1
   fi

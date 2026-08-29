@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BASE_URL=${1:-http://127.0.0.1:38652}
 BASE_URL=${BASE_URL%/}
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/opanel-frontend-verify.XXXXXX")
@@ -48,7 +49,10 @@ fi
 [ "$status" = 200 ] || fail "unknown browser route 返回 HTTP $status。"
 cmp -s "$ROOT_BODY" "$TEMP_DIR/status-body" || fail 'unknown browser route 没有返回 Vue index。'
 
-for path in /assets/logo.svg /assets/morphicons.js /assets/TABLER_ICONS_LICENSE; do
+for source in "$ROOT/frontend/public/assets"/*; do
+  [ -f "$source" ] || continue
+  asset=${source##*/}
+  path="/assets/$asset"
   if ! status=$(status_for "$path"); then
     fail "current asset $path 请求失败。"
   fi

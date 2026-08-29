@@ -73,6 +73,18 @@ class VueProductionTest(unittest.TestCase):
         for path in ("frontend/dist.next/", "frontend/dist.previous/", "frontend/dist.failed/"):
             self.assertIn(path, ignored)
 
+    def test_production_asset_checks_follow_public_assets_directory(self):
+        public_assets = sorted(
+            path.name for path in (ROOT / "frontend/public/assets").iterdir() if path.is_file()
+        )
+        self.assertEqual(public_assets, ["TABLER_ICONS_LICENSE", "logo.svg"])
+        build = (ROOT / "scripts/build-frontend.sh").read_text()
+        verify = (ROOT / "scripts/verify-frontend.sh").read_text()
+        self.assertIn('for source in "$FRONTEND/public/assets"/*; do', build)
+        self.assertIn('for source in "$ROOT/frontend/public/assets"/*; do', verify)
+        self.assertNotIn("morphicons.js", build)
+        self.assertNotIn('/assets/morphicons.js', verify)
+
 
 if __name__ == "__main__":
     unittest.main()
