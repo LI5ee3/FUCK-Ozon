@@ -1,5 +1,6 @@
 import sqlite3
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from app import db
@@ -43,7 +44,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
         db.DB_PATH = old_path
         with self.assertRaisesRegex(RuntimeError, "重建数据库"):
             db.init_db()
-        with sqlite3.connect(old_path) as connection:
+        with closing(sqlite3.connect(old_path)) as connection:
             self.assertEqual(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchone()[0], "old_data")
 
