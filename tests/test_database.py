@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app import db
 from app.db import DEFAULT_DAILY_TEMPLATE
+from app.migrations import init_db
 from tests.support import DatabaseTestCase
 
 
@@ -29,7 +30,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
         with db.connect() as connection:
             before = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
-        db.init_db()
+        init_db()
         with db.connect() as connection:
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
@@ -44,7 +45,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
         connection.close()
         db.DB_PATH = old_path
         with self.assertRaisesRegex(RuntimeError, "重建数据库"):
-            db.init_db()
+            init_db()
         with closing(sqlite3.connect(old_path)) as connection:
             self.assertEqual(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'").fetchone()[0], "old_data")
@@ -57,7 +58,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             connection.execute("DROP TABLE ozon_webhook_events")
             connection.execute("PRAGMA user_version=1")
 
-        db.init_db()
+        init_db()
         with db.connect() as connection:
             self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
             self.assertEqual(connection.execute(
@@ -77,7 +78,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             connection.execute("INSERT INTO sync_runs(shop_id,module,status) VALUES(1,'orders','running')")
             connection.execute("INSERT INTO sync_runs(shop_id,module,status) VALUES(1,'orders','running')")
             connection.execute("PRAGMA user_version=6")
-        db.init_db()
+        init_db()
         with db.connect() as connection:
             rows = connection.execute("SELECT status,error FROM sync_runs ORDER BY id").fetchall()
             version = connection.execute("PRAGMA user_version").fetchone()[0]

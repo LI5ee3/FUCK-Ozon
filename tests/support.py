@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from app import db
+from app.migrations import init_db
 
 
 MODULE_TABLES = {
@@ -20,7 +21,7 @@ class DatabaseTestCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         db.DATA_DIR = Path(self.temp.name)
         db.DB_PATH = db.DATA_DIR / "test.db"
-        db.init_db()
+        init_db()
 
     def tearDown(self):
         db.DATA_DIR, db.DB_PATH = self._db_data_dir, self._db_path

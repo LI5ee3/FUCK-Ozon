@@ -8,8 +8,9 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import init_db, transaction
+from .db import transaction
 from .dingtalk import start_scheduler, stop_scheduler
+from .migrations import init_db
 from .ozon.webhooks import start_webhook_worker, stop_webhook_worker
 from .routers.alerts import router as alerts_router
 from .routers.analytics import router as analytics_router
