@@ -50,7 +50,7 @@ import { copyText } from "../../shared/utils/clipboard";
 
 type ComplaintTab = "shipping" | "received";
 type DatePreset = StandardDatePreset;
-type TagType = "default" | "info" | "success" | "warning" | "error";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type ComplaintFilters = {
   shopId: ShopSelection;
   from: string;
@@ -438,16 +438,24 @@ function renderDeadline(row: { complaint_deadline: string | null; complaint_dead
   ]);
 }
 
-function renderTag(type: TagType, text: string, className = ""): VNodeChild {
-  return h(NTag, { size: "small", round: true, bordered: false, type, class: className }, { default: () => text });
+function renderTag(tone: MacaronTone | "", text: string, className = ""): VNodeChild {
+  return h(NTag, {
+    size: "small",
+    round: true,
+    bordered: false,
+    type: "default",
+    class: tone ? `complaints-tone-tag--${tone}${className ? ` ${className}` : ""}` : className,
+  }, { default: () => text });
 }
 
-function receivedStatusType(value: string | null | undefined): TagType {
+// Macaron tone mapping (DESIGN.md §colors.tones): mint = 已完结/已接收,
+// peach = 拒绝/争议/取消, butter = 处理中/审核中, no shell = 未知或描述性标签.
+function receivedStatusTone(value: string | null | undefined): MacaronTone | "" {
   const status = String(value || "").toLowerCase();
-  if (/approved|accepted|delivered|同意|已接收|已批准|完成|已签收/.test(status)) return "success";
-  if (/rejected|declined|dispute|cancelled|拒绝|争议|取消/.test(status)) return "error";
-  if (/pending|progress|审核|审批|处理中|在途|退回中/.test(status)) return "warning";
-  return "info";
+  if (/approved|accepted|delivered|同意|已接收|已批准|完成|已签收/.test(status)) return "mint";
+  if (/rejected|declined|dispute|cancelled|拒绝|争议|取消/.test(status)) return "peach";
+  if (/pending|progress|审核|审批|处理中|在途|退回中/.test(status)) return "butter";
+  return "";
 }
 
 function compensationLine(row: ReceivedDisputeRecord, prefix: "platform" | "logistics"): string {
@@ -467,10 +475,10 @@ function compensationLine(row: ReceivedDisputeRecord, prefix: "platform" | "logi
 
 function renderShippingIdentity(row: ShippingComplaintOrder): VNodeChild {
   return h("div", { class: "complaints-shop-time" }, [
-    h("span", { class: "complaints-shop-badge" }, row.shop_name),
+    h("span", { class: "analytics-shop-badge" }, row.shop_name),
     renderCopyButton(row.posting_number, "点击复制订单号", "complaints-order-number", row.posting_number),
     row.data_anomaly
-      ? h(NTag, { size: "small", round: true, bordered: false, type: "warning", class: "complaints-anomaly-tag" }, {
+      ? h(NTag, { size: "small", round: true, bordered: false, type: "default", class: "complaints-tone-tag--butter" }, {
           default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "数据异常"],
         })
       : null,
@@ -511,7 +519,7 @@ function renderComplaintList(row: ShippingComplaintOrder): VNodeChild {
         }, [
           h("strong", [h(MorphIcon, { icon: "fileText", size: "11", strokeWidth: "2" }), complaint.complaint_number]),
           h("small", [
-            renderTag(complaint.resolved === 1 ? "success" : "warning", complaint.resolved === 1 ? "已完结" : "处理中", "complaints-inline-status"),
+            renderTag(complaint.resolved === 1 ? "mint" : "butter", complaint.resolved === 1 ? "已完结" : "处理中", "complaints-inline-status"),
             ` · ${formatBeijingDateTime(complaint.complaint_at)}`,
           ]),
         ]))
@@ -533,7 +541,7 @@ function renderShippingAmount(row: ShippingComplaintOrder): VNodeChild {
 
 function renderReceivedIdentity(row: ReceivedDisputeRecord): VNodeChild {
   return h("div", { class: "complaints-shop-time" }, [
-    h("span", { class: "complaints-shop-badge" }, row.shop_name),
+    h("span", { class: "analytics-shop-badge" }, row.shop_name),
     renderCopyButton(row.return_number, "点击复制申请编号", "complaints-return-number", row.return_number),
     h("span", { class: "complaints-muted-line" }, `申请：${formatBeijingDateTime(row.created_at)}`),
     renderDeadline(row),
@@ -564,7 +572,7 @@ function renderReceivedReason(row: ReceivedDisputeRecord): VNodeChild {
 
 function renderReceivedCompensation(row: ReceivedDisputeRecord): VNodeChild {
   return h("div", { class: "complaints-state-cell" }, [
-    row.refund_type ? renderTag("info", row.refund_type) : null,
+    row.refund_type ? renderTag("", row.refund_type) : null,
     h("small", `退款：${row.refund_amount == null ? "—" : formatComplaintMoney(row.refund_amount, row.refund_currency)}`),
     h("small", compensationLine(row, "platform")),
     h("small", compensationLine(row, "logistics")),
@@ -575,7 +583,7 @@ function renderReceivedCompensation(row: ReceivedDisputeRecord): VNodeChild {
 function renderReceivedState(row: ReceivedDisputeRecord): VNodeChild {
   return h("div", { class: "complaints-action-cell" }, [
     h("div", { class: "complaints-state-cell" }, [
-      renderTag(receivedStatusType(row.process_status || "待处理"), row.process_status || "未记录"),
+      renderTag(receivedStatusTone(row.process_status || "待处理"), row.process_status || "未记录"),
       h("span", { class: "complaints-muted-line" }, ["方式：", h("b", display(row.handling_method))]),
       h("span", { class: "complaints-muted-line" }, ["结果：", h("b", display(row.return_result))]),
     ]),
@@ -587,19 +595,23 @@ function renderReceivedState(row: ReceivedDisputeRecord): VNodeChild {
   ]);
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x (shipping 190+225+280+170+190
+// = 1055, received 200+260+240+260+210 = 1170), so long product names clip
+// with ellipsis instead of stretching columns.
 const shippingColumns: DataTableColumns<ShippingComplaintOrder> = [
-  { key: "identity", title: "店铺与订单", minWidth: 190, render: renderShippingIdentity },
-  { key: "time", title: "物流与时效", minWidth: 225, render: renderShippingTime },
-  { key: "product", title: "商品信息", minWidth: 280, render: renderShippingProduct },
-  { key: "amount", title: "金额与取消原因", minWidth: 170, align: "right", render: renderShippingAmount },
-  { key: "complaints", title: "投诉记录与操作", minWidth: 190, align: "right", render: renderComplaintList },
+  { key: "identity", title: "店铺与订单", width: 190, render: renderShippingIdentity },
+  { key: "time", title: "物流与时效", width: 225, render: renderShippingTime },
+  { key: "product", title: "商品信息", width: 280, render: renderShippingProduct },
+  { key: "amount", title: "金额与取消原因", width: 170, align: "right", render: renderShippingAmount },
+  { key: "complaints", title: "投诉记录与操作", width: 190, align: "right", render: renderComplaintList },
 ];
 const receivedColumns: DataTableColumns<ReceivedDisputeRecord> = [
-  { key: "identity", title: "店铺与退货申请", minWidth: 190, render: renderReceivedIdentity },
-  { key: "product", title: "订单与商品", minWidth: 250, render: renderReceivedProduct },
-  { key: "reason", title: "金额与纠纷原因", minWidth: 220, render: renderReceivedReason },
-  { key: "compensation", title: "退款与赔偿", minWidth: 250, render: renderReceivedCompensation },
-  { key: "state", title: "处理状态与操作", minWidth: 180, align: "right", render: renderReceivedState },
+  { key: "identity", title: "店铺与退货申请", width: 200, render: renderReceivedIdentity },
+  { key: "product", title: "订单与商品", width: 260, render: renderReceivedProduct },
+  { key: "reason", title: "金额与纠纷原因", width: 240, render: renderReceivedReason },
+  { key: "compensation", title: "退款与赔偿", width: 260, render: renderReceivedCompensation },
+  { key: "state", title: "处理状态与操作", width: 210, align: "right", render: renderReceivedState },
 ];
 
 function shippingRowKey(row: ShippingComplaintOrder): string {
@@ -670,7 +682,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="complaints-view">
-    <div class="analytics-toolbar complaints-toolbar">
+    <div class="analytics-toolbar">
       <div class="analytics-date-control">
         <span>统计日期</span>
         <NDatePicker
@@ -706,7 +718,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="complaints-tabs" role="tablist" aria-label="异常订单投诉子板块">
+    <div class="analytics-tabs" role="tablist" aria-label="异常订单投诉子板块">
       <NButton
         size="small"
         attr-type="button"
@@ -735,7 +747,7 @@ onBeforeUnmount(() => {
       </NButton>
     </div>
 
-    <NCard v-if="filters.tab === 'shipping'" :bordered="false" class="analytics-table-card complaints-panel">
+    <NCard v-if="filters.tab === 'shipping'" :bordered="false" class="analytics-table-card">
       <template #header>
         <div class="complaints-panel-header">
           <div>
@@ -774,18 +786,19 @@ onBeforeUnmount(() => {
         </div>
       </NAlert>
       <NDataTable
-        class="analytics-table complaints-table"
+        class="analytics-table"
         :columns="shippingColumns"
         :data="shippingData?.items ?? []"
         :loading="shippingLoading"
         :pagination="false"
         :remote="true"
         :scroll-x="1055"
+        table-layout="fixed"
         :row-key="shippingRowKey"
       >
         <template #empty><EmptyState :title="shippingError ? '投诉候选加载失败' : '当前筛选范围内没有候选订单'" icon="truck" /></template>
       </NDataTable>
-      <div v-if="shippingData" class="analytics-pager complaints-pager">
+      <div v-if="shippingData" class="analytics-pager">
         <NButton size="small" attr-type="button" :disabled="shippingLoading || filters.page <= 1" @click="changePage(filters.page - 1)">
           <template #icon><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" /></template>
           上一页
@@ -798,7 +811,7 @@ onBeforeUnmount(() => {
       </div>
     </NCard>
 
-    <NCard v-else :bordered="false" class="analytics-table-card complaints-panel">
+    <NCard v-else :bordered="false" class="analytics-table-card">
       <template #header>
         <div class="complaints-panel-header">
           <div>
@@ -837,18 +850,19 @@ onBeforeUnmount(() => {
         </div>
       </NAlert>
       <NDataTable
-        class="analytics-table complaints-table"
+        class="analytics-table"
         :columns="receivedColumns"
         :data="receivedData?.items ?? []"
         :loading="receivedLoading"
         :pagination="false"
         :remote="true"
         :scroll-x="1170"
+        table-layout="fixed"
         :row-key="receivedRowKey"
       >
-        <template #empty><EmptyState :title="receivedError ? '已收货纠纷加载失败' : '当前筛选范围内没有退货申请'" icon="truck" /></template>
+        <template #empty><EmptyState :title="receivedError ? '已收货纠纷加载失败' : '当前筛选范围内没有退货申请'" icon="messageSquareAlert" /></template>
       </NDataTable>
-      <div v-if="receivedData" class="analytics-pager complaints-pager">
+      <div v-if="receivedData" class="analytics-pager">
         <NButton size="small" attr-type="button" :disabled="receivedLoading || filters.page <= 1" @click="changePage(filters.page - 1)">
           <template #icon><morph-icon icon="chevronLeft" size="14" stroke-width="1.8" /></template>
           上一页

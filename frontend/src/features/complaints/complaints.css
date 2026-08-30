@@ -3,21 +3,6 @@
   padding-top: 8px;
 }
 
-.complaints-toolbar {
-  margin-bottom: 14px;
-}
-
-.complaints-tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
-.complaints-panel {
-  margin-bottom: 18px;
-}
-
 .complaints-panel-header {
   display: flex;
   align-items: flex-start;
@@ -65,22 +50,6 @@
   width: 145px;
 }
 
-.complaints-table {
-  overflow: hidden;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
-}
-
-.complaints-table .n-data-table-th {
-  color: var(--opanel-muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.complaints-table .n-data-table-td {
-  vertical-align: top;
-}
-
 .complaints-shop-time,
 .complaints-time-cell,
 .complaints-product-cell,
@@ -93,7 +62,6 @@
   gap: 6px;
 }
 
-.complaints-shop-badge,
 .complaints-meta-chip {
   width: fit-content;
   border: 1px solid var(--opanel-line);
@@ -101,11 +69,6 @@
   color: var(--opanel-muted);
   font-size: 11px;
   font-weight: 600;
-}
-
-.complaints-shop-badge {
-  padding: 2px 7px;
-  border-radius: var(--opanel-radius-sm);
 }
 
 .complaints-copy-value {
@@ -168,9 +131,11 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  max-width: 100%;
   padding: 2px 7px;
   border-radius: var(--opanel-radius-sm);
   font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .complaints-meta-chip b,
@@ -191,6 +156,7 @@
   color: var(--opanel-text);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .complaints-amount-cell {
@@ -210,6 +176,9 @@
   overflow-wrap: anywhere;
 }
 
+/* Deadline pills and status tags consume the shared --opanel-tone-* tokens
+   (styles/tokens.css, theme-aware) — overdue/取消争议→peach, 截止临近/处理中
+   →butter, 已完结/已接收→mint (DESIGN.md §colors.tones). */
 .complaints-deadline {
   display: inline-flex;
   align-items: center;
@@ -222,20 +191,21 @@
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .complaints-deadline--overdue {
-  border-color: color-mix(in srgb, var(--opanel-danger) 25%, transparent);
-  background: color-mix(in srgb, var(--opanel-danger) 12%, transparent);
-  color: var(--opanel-danger);
+  border-color: color-mix(in srgb, var(--opanel-tone-peach-text) 25%, transparent);
+  background: var(--opanel-tone-peach-bg);
+  color: var(--opanel-tone-peach-text);
   font-weight: 700;
 }
 
 .complaints-deadline--due_today,
 .complaints-deadline--due_soon {
-  border-color: color-mix(in srgb, var(--opanel-warning) 25%, transparent);
-  background: color-mix(in srgb, var(--opanel-warning) 12%, transparent);
-  color: var(--opanel-warning);
+  border-color: color-mix(in srgb, var(--opanel-tone-butter-text) 25%, transparent);
+  background: var(--opanel-tone-butter-bg);
+  color: var(--opanel-tone-butter-text);
   font-weight: 650;
 }
 
@@ -303,6 +273,10 @@
   font-size: 10px !important;
 }
 
+.complaints-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.complaints-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+.complaints-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+
 .complaints-action-button {
   display: inline-flex;
   align-items: center;
@@ -341,10 +315,6 @@
   background: var(--opanel-panel-hover);
   color: var(--opanel-text);
   overflow-wrap: anywhere;
-}
-
-.complaints-pager {
-  margin-top: 14px;
 }
 
 .complaints-modal-subtitle {
@@ -467,15 +437,6 @@
 }
 
 @media (max-width: 640px) {
-  .complaints-toolbar,
-  .complaints-panel .n-card__content {
-    padding: 16px;
-  }
-
-  .complaints-panel .n-card__header {
-    padding: 16px 16px 0;
-  }
-
   .complaints-filter .n-input,
   .complaints-status-select {
     width: 100%;
