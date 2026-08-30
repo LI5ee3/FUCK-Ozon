@@ -10,7 +10,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInputNumber,
   NProgress,
   NSelect,
@@ -20,6 +19,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import {
@@ -802,7 +802,7 @@ onBeforeUnmount(() => {
           :loading="historyLoading"
         >
           <template #empty>
-            <NEmpty :description="historyEmptyDescription" />
+            <EmptyState :title="historyEmptyDescription" icon="fileText" />
           </template>
         </NDataTable>
       </div>

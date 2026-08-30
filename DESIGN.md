@@ -166,3 +166,5 @@ All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel
 - **Focus ring**: keyboard focus (`:focus-visible` on buttons, links, `role="button"/"tab"`) gets `outline: 2px solid var(--opanel-primary-focus)` with `outline-offset: 2px`; text inputs keep Naive UI's own focus border.
 - **Scrollbars**: 6px rounded overlay thumbs tinted from `--opanel-muted` (45%, hover 70%), transparent tracks (`styles/base.css`).
 - **Global transitions**: background-color/border-color/color/box-shadow/transform transition over `0.16s var(--opanel-ease-fluid)` on buttons, links, cards, tags, inputs, and table cells — state changes animate, never snap. All motion collapses under `prefers-reduced-motion: reduce`.
+- **Empty states**: every empty data state renders `shared/components/EmptyState.vue` — a primary-tinted circular icon badge, a bold title, and an optional hint line (or default slot for extra actions). Never use bare `NEmpty`.
+- **Loading states**: KPI card grids show `NSkeleton` card skeletons while their data loads (Dashboard, Risk, Alerts summary, Analytics traffic); tables keep Naive UI's built-in loading spinner.

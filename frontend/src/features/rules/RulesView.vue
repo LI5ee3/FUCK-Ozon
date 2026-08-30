@@ -8,13 +8,13 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NEmpty,
   NInput,
   NSelect,
   NSpin,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { deleteShortName, dissolveMergeGroup, getProductRules, saveMergeGroup, saveShortName } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
@@ -355,7 +355,7 @@ onMounted(() => { void loadRules(); });
           :key="card.label"
           :bordered="false"
           class="rules-summary-card"
-          :class="card.tone"
+          :class="`tone-${card.tone}`"
         >
           <div class="rules-summary-head">
             <span>{{ card.label }} <NTag size="small" round :bordered="false" type="default">{{ card.badge }}</NTag></span>
@@ -420,9 +420,7 @@ onMounted(() => { void loadRules(); });
             :scroll-x="720"
           >
             <template #empty>
-              <NEmpty :description="loadError ? '短名称规则加载失败' : '暂无短名称规则'">
-                <template #extra v-if="!loadError">在上方输入 SKU 和中文短名称即可添加</template>
-              </NEmpty>
+              <EmptyState :title="loadError ? '短名称规则加载失败' : '暂无短名称规则'" :hint="loadError ? undefined : '在上方输入 SKU 和中文短名称即可添加'" />
             </template>
           </NDataTable>
         </NCard>
@@ -539,9 +537,7 @@ onMounted(() => { void loadRules(); });
               </div>
             </article>
           </div>
-          <NEmpty v-else description="暂无全局合并关系">
-            <template #extra>在上方添加主货号与关联成员即可建立全局合并分析身份</template>
-          </NEmpty>
+          <EmptyState v-else title="暂无全局合并关系" hint="在上方添加主货号与关联成员即可建立全局合并分析身份" />
         </NCard>
       </div>
 

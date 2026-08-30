@@ -3,7 +3,8 @@ import "./transfer.css";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
-import { NButton, NCard, NDatePicker, NEmpty, NSelect, NSpin } from "naive-ui";
+import { NButton, NCard, NDatePicker, NSelect, NSpin } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import { getErrorMessage } from "../../shared/api/client";
 import {
   buildExportUrl,
@@ -419,7 +420,7 @@ onBeforeUnmount(() => {
             </template>
             <tr v-else-if="historyLoading"><td colspan="4" class="transfer-history-state"><NSpin size="small" /><span>导入记录加载中…</span></td></tr>
             <tr v-else-if="historyError"><td colspan="4" class="transfer-history-state is-error"><morph-icon icon="alertTriangle" size="20" stroke-width="1.8" /><span>导入记录加载失败：{{ historyError }}</span></td></tr>
-            <tr v-else><td colspan="4" class="transfer-history-state"><NEmpty description="暂无历史 CSV 导入记录" /></td></tr>
+            <tr v-else><td colspan="4" class="transfer-history-state"><EmptyState title="暂无历史 CSV 导入记录" icon="uploadCloud" /></td></tr>
           </tbody>
         </table>
       </div>

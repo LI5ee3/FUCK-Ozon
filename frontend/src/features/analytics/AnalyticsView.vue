@@ -12,11 +12,11 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NPagination,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { getAnalyticsData, getProductQueries, getProductQueryDetails } from "./api";
@@ -591,7 +591,7 @@ onBeforeUnmount(() => {
     </NAlert>
 
     <template v-if="filters.tab === 'traffic'">
-      <AnalyticsKpiCards v-if="traffic" :items="trafficKpis" />
+      <AnalyticsKpiCards :items="trafficKpis" :loading="trafficLoading" />
 
       <NCard :bordered="false" class="analytics-table-card">
         <template #header>
@@ -615,7 +615,7 @@ onBeforeUnmount(() => {
           :remote="true"
           :scroll-x="1320"
         >
-          <template #empty><NEmpty :description="trafficError ? '流量转化数据加载失败' : '该条件下暂无流量数据'" /></template>
+          <template #empty><EmptyState :title="trafficError ? '流量转化数据加载失败' : '该条件下暂无流量数据'" icon="search" /></template>
         </NDataTable>
         <div class="analytics-pager">
           <span>第 {{ filters.page }} / {{ trafficPageCount }} 页，共 {{ formatInteger(traffic?.total) }} 个 SKU</span>
@@ -654,7 +654,7 @@ onBeforeUnmount(() => {
           :remote="true"
           :scroll-x="1080"
         >
-          <template #empty><NEmpty :description="productQueriesError ? '商品搜索表现加载失败' : '该条件下暂无搜索表现数据'" /></template>
+          <template #empty><EmptyState :title="productQueriesError ? '商品搜索表现加载失败' : '该条件下暂无搜索表现数据'" icon="search" /></template>
         </NDataTable>
         <div class="analytics-pager">
           <span>第 {{ filters.page }} / {{ productQueryPageCount }} 页，共 {{ formatInteger(productQueries?.total) }} 个 SKU</span>
@@ -690,7 +690,7 @@ onBeforeUnmount(() => {
           :remote="true"
           :scroll-x="900"
         >
-          <template #empty><NEmpty :description="detailError ? '搜索关键词加载失败' : '该 SKU 暂无关键词明细'" /></template>
+          <template #empty><EmptyState :title="detailError ? '搜索关键词加载失败' : '该 SKU 暂无关键词明细'" icon="search" /></template>
         </NDataTable>
         <div class="analytics-pager">
           <span>第 {{ detailPage }} / {{ detailPageCount }} 页，共 {{ formatInteger(details?.total) }} 条关键词</span>

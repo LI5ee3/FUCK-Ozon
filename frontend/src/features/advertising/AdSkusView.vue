@@ -10,11 +10,11 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NSelect,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getAdSkuStats, type AdSkuStatsQuery } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
@@ -398,7 +398,7 @@ onBeforeUnmount(() => {
         :scroll-x="1580"
         :row-key="rowKey"
       >
-        <template #empty><NEmpty :description="error ? 'SKU 广告数据加载失败' : '所选范围暂无 SKU 广告数据'" /></template>
+        <template #empty><EmptyState :title="error ? 'SKU 广告数据加载失败' : '所选范围暂无 SKU 广告数据'" icon="barChart" /></template>
       </NDataTable>
 
       <div class="ad-skus-pager">

@@ -8,12 +8,12 @@ import {
   NButton,
   NCard,
   NDatePicker,
-  NEmpty,
-  NSpin,
+  NSkeleton,
   NStatistic,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import { getErrorMessage } from "../../shared/api/client";
 import { getDashboardSummary, getOrderTrend } from "./api";
 import { useShop } from "../../shared/composables/useShop";
@@ -298,8 +298,13 @@ onBeforeUnmount(() => {
     </div>
 
     <section v-if="loading" class="dashboard-state" aria-live="polite">
-      <NSpin size="large" />
-      <span>正在加载总览…</span>
+      <div class="dashboard-kpi-grid">
+        <NCard v-for="i in 5" :key="i" :bordered="false" class="dashboard-kpi-card">
+          <NSkeleton text width="55%" />
+          <NSkeleton text width="72%" class="kpi-skeleton-value" />
+          <NSkeleton text width="42%" />
+        </NCard>
+      </div>
     </section>
 
     <NAlert v-else-if="error" type="error" title="总览加载失败" class="dashboard-error" role="alert">
@@ -316,7 +321,7 @@ onBeforeUnmount(() => {
           :key="kpi.label"
           :bordered="false"
           class="dashboard-kpi-card"
-          :class="kpi.tone"
+          :class="`tone-${kpi.tone}`"
         >
           <div class="dashboard-kpi-head">
             <span>{{ kpi.label }}</span>
@@ -350,7 +355,7 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <OrderTrendChart v-if="trend.buckets.length" :data="trend" />
-          <NEmpty v-else description="暂无趋势数据" class="dashboard-empty" />
+          <EmptyState v-else title="暂无趋势数据" icon="trendingUp" class="dashboard-empty" />
           <div v-if="trendInsights.length" class="dashboard-insights">
             <div v-for="insight in trendInsights" :key="insight.label" class="dashboard-insight-card">
               <div class="dashboard-insight-head"><morph-icon :icon="insight.icon" size="14" stroke-width="1.8" /><span>{{ insight.label }}</span></div>
@@ -386,7 +391,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <NEmpty v-else description="暂无渠道数据" class="dashboard-empty dashboard-empty--compact" />
+          <EmptyState v-else title="暂无渠道数据" icon="store" class="dashboard-empty dashboard-empty--compact" />
           <div v-if="channelInsights.length" class="dashboard-insights">
             <div v-for="insight in channelInsights" :key="insight.label" class="dashboard-insight-card">
               <div class="dashboard-insight-head"><morph-icon :icon="insight.icon" size="14" stroke-width="1.8" /><span>{{ insight.label }}</span></div>
@@ -415,7 +420,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
-          <NEmpty v-else description="暂无时效数据" class="dashboard-empty dashboard-empty--compact" />
+          <EmptyState v-else title="暂无时效数据" icon="clock" class="dashboard-empty dashboard-empty--compact" />
           <div v-if="timelinessInsights.length" class="dashboard-insights">
             <div v-for="insight in timelinessInsights" :key="insight.label" class="dashboard-insight-card">
               <div class="dashboard-insight-head"><morph-icon :icon="insight.icon" size="14" stroke-width="1.8" /><span>{{ insight.label }}</span></div>
@@ -438,7 +443,7 @@ onBeforeUnmount(() => {
               <div class="dashboard-product-stats"><span><b>{{ formatInteger(product.pieces) }}</b>件</span><span>{{ formatInteger(product.orders) }}单</span><span :class="{ 'is-danger': product.cancel_rate > 0.05 }">取消 {{ formatPercent(product.cancel_rate) }}</span></div>
             </div>
           </div>
-          <NEmpty v-else description="所选范围暂无商品数据" class="dashboard-empty dashboard-empty--compact" />
+          <EmptyState v-else title="所选范围暂无商品数据" icon="shoppingBag" class="dashboard-empty dashboard-empty--compact" />
           <div v-if="topProductsInsights.length" class="dashboard-insights">
             <div v-for="insight in topProductsInsights" :key="insight.label" class="dashboard-insight-card">
               <div class="dashboard-insight-head"><morph-icon :icon="insight.icon" size="14" stroke-width="1.8" /><span>{{ insight.label }}</span></div>

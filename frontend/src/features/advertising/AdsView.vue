@@ -5,7 +5,8 @@ import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
-import { NAlert, NButton, NCard, NDatePicker, NEmpty, NSpin, useMessage } from "naive-ui";
+import { NAlert, NButton, NCard, NDatePicker, NSpin, useMessage } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import { getAdsOverview } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
 import AdsTrendChart from "./components/AdsTrendChart.vue";
@@ -228,7 +229,7 @@ onBeforeUnmount(() => {
         :key="kpi.label"
         :bordered="false"
         class="ads-kpi-card"
-        :class="kpi.tone"
+        :class="`tone-${kpi.tone}`"
       >
         <div class="ads-kpi-head">
           <span>{{ kpi.label }}</span>
@@ -251,7 +252,7 @@ onBeforeUnmount(() => {
       </template>
       <div v-if="loading && !overview" class="ads-loading"><NSpin size="medium" /><span>广告总览加载中…</span></div>
       <AdsTrendChart v-else-if="overview?.trend.length" :data="overview.trend" />
-      <NEmpty v-else :description="error ? '广告总览加载失败' : '所选范围暂无广告日统计，请先同步。'" />
+      <EmptyState v-else :title="error ? '广告总览加载失败' : '所选范围暂无广告日统计，请先同步。'" icon="barChart" />
     </NCard>
 
     <p class="ads-data-note">页面只读取本地 SQLite；请在“数据同步中心”先同步广告日统计。</p>

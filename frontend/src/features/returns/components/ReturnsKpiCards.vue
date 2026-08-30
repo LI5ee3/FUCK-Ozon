@@ -24,7 +24,7 @@ defineProps<{
       :key="kpi.label"
       :bordered="false"
       class="analytics-kpi-card returns-kpi-card"
-      :class="kpi.tone"
+      :class="`tone-${kpi.tone}`"
     >
       <div class="analytics-kpi-head">
         <span>{{ kpi.label }}<NTag size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag></span>

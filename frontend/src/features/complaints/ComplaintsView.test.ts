@@ -195,6 +195,7 @@ const stubs: Record<string, Component> = {
   DataTable: DataTableStub,
   NDatePicker: SlotStub,
   DatePicker: SlotStub,
+  EmptyState: SlotStub,
   NEmpty: SlotStub,
   Empty: SlotStub,
   NInput: InputStub,

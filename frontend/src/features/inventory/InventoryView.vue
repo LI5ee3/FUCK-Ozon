@@ -8,13 +8,13 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NEmpty,
   NInput,
   NPagination,
   NSelect,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { listInventory } from "./api";
@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
     </section>
 
     <div v-if="summaryCards.length" class="inventory-summary">
-      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="inventory-summary-card" :class="card.tone">
+      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="inventory-summary-card" :class="`tone-${card.tone}`">
         <div class="inventory-summary-head"><span>{{ card.label }}</span><span class="inventory-summary-icon tone-badge"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></span></div>
         <strong class="tone-value">{{ card.value }}</strong>
         <small>{{ card.note }}</small>
@@ -440,7 +440,7 @@ onBeforeUnmount(() => {
       :scroll-x="1636"
       :row-key="rowKey"
     >
-      <template #empty><NEmpty :description="emptyDescription" /></template>
+      <template #empty><EmptyState :title="emptyDescription" icon="box" /></template>
     </NDataTable>
 
     <div class="inventory-pager">

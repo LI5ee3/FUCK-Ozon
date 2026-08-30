@@ -13,12 +13,12 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NSpin,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { getRisk, getRiskReasons } from "./api";
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
       </div>
     </NAlert>
 
-    <RiskKpiCards v-if="riskData" :items="summaryKpis" />
+    <RiskKpiCards :items="summaryKpis" :loading="loading" />
 
     <NCard :bordered="false" class="analytics-table-card risk-panel">
       <template #header>
@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
         :remote="true"
         :scroll-x="1000"
       >
-        <template #empty><NEmpty :description="matrixEmptyDescription" /></template>
+        <template #empty><EmptyState :title="matrixEmptyDescription" icon="risk" /></template>
       </NDataTable>
     </NCard>
 
@@ -566,7 +566,7 @@ onBeforeUnmount(() => {
         :remote="true"
         :scroll-x="930"
       >
-        <template #empty><NEmpty :description="reasonEmptyDescription" /></template>
+        <template #empty><EmptyState :title="reasonEmptyDescription" icon="alertCircle" /></template>
       </NDataTable>
 
       <div v-if="selectedReason" class="risk-reason-details">
@@ -602,7 +602,7 @@ onBeforeUnmount(() => {
             </div>
           </article>
         </div>
-        <NEmpty v-else description="当前时间范围内没有对应订单。" />
+        <EmptyState v-else title="当前时间范围内没有对应订单。" icon="orders" />
       </div>
     </NCard>
   </section>

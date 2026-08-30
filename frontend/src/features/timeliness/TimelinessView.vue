@@ -12,12 +12,12 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NPagination,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { listTimeliness } from "./api";
@@ -509,7 +509,7 @@ onBeforeUnmount(() => {
         :key="kpi.label"
         :bordered="false"
         class="analytics-kpi-card timeliness-kpi-card"
-        :class="kpi.tone"
+        :class="`tone-${kpi.tone}`"
       >
         <div class="analytics-kpi-head">
           <span class="timeliness-kpi-label">
@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
         :remote="true"
         :scroll-x="950"
       >
-        <template #empty><NEmpty :description="error ? '时效统计加载失败' : '当前范围内暂无有效订单'" /></template>
+        <template #empty><EmptyState :title="error ? '时效统计加载失败' : '当前范围内暂无有效订单'" icon="clock" /></template>
       </NDataTable>
     </NCard>
 
@@ -583,7 +583,7 @@ onBeforeUnmount(() => {
         :remote="true"
         :scroll-x="980"
       >
-        <template #empty><NEmpty :description="error ? '订单时效加载失败' : '没有匹配的订单时效明细'" /></template>
+        <template #empty><EmptyState :title="error ? '订单时效加载失败' : '没有匹配的订单时效明细'" icon="clock" /></template>
       </NDataTable>
       <div class="analytics-pager timeliness-pager">
         <span>第 {{ filters.page }} / {{ pageCount }} 页，共 {{ formatInteger(data?.total) }} 条</span>

@@ -7,7 +7,6 @@ import {
   NButton,
   NCard,
   NCheckbox,
-  NEmpty,
   NInput,
   NSpin,
   NSwitch,
@@ -15,6 +14,7 @@ import {
   useDialog,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import {
   checkPushWebhook,
   deletePushSubscription,
@@ -450,7 +450,7 @@ onBeforeUnmount(() => {
                   </span>
                 </NCheckbox>
               </div>
-              <NEmpty v-else description="Ozon 未返回可订阅类型" />
+              <EmptyState v-else title="Ozon 未返回可订阅类型" icon="bolt" />
 
               <div class="push-form-actions">
                 <NButton type="default" :loading="shopState(shopId).check.status === 'loading'" :disabled="shopState(shopId).check.status === 'loading'" @click="runCheck(shopId)">
@@ -483,9 +483,7 @@ onBeforeUnmount(() => {
             <NAlert v-if="!shopState(shopId).listReady" type="error" class="push-alert" title="订阅读取失败">
               {{ shopState(shopId).listError || "Ozon 未返回订阅列表" }}
             </NAlert>
-            <NEmpty v-else-if="!shopState(shopId).subscriptions.length" description="暂无 Push 订阅">
-              <template #extra>填写 Webhook 地址并选择事件后即可注册。</template>
-            </NEmpty>
+            <EmptyState v-else-if="!shopState(shopId).subscriptions.length" title="暂无 Push 订阅" hint="填写 Webhook 地址并选择事件后即可注册。" />
             <div v-else class="push-subscription-list">
               <article v-for="row in shopState(shopId).subscriptions" :key="`${shopId}-${row.id ?? row.url}`" class="push-subscription">
                 <div class="push-subscription-main">

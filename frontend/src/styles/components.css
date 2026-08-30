@@ -39,3 +39,37 @@ a:active .morph-icon {
   transform: none;
 }
 
+/* Unified empty state: tone-tinted icon badge + guidance copy. */
+.opanel-empty {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 36px 16px;
+  color: var(--opanel-muted);
+  text-align: center;
+}
+.opanel-empty-badge {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 6px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--opanel-primary) 8%, transparent);
+  color: var(--opanel-primary);
+}
+.opanel-empty strong {
+  color: var(--opanel-text);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.opanel-empty small {
+  font-size: 12px;
+}
+/* KPI card skeleton state. */
+.kpi-skeleton-value {
+  height: 28px;
+  margin-top: 10px;
+}
+

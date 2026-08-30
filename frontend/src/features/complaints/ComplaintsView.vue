@@ -14,12 +14,12 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NSelect,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import {
@@ -783,7 +783,7 @@ onBeforeUnmount(() => {
         :scroll-x="1055"
         :row-key="shippingRowKey"
       >
-        <template #empty><NEmpty :description="shippingError ? '投诉候选加载失败' : '当前筛选范围内没有候选订单'" /></template>
+        <template #empty><EmptyState :title="shippingError ? '投诉候选加载失败' : '当前筛选范围内没有候选订单'" icon="truck" /></template>
       </NDataTable>
       <div v-if="shippingData" class="analytics-pager complaints-pager">
         <NButton size="small" attr-type="button" :disabled="shippingLoading || filters.page <= 1" @click="changePage(filters.page - 1)">
@@ -846,7 +846,7 @@ onBeforeUnmount(() => {
         :scroll-x="1170"
         :row-key="receivedRowKey"
       >
-        <template #empty><NEmpty :description="receivedError ? '已收货纠纷加载失败' : '当前筛选范围内没有退货申请'" /></template>
+        <template #empty><EmptyState :title="receivedError ? '已收货纠纷加载失败' : '当前筛选范围内没有退货申请'" icon="truck" /></template>
       </NDataTable>
       <div v-if="receivedData" class="analytics-pager complaints-pager">
         <NButton size="small" attr-type="button" :disabled="receivedLoading || filters.page <= 1" @click="changePage(filters.page - 1)">

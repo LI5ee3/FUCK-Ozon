@@ -11,7 +11,6 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NEmpty,
   NInput,
   NInputNumber,
   NPagination,
@@ -21,6 +20,7 @@ import {
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { acknowledgeAlert, evaluateAlerts, getAlertSummary, listAlertEvents, listAlertRules, updateAlertRule, type AlertRuleUpdate } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
@@ -600,7 +600,7 @@ onBeforeUnmount(() => {
         :scroll-x="1240"
         :row-key="(row: AlertEvent) => row.id"
       >
-        <template #empty><NEmpty :description="eventsError ? '预警列表加载失败' : '当前筛选范围内暂无预警'" /></template>
+        <template #empty><EmptyState :title="eventsError ? '预警列表加载失败' : '当前筛选范围内暂无预警'" icon="shieldAlert" /></template>
       </NDataTable>
       <div v-if="eventsData" class="alerts-pager">
         <span>第 {{ filters.page }} / {{ eventPageCount }} 页，共 {{ formatInteger(eventsData.total) }} 条</span>
@@ -662,7 +662,7 @@ onBeforeUnmount(() => {
           </div>
         </article>
       </div>
-      <NEmpty v-else description="暂无规则配置" />
+      <EmptyState v-else title="暂无规则配置" icon="rules" />
     </NCard>
   </section>
 </template>

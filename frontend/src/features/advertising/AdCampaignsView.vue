@@ -10,10 +10,10 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NSelect,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getAdCampaignStats, type AdCampaignStatsQuery } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
@@ -393,7 +393,7 @@ onBeforeUnmount(() => {
         :scroll-x="1650"
         :row-key="campaignRowKey"
       >
-        <template #empty><NEmpty :description="error ? '广告活动加载失败' : '所选范围暂无 Campaign 数据'" /></template>
+        <template #empty><EmptyState :title="error ? '广告活动加载失败' : '所选范围暂无 Campaign 数据'" icon="barChart" /></template>
       </NDataTable>
 
       <div class="ad-campaigns-pager">

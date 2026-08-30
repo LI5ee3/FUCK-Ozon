@@ -85,7 +85,6 @@
 .inventory-summary-card {
   overflow: hidden;
   border: 1px solid var(--opanel-line) !important;
-  background: var(--opanel-panel-solid) !important;
   box-shadow: var(--opanel-shadow-sm);
 }
 

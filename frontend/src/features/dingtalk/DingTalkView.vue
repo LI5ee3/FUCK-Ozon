@@ -235,7 +235,7 @@ onBeforeUnmount(() => {
           :key="card.label"
           :bordered="false"
           class="dingtalk-summary-card"
-          :class="card.tone"
+          :class="`tone-${card.tone}`"
         >
           <div class="dingtalk-summary-head">
             <div class="dingtalk-summary-label">

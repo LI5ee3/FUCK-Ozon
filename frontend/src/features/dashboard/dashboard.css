@@ -57,8 +57,7 @@
 
 .dashboard-state {
   display: grid;
-  place-content: center;
-  justify-items: center;
+  align-content: start;
   gap: 12px;
   color: var(--opanel-muted);
 }

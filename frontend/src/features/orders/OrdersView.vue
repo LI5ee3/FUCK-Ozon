@@ -10,13 +10,13 @@ import {
   NButton,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NPagination,
   NSelect,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { listOrders } from "./api";
@@ -508,7 +508,7 @@ onBeforeUnmount(() => {
       @update:expanded-row-keys="updateExpandedRowKeys"
     >
       <template #empty>
-        <NEmpty :description="error ? '订单加载失败' : '当前筛选范围内没有找到符合条件的订单'" />
+        <EmptyState :title="error ? '订单加载失败' : '当前筛选范围内没有找到符合条件的订单'" icon="orders" />
       </template>
     </NDataTable>
 

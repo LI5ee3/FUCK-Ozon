@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MorphIcon from "../../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../../shared/icons/tabler";
-import { NCard } from "naive-ui";
+import { NCard, NSkeleton } from "naive-ui";
 
 type AnalyticsKpi = {
   icon: IconName;
@@ -14,17 +14,25 @@ type AnalyticsKpi = {
 
 defineProps<{
   items: ReadonlyArray<AnalyticsKpi>;
+  loading?: boolean;
 }>();
 </script>
 
 <template>
-  <div class="analytics-kpi-grid">
+  <div v-if="loading && !items.length" class="analytics-kpi-grid">
+    <NCard v-for="i in 4" :key="i" :bordered="false" class="analytics-kpi-card">
+      <NSkeleton text width="55%" />
+      <NSkeleton text width="72%" class="kpi-skeleton-value" />
+      <NSkeleton text width="42%" />
+    </NCard>
+  </div>
+  <div v-else-if="items.length" class="analytics-kpi-grid">
     <NCard
       v-for="kpi in items"
       :key="kpi.label"
       :bordered="false"
       class="analytics-kpi-card"
-      :class="kpi.tone"
+      :class="`tone-${kpi.tone}`"
     >
       <div class="analytics-kpi-head">
         <span>{{ kpi.label }}</span>

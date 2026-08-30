@@ -13,11 +13,11 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NEmpty,
   NInput,
   NTag,
   useMessage,
 } from "naive-ui";
+import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
 import { listRfbsReturns, listReturns } from "./api";
@@ -726,7 +726,7 @@ onBeforeUnmount(() => {
           :scroll-x="1000"
           :row-key="cancelRowKey"
         >
-          <template #empty><NEmpty :description="cancelError ? '取消明细加载失败' : '当前筛选范围内没有取消记录'" /></template>
+          <template #empty><EmptyState :title="cancelError ? '取消明细加载失败' : '当前筛选范围内没有取消记录'" icon="returns" /></template>
         </NDataTable>
         <div v-if="cancelData" class="analytics-pager returns-pager">
           <NButton
@@ -796,7 +796,7 @@ onBeforeUnmount(() => {
           :scroll-x="1275"
           :row-key="rfbsRowKey"
         >
-          <template #empty><NEmpty :description="rfbsError ? '退货明细加载失败' : '当前筛选范围内没有退货申请'" /></template>
+          <template #empty><EmptyState :title="rfbsError ? '退货明细加载失败' : '当前筛选范围内没有退货申请'" icon="returns" /></template>
         </NDataTable>
         <div v-if="rfbsData" class="analytics-pager returns-pager">
           <NButton
