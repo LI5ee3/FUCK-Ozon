@@ -1,7 +1,6 @@
-import { h } from "vue";
-import MorphIcon from "../../shared/components/MorphIcon.vue";
-import type { MenuOption } from "naive-ui";
 import type { IconName } from "../../shared/icons/tabler";
+
+export type ToneName = "azure" | "lavender" | "mint" | "peach" | "butter";
 
 export interface NavigationItem {
   name: string;
@@ -13,12 +12,14 @@ export interface NavigationItem {
 
 export interface NavigationGroup {
   label: string;
+  tone: ToneName;
   items: NavigationItem[];
 }
 
 export const navigationGroups: NavigationGroup[] = [
   {
     label: "业务概览",
+    tone: "azure",
     items: [
       { name: "overview", label: "总览", path: "/", icon: "dashboard", description: "总览业务指标的 Vue 页面入口。" },
       { name: "orders", label: "订单", path: "/orders", icon: "orders", description: "订单数据的 Vue 页面入口。" },
@@ -27,6 +28,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     label: "广告管理",
+    tone: "butter",
     items: [
       { name: "advertising", label: "广告总览", path: "/ads", icon: "barChart", description: "广告总览的 Vue 页面入口。" },
       { name: "ad-campaigns", label: "广告活动", path: "/ads/campaigns", icon: "layers", description: "广告活动的 Vue 页面入口。" },
@@ -35,6 +37,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     label: "履约与异常",
+    tone: "peach",
     items: [
       { name: "timeliness", label: "发货与配送时效", path: "/timeliness", icon: "delivery", description: "发货与配送时效的 Vue 页面入口。" },
       { name: "risk", label: "订单取消分析", path: "/risk", icon: "risk", description: "订单取消分析的 Vue 页面入口。" },
@@ -45,6 +48,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     label: "供应链与数据",
+    tone: "mint",
     items: [
       { name: "inventory", label: "销量与备货建议", path: "/inventory", icon: "stock", description: "销量与备货建议的 Vue 页面入口。" },
       { name: "profit", label: "利润测算", path: "/profit", icon: "trendingUp", description: "利润测算的 Vue 页面入口。" },
@@ -54,6 +58,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     label: "系统配置",
+    tone: "lavender",
     items: [
       { name: "rules", label: "商品匹配规则", path: "/rules", icon: "rules", description: "商品匹配规则的 Vue 页面入口。" },
       { name: "push-subscriptions", label: "推送订阅管理", path: "/push-subscriptions", icon: "zap", description: "推送订阅管理的 Vue 页面入口。" },
@@ -63,14 +68,3 @@ export const navigationGroups: NavigationGroup[] = [
 ];
 
 export const navigationItems = navigationGroups.flatMap((group) => group.items);
-
-export const menuOptions: MenuOption[] = navigationGroups.map((group) => ({
-  type: "group",
-  label: group.label,
-  key: `group:${group.label}`,
-  children: group.items.map((item) => ({
-    label: item.label,
-    key: item.path,
-    icon: () => h(MorphIcon, { icon: item.icon, size: "18", strokeWidth: "1.8" }),
-  })),
-}));

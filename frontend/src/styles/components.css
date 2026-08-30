@@ -25,8 +25,8 @@
 }
 
 /* Icon press feedback: scale only, never color (Apple HIG). Applies inside
-   clickable elements; surfaces whose container already scales (sider footer)
-   are excluded to avoid compounding. */
+   clickable elements; surfaces whose container already scales (sidebar nav
+   items, sider footer card) are excluded to avoid compounding — see layout.css. */
 .morph-icon {
   transition: transform 0.15s var(--opanel-ease-fluid);
 }
@@ -34,9 +34,6 @@
 button:active .morph-icon,
 a:active .morph-icon {
   transform: scale(0.88);
-}
-.opanel-sider-footer .n-button:active .morph-icon {
-  transform: none;
 }
 
 /* Unified empty state: tone-tinted icon badge + guidance copy. */

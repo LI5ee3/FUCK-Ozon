@@ -8,7 +8,6 @@ import {
   NLayoutContent,
   NLayoutHeader,
   NLayoutSider,
-  NMenu,
   NSelect,
   useDialog,
   useLoadingBar,
@@ -19,7 +18,7 @@ import { logout as logoutRequest } from "../auth/api";
 import { ApiError, getErrorMessage, LOGOUT_EVENT } from "../../shared/api/client";
 import { useShop } from "../../shared/composables/useShop";
 import { useTheme } from "../../shared/composables/useTheme";
-import { menuOptions } from "../router/navigation";
+import { navigationGroups } from "../router/navigation";
 
 const route = useRoute();
 const router = useRouter();
@@ -110,44 +109,41 @@ onMounted(async () => {
         <img class="opanel-logo" :src="logoSrc" alt="oPanel" />
         <div class="opanel-brand-copy">
           <strong class="opanel-brand-name">oPanel</strong>
-          <span class="opanel-brand-pill">Macaron</span>
+          <span class="opanel-brand-pill tone-butter">Macaron</span>
         </div>
       </div>
-      <NMenu
-        :value="route.path"
-        :options="menuOptions"
-        :collapsed="collapsed"
-        :indent="16"
-        class="opanel-menu"
-        @update:value="navigate"
-      />
+      <nav class="opanel-nav" aria-label="主导航">
+        <section
+          v-for="group in navigationGroups"
+          :key="group.label"
+          class="opanel-nav-group"
+          :data-tone="group.tone"
+        >
+          <p class="opanel-nav-group-title">{{ group.label }}</p>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.path"
+            :to="item.path"
+            class="opanel-nav-item"
+            :class="{
+              'opanel-nav-item--selected': route.path === item.path,
+              [`tone-${group.tone}`]: route.path === item.path,
+            }"
+            :aria-current="route.path === item.path ? 'page' : undefined"
+          >
+            <morph-icon :icon="item.icon" size="18" stroke-width="1.8" />
+            <span>{{ item.label }}</span>
+          </RouterLink>
+        </section>
+      </nav>
       <div class="opanel-sider-footer">
-        <NButton
-          quaternary
-          circle
-          size="small"
-          class="opanel-theme-button"
-          aria-label="切换主题"
-          title="切换主题"
-          @click="toggleTheme"
-        >
-          <template #icon>
-            <morph-icon :icon="isDark ? 'moon' : 'sun'" size="16" stroke-width="1.8" />
-          </template>
-        </NButton>
-        <NButton
-          quaternary
-          circle
-          size="small"
-          class="opanel-settings-button"
-          aria-label="系统设置"
-          title="系统设置"
-          @click="navigate('/settings')"
-        >
-          <template #icon>
-            <morph-icon icon="settings" size="16" stroke-width="1.8" />
-          </template>
-        </NButton>
+        <NDropdown :options="userMenuOptions" trigger="click" @select="handleUserMenu">
+          <button type="button" class="opanel-user-card">
+            <span class="opanel-user-avatar">管</span>
+            <span>管理员</span>
+            <morph-icon icon="chevronDown" size="14" stroke-width="1.8" />
+          </button>
+        </NDropdown>
       </div>
     </NLayoutSider>
 
@@ -186,13 +182,6 @@ onMounted(async () => {
               <morph-icon icon="settings" size="17" stroke-width="1.8" />
             </template>
           </NButton>
-          <NDropdown :options="userMenuOptions" trigger="click" @select="handleUserMenu">
-            <NButton quaternary class="opanel-user-button">
-              <span class="opanel-user-avatar">管</span>
-              <span>管理员</span>
-              <morph-icon icon="chevronDown" size="14" stroke-width="1.8" />
-            </NButton>
-          </NDropdown>
         </div>
       </NLayoutHeader>
       <NLayoutContent class="opanel-content">

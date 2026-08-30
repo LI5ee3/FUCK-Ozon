@@ -50,79 +50,60 @@
 .opanel-brand-pill {
   padding: 2px 7px;
   border-radius: 9999px;
-  background: color-mix(in srgb, var(--opanel-text) 5%, transparent);
-  color: var(--opanel-muted);
+  color: var(--tone-ink);
   font-size: 10.5px;
   font-weight: 550;
   letter-spacing: -0.002em;
 }
 
-.opanel-menu.n-menu {
-  padding: 0 8px 8px;
+/* Tone-grouped navigation: each group owns one macaron hue (data-tone), and
+   the selected item renders as that hue's shell via the shared .tone-* class. */
+.opanel-nav {
+  padding: 4px 8px 12px;
 }
 
-.opanel-menu.n-menu .n-menu-item {
-  height: 40px;
-  margin-top: 0;
+.opanel-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.opanel-menu.n-menu .n-menu-item-content {
-  color: var(--opanel-muted);
-  font-weight: 500;
-  letter-spacing: -0.006em;
-  transition: color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
-}
-
-.opanel-menu.n-menu .n-menu-item-content::before {
-  border-radius: var(--opanel-radius-sm);
-  transition: background-color .16s var(--opanel-ease-fluid);
-}
-
-.opanel-menu.n-menu .n-menu-item-content:active {
-  transform: scale(0.97);
-}
-
-.opanel-menu.n-menu .n-menu-item-content__icon,
-.opanel-menu.n-menu .n-menu-item-content-header {
-  color: var(--opanel-muted);
-  transition: color .16s var(--opanel-ease-fluid);
-}
-
-.opanel-menu.n-menu .n-menu-item-content:hover::before,
-.opanel-menu.n-menu .n-menu-item-content--hover::before {
-  background-color: color-mix(in srgb, var(--opanel-text) 5%, transparent);
-}
-
-.opanel-menu.n-menu .n-menu-item-content:hover .n-menu-item-content__icon,
-.opanel-menu.n-menu .n-menu-item-content--hover .n-menu-item-content__icon,
-.opanel-menu.n-menu .n-menu-item-content:hover .n-menu-item-content-header,
-.opanel-menu.n-menu .n-menu-item-content--hover .n-menu-item-content-header {
-  color: var(--opanel-text);
-}
-
-.opanel-menu.n-menu .n-menu-item-content--selected::before,
-.opanel-menu.n-menu .n-menu-item-content--selected:hover::before,
-.opanel-menu.n-menu .n-menu-item-content--selected.n-menu-item-content--hover::before {
-  background-color: color-mix(in srgb, var(--opanel-primary) 12%, transparent);
-}
-
-.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content__icon,
-.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content-header {
-  color: var(--opanel-primary);
-}
-
-.opanel-menu.n-menu .n-menu-item-content--selected .n-menu-item-content-header {
-  font-weight: 650;
-}
-
-.opanel-menu.n-menu .n-menu-item-group .n-menu-item-group-title {
-  height: 28px;
-  margin-top: 16px;
-  padding-left: 24px !important;
+.opanel-nav-group-title {
+  margin: 16px 0 4px;
+  padding: 0 12px;
   color: var(--opanel-muted);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: -0.002em;
+}
+
+.opanel-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--opanel-radius-sm);
+  color: var(--opanel-muted);
+  font-weight: 500;
+  letter-spacing: -0.006em;
+  text-decoration: none;
+  transition: color .16s var(--opanel-ease-fluid), background-color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
+}
+
+.opanel-nav-item:hover {
+  color: var(--opanel-text);
+  background-color: color-mix(in srgb, var(--opanel-text) 5%, transparent);
+}
+
+.opanel-nav-item:active {
+  transform: scale(0.97);
+}
+
+.opanel-nav-item--selected,
+.opanel-nav-item--selected:hover {
+  color: var(--tone-ink);
+  font-weight: 650;
 }
 
 .opanel-sider-footer {
@@ -130,28 +111,48 @@
   bottom: 0;
   z-index: 2;
   display: flex;
-  align-items: center;
-  gap: 4px;
   margin-top: auto;
-  padding: 8px 16px 8px 24px;
+  padding: 8px 12px;
   border-top: 1px solid var(--opanel-line);
   background: var(--opanel-panel);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
 }
 
-.opanel-sider-footer .n-button {
-  color: var(--opanel-muted);
-  transition: color .16s var(--opanel-ease-fluid), background-color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
+.opanel-user-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--opanel-radius-sm);
+  background: transparent;
+  color: var(--opanel-text);
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  cursor: pointer;
+  transition: background-color .16s var(--opanel-ease-fluid), transform .2s var(--opanel-ease-fluid);
 }
 
-.opanel-sider-footer .n-button:hover {
-  color: var(--opanel-text);
+.opanel-user-card:hover {
   background-color: color-mix(in srgb, var(--opanel-text) 5%, transparent);
 }
 
-.opanel-sider-footer .n-button:active {
+.opanel-user-card:active {
   transform: scale(0.95);
+}
+
+.opanel-user-card > .morph-icon {
+  margin-left: auto;
+  color: var(--opanel-muted);
+}
+
+/* Container-level press scales; exclude the icon scale to avoid compounding. */
+.opanel-nav-item:active .morph-icon,
+.opanel-user-card:active .morph-icon {
+  transform: none;
 }
 
 .opanel-sider .n-layout-toggle-bar .n-layout-toggle-bar__top,
@@ -209,11 +210,6 @@
 
 .opanel-theme-button {
   color: var(--opanel-muted);
-}
-
-.opanel-user-button {
-  color: var(--opanel-text);
-  font-weight: 600;
 }
 
 .opanel-user-avatar {
