@@ -12,6 +12,7 @@ import {
   NDatePicker,
   NInput,
   NSelect,
+  NSpin,
   useMessage,
 } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
@@ -250,8 +251,11 @@ function renderProduct(row: AdSkuItem): VNodeChild {
   return h("span", { class: "ad-skus-product-name", title: row.product_name || "—" }, row.product_name || "—");
 }
 
-function renderInteger(value: number | null | undefined): VNodeChild {
-  return h("span", { class: "ad-skus-number" }, formatInteger(value));
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x, so long product names clip
+// with ellipsis instead of pushing numeric columns out of the viewport.
+function numberCell(value: string): VNodeChild {
+  return h("span", { class: "ad-skus-number" }, value);
 }
 
 async function copyValue(value: string): Promise<void> {
@@ -264,18 +268,18 @@ async function copyValue(value: string): Promise<void> {
 }
 
 const columns: DataTableColumns<AdSkuItem> = [
-  { key: "identity", title: "店铺 / SKU", minWidth: 160, render: renderSku },
-  { key: "product_name", title: "商品名称", minWidth: 280, render: renderProduct },
-  { key: "campaign_count", title: "Campaign数", width: 115, align: "right", render: (row) => renderInteger(row.campaign_count) },
-  { key: "impressions", title: "曝光", width: 105, align: "right", render: (row) => renderInteger(row.impressions) },
-  { key: "clicks", title: "点击", width: 100, align: "right", render: (row) => renderInteger(row.clicks) },
-  { key: "ctr", title: "CTR", width: 95, align: "right", render: (row) => rate(row.ctr) },
-  { key: "spend_rub", title: "广告花费", width: 135, align: "right", render: (row) => money(row.spend_rub) },
-  { key: "avg_cpc_rub", title: "平均 CPC", width: 135, align: "right", render: (row) => money(row.avg_cpc_rub) },
-  { key: "orders", title: "广告订单", width: 105, align: "right", render: (row) => renderInteger(row.orders) },
-  { key: "revenue_rub", title: "广告销售额", width: 145, align: "right", render: (row) => money(row.revenue_rub) },
-  { key: "drr", title: "DRR", width: 95, align: "right", render: (row) => rate(row.drr) },
-  { key: "roas", title: "ROAS", width: 95, align: "right", render: (row) => ratio(row.roas) },
+  { key: "identity", title: "店铺 / SKU", width: 200, render: renderSku },
+  { key: "product_name", title: "商品名称", width: 260, render: renderProduct },
+  { key: "campaign_count", title: "Campaign数", width: 110, align: "right", render: (row) => numberCell(formatInteger(row.campaign_count)) },
+  { key: "impressions", title: "曝光", width: 100, align: "right", render: (row) => numberCell(formatInteger(row.impressions)) },
+  { key: "clicks", title: "点击", width: 90, align: "right", render: (row) => numberCell(formatInteger(row.clicks)) },
+  { key: "ctr", title: "CTR", width: 90, align: "right", render: (row) => numberCell(rate(row.ctr)) },
+  { key: "spend_rub", title: "广告花费", width: 150, align: "right", render: (row) => numberCell(money(row.spend_rub)) },
+  { key: "avg_cpc_rub", title: "平均 CPC", width: 120, align: "right", render: (row) => numberCell(money(row.avg_cpc_rub)) },
+  { key: "orders", title: "广告订单", width: 100, align: "right", render: (row) => numberCell(formatInteger(row.orders)) },
+  { key: "revenue_rub", title: "广告销售额", width: 150, align: "right", render: (row) => numberCell(money(row.revenue_rub)) },
+  { key: "drr", title: "DRR", width: 90, align: "right", render: (row) => numberCell(rate(row.drr)) },
+  { key: "roas", title: "ROAS", width: 90, align: "right", render: (row) => numberCell(ratio(row.roas)) },
 ];
 
 watch(() => route.fullPath, () => {
@@ -352,8 +356,8 @@ onBeforeUnmount(() => {
 
     <NCard :bordered="false" class="ad-skus-card">
       <template #header>
-        <div class="ad-skus-panel-header">
-          <div class="ad-skus-panel-heading">
+        <div class="ads-panel-heading">
+          <div>
             <h2><morph-icon icon="tag" size="18" stroke-width="1.8" />SKU 广告分析</h2>
             <span>同店铺内按 SKU 聚合；全部店铺保留店铺维度，不跨店合并</span>
           </div>
@@ -385,7 +389,7 @@ onBeforeUnmount(() => {
 
       <div class="ad-skus-table-meta">
         <span>共 {{ formatNumber(total, 0) }} 个 SKU</span>
-        <span v-if="loading" class="ad-skus-loading-label">正在加载…</span>
+        <span v-if="loading" class="ads-loading-label"><NSpin size="small" />正在加载…</span>
       </div>
 
       <NDataTable
@@ -395,10 +399,11 @@ onBeforeUnmount(() => {
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="1580"
+        :scroll-x="1550"
+        table-layout="fixed"
         :row-key="rowKey"
       >
-        <template #empty><EmptyState :title="error ? 'SKU 广告数据加载失败' : '所选范围暂无 SKU 广告数据'" icon="barChart" /></template>
+        <template #empty><EmptyState :title="error ? 'SKU 广告数据加载失败' : '所选范围暂无 SKU 广告数据'" icon="tag" /></template>
       </NDataTable>
 
       <div class="ad-skus-pager">
