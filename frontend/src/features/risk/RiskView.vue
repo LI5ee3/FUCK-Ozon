@@ -409,20 +409,23 @@ function closeDetails(): void {
   detailLoading.value = false;
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x, so long product names clip
+// with ellipsis instead of stretching columns and pushing stats off-screen.
 const riskColumns: DataTableColumns<RiskItem> = [
-  { key: "identity", title: () => renderChannelHeader("商品信息"), minWidth: 300, render: renderRiskIdentity },
-  { key: "total", title: () => renderChannelHeader("综合概览"), minWidth: 180, render: (row) => renderRiskStats("综合", row.total) },
-  { key: "fbp", title: () => renderChannelHeader("FBP 渠道", "FBP"), minWidth: 180, render: (row) => renderRiskStats("FBP", row.channels.FBP) },
-  { key: "realFBS", title: () => renderChannelHeader("realFBS 渠道", "realFBS"), minWidth: 180, render: (row) => renderRiskStats("realFBS", row.channels.realFBS) },
-  { key: "WHD", title: () => renderChannelHeader("WHD 渠道", "WHD"), minWidth: 180, render: (row) => renderRiskStats("WHD", row.channels.WHD) },
+  { key: "identity", title: () => renderChannelHeader("商品信息"), width: 320, render: renderRiskIdentity },
+  { key: "total", title: () => renderChannelHeader("综合概览"), width: 170, render: (row) => renderRiskStats("综合", row.total) },
+  { key: "fbp", title: () => renderChannelHeader("FBP 渠道", "FBP"), width: 170, render: (row) => renderRiskStats("FBP", row.channels.FBP) },
+  { key: "realFBS", title: () => renderChannelHeader("realFBS 渠道", "realFBS"), width: 170, render: (row) => renderRiskStats("realFBS", row.channels.realFBS) },
+  { key: "WHD", title: () => renderChannelHeader("WHD 渠道", "WHD"), width: 170, render: (row) => renderRiskStats("WHD", row.channels.WHD) },
 ];
 
 const reasonColumns: DataTableColumns<RiskReasonRow> = [
-  { key: "reason", title: () => renderChannelHeader("固定取消原因"), minWidth: 330, render: renderReasonIdentity },
-  { key: "total", title: () => renderChannelHeader("综合合计"), minWidth: 170, render: (row) => renderReasonStats("综合", row.total) },
-  { key: "FBP", title: () => renderChannelHeader("FBP", "FBP"), minWidth: 150, render: (row) => renderReasonStats("FBP", row.channels.FBP) },
-  { key: "realFBS", title: () => renderChannelHeader("realFBS", "realFBS"), minWidth: 150, render: (row) => renderReasonStats("realFBS", row.channels.realFBS) },
-  { key: "WHD", title: () => renderChannelHeader("WHD", "WHD"), minWidth: 150, render: (row) => renderReasonStats("WHD", row.channels.WHD) },
+  { key: "reason", title: () => renderChannelHeader("固定取消原因"), width: 330, render: renderReasonIdentity },
+  { key: "total", title: () => renderChannelHeader("综合合计"), width: 170, render: (row) => renderReasonStats("综合", row.total) },
+  { key: "FBP", title: () => renderChannelHeader("FBP", "FBP"), width: 150, render: (row) => renderReasonStats("FBP", row.channels.FBP) },
+  { key: "realFBS", title: () => renderChannelHeader("realFBS", "realFBS"), width: 150, render: (row) => renderReasonStats("realFBS", row.channels.realFBS) },
+  { key: "WHD", title: () => renderChannelHeader("WHD", "WHD"), width: 150, render: (row) => renderReasonStats("WHD", row.channels.WHD) },
 ];
 
 watch(() => route.fullPath, () => {
@@ -542,8 +545,9 @@ onBeforeUnmount(() => {
         :pagination="false"
         :remote="true"
         :scroll-x="1000"
+        table-layout="fixed"
       >
-        <template #empty><EmptyState :title="matrixEmptyDescription" icon="risk" /></template>
+        <template #empty><EmptyState :title="matrixEmptyDescription" icon="shieldAlert" /></template>
       </NDataTable>
     </NCard>
 
@@ -564,9 +568,10 @@ onBeforeUnmount(() => {
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="930"
+        :scroll-x="950"
+        table-layout="fixed"
       >
-        <template #empty><EmptyState :title="reasonEmptyDescription" icon="alertCircle" /></template>
+        <template #empty><EmptyState :title="reasonEmptyDescription" icon="alertTriangle" /></template>
       </NDataTable>
 
       <div v-if="selectedReason" class="risk-reason-details">
@@ -602,7 +607,7 @@ onBeforeUnmount(() => {
             </div>
           </article>
         </div>
-        <EmptyState v-else title="当前时间范围内没有对应订单。" icon="orders" />
+        <EmptyState v-else title="当前时间范围内没有对应订单。" icon="alertTriangle" />
       </div>
     </NCard>
   </section>
