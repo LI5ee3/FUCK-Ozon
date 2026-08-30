@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./rules.css";
 import { computed, h, onMounted, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -10,6 +11,7 @@ import {
   NDataTable,
   NInput,
   NSelect,
+  NSkeleton,
   NSpin,
   NTag,
   useMessage,
@@ -110,7 +112,7 @@ const shortNameColumns: DataTableColumns<ProductShortName> = [
   {
     key: "sku",
     title: "SKU",
-    minWidth: 200,
+    width: 240,
     render: (row) => h("button", {
       type: "button",
       class: "rules-copy-button",
@@ -124,20 +126,20 @@ const shortNameColumns: DataTableColumns<ProductShortName> = [
   {
     key: "short_name",
     title: "中文短名称",
-    minWidth: 220,
+    width: 260,
     render: (row) => h("span", { class: "rules-short-name" }, row.short_name),
   },
   {
     key: "updated_at",
     title: "更新时间",
-    width: 170,
+    width: 180,
     align: "right",
     render: (row) => h("span", { class: "rules-time" }, formatBeijingDateTime(row.updated_at)),
   },
   {
     key: "actions",
     title: "操作",
-    width: 170,
+    width: 180,
     align: "right",
     render: (row) => h("div", { class: "rules-table-actions" }, [
       h(NButton, {
@@ -332,11 +334,6 @@ onMounted(() => { void loadRules(); });
 
 <template>
   <section class="rules-view">
-    <div v-if="!rulesData && loading" class="rules-loading">
-      <NSpin size="medium" />
-      <span>正在读取商品匹配规则…</span>
-    </div>
-
     <NAlert v-if="loadError" type="error" class="rules-error" :title="loadError">
       <div class="rules-error-content">
         <span>商品匹配规则未更新，请重试。</span>
@@ -344,32 +341,40 @@ onMounted(() => { void loadRules(); });
       </div>
     </NAlert>
 
+    <div v-if="loading && !rulesData" class="analytics-kpi-grid" aria-busy="true">
+      <NCard v-for="i in 4" :key="i" :bordered="false" class="analytics-kpi-card">
+        <NSkeleton text width="55%" />
+        <NSkeleton text width="72%" class="kpi-skeleton-value" />
+        <NSkeleton text width="42%" />
+      </NCard>
+    </div>
+
+    <div v-else-if="rulesData" class="analytics-kpi-grid">
+      <NCard
+        v-for="card in summaryCards"
+        :key="card.label"
+        :bordered="false"
+        class="analytics-kpi-card"
+        :class="`tone-${card.tone}`"
+      >
+        <div class="analytics-kpi-head">
+          <span>{{ card.label }} <NTag size="small" round :bordered="false" type="default">{{ card.badge }}</NTag></span>
+          <span class="analytics-icon-badge tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
+        </div>
+        <strong class="analytics-kpi-value tone-value rules-kpi-value">{{ formatInteger(card.value) }}<small>{{ card.unit }}</small></strong>
+        <small>{{ card.note }}</small>
+      </NCard>
+    </div>
+
     <template v-if="rulesData">
       <div v-if="loading" class="rules-refreshing" role="status">
         <NSpin size="small" /> 正在更新规则…
       </div>
 
-      <div class="rules-summary">
-        <NCard
-          v-for="card in summaryCards"
-          :key="card.label"
-          :bordered="false"
-          class="rules-summary-card"
-          :class="`tone-${card.tone}`"
-        >
-          <div class="rules-summary-head">
-            <span>{{ card.label }} <NTag size="small" round :bordered="false" type="default">{{ card.badge }}</NTag></span>
-            <span class="rules-summary-icon tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
-          </div>
-          <strong class="tone-value">{{ formatInteger(card.value) }}<small>{{ card.unit }}</small></strong>
-          <small>{{ card.note }}</small>
-        </NCard>
-      </div>
-
       <div class="rules-grid">
-        <NCard :bordered="false" class="rules-panel">
+        <NCard :bordered="false" class="analytics-table-card">
           <template #header>
-            <div class="rules-panel-heading">
+            <div class="analytics-panel-heading rules-panel-heading">
               <div>
                 <h2><morph-icon icon="tag" size="18" stroke-width="1.8" />中文短名称规则</h2>
                 <span>按 SKU 精准匹配并在全系统报表中展示</span>
@@ -417,22 +422,23 @@ onMounted(() => { void loadRules(); });
             :data="rulesData.short_names"
             :loading="loading"
             :pagination="false"
-            :scroll-x="720"
+            :scroll-x="860"
+            table-layout="fixed"
           >
             <template #empty>
-              <EmptyState :title="loadError ? '短名称规则加载失败' : '暂无短名称规则'" :hint="loadError ? undefined : '在上方输入 SKU 和中文短名称即可添加'" />
+              <EmptyState icon="tag" :title="loadError ? '短名称规则加载失败' : '暂无短名称规则'" :hint="loadError ? undefined : '在上方输入 SKU 和中文短名称即可添加'" />
             </template>
           </NDataTable>
         </NCard>
 
-        <NCard :bordered="false" class="rules-panel">
+        <NCard :bordered="false" class="analytics-table-card">
           <template #header>
-            <div class="rules-panel-heading">
+            <div class="analytics-panel-heading rules-panel-heading">
               <div>
                 <h2><morph-icon icon="gitMerge" size="18" stroke-width="1.8" />SKU / 货号全局合并</h2>
                 <span>主货号作为全局聚合的唯一分析身份</span>
               </div>
-              <NTag v-if="editingGroupId !== null" size="small" round type="info">编辑中</NTag>
+              <NTag v-if="editingGroupId !== null" size="small" round class="rules-tone-tag--azure">编辑中</NTag>
             </div>
           </template>
 
@@ -500,7 +506,7 @@ onMounted(() => { void loadRules(); });
                   <morph-icon icon="box" size="12" stroke-width="2" />
                   <span>主货号 · {{ group.primary_offer_id || "待设置" }}</span>
                 </div>
-                <NTag size="small" round :bordered="false" :type="group.status === 'active' ? 'success' : 'warning'">
+                <NTag size="small" round :bordered="false" :class="group.status === 'active' ? 'rules-tone-tag--mint' : 'rules-tone-tag--lavender'">
                   {{ group.status === "active" ? "生效" : "待处理" }}
                 </NTag>
               </div>
@@ -510,7 +516,7 @@ onMounted(() => { void loadRules(); });
                   v-for="member in group.members"
                   :key="`${member.key_type}:${member.key_value}`"
                   size="small"
-                  :type="member.key_type === 'sku' ? 'default' : 'info'"
+                  :class="member.key_type === 'sku' ? undefined : 'rules-tone-tag--azure'"
                 >
                   {{ member.key_type === "sku" ? "SKU" : "货号" }} · {{ member.key_value }}
                 </NTag>
@@ -537,7 +543,7 @@ onMounted(() => { void loadRules(); });
               </div>
             </article>
           </div>
-          <EmptyState v-else title="暂无全局合并关系" hint="在上方添加主货号与关联成员即可建立全局合并分析身份" />
+          <EmptyState v-else icon="gitMerge" title="暂无全局合并关系" hint="在上方添加主货号与关联成员即可建立全局合并分析身份" />
         </NCard>
       </div>
 
