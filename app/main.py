@@ -102,12 +102,14 @@ def _is_ozon_webhook_path(path):
 
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
+    # 安全边界必须基于路由匹配所用的 ASGI scope path；request.url.path 会被恶意 Host 头重构污染（CVE-2026-48710）
+    path = request.scope["path"]
     public = {"/api/login", "/api/session"}
-    webhook = _is_ozon_webhook_path(request.url.path)
-    if request.url.path.startswith("/api/") and request.url.path not in public and not webhook and not _authenticated(request):
+    webhook = _is_ozon_webhook_path(path)
+    if path.startswith("/api/") and path not in public and not webhook and not _authenticated(request):
         return Response(json.dumps({"detail": "未登录"}, ensure_ascii=False), 401, media_type="application/json")
-    if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path != "/api/login" and not webhook
-            and request.url.path.startswith("/api/")):
+    if (request.method in {"POST", "PUT", "PATCH", "DELETE"} and path != "/api/login" and not webhook
+            and path.startswith("/api/")):
         try:
             _, csrf, _ = request.cookies.get("session", "").split(".", 2)
         except ValueError:

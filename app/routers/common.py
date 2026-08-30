@@ -1,7 +1,8 @@
+import json
 import statistics
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from ..exchange import convert_compensation
 from ..ozon.client import BEIJING
@@ -38,6 +39,39 @@ def _overview_range(date_from=None, date_to=None, now=None):
     utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
     utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
     return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")
+
+
+def _invalid_json_constant(value):
+    raise ValueError(f"非法 JSON 常量: {value}")
+
+
+async def read_bounded_json(request: Request, max_bytes: int, label: str):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_bytes:
+                raise HTTPException(413, f"{label}请求体过大")
+        except ValueError as error:
+            raise HTTPException(400, "Content-Length无效") from error
+    chunks, size = [], 0
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > max_bytes:
+                raise HTTPException(413, f"{label}请求体过大")
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+    except AttributeError:
+        raw = await request.body()
+        if len(raw) > max_bytes:
+            raise HTTPException(413, f"{label}请求体过大")
+    try:
+        payload = json.loads(raw.decode("utf-8"), parse_constant=_invalid_json_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+        raise HTTPException(400, f"{label} JSON无效") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(400, f"{label} JSON必须是对象")
+    return payload
 
 
 def _utc_text(value):

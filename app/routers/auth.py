@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import ipaddress
+import os
 import secrets
 import time
 
@@ -10,9 +11,11 @@ from ..db import DATA_DIR
 from ..ozon.client import _env
 from ..security import (clear_login_failures, login_limited, password_matches,
                         record_login_failure)
+from .common import read_bounded_json
 
 
 router = APIRouter()
+LOGIN_MAX_BODY_BYTES = 8 * 1024
 _secret_path = None
 _secret_value = None
 
@@ -30,18 +33,36 @@ def _secret():
     return _secret_value
 
 
+def _generation():
+    try:
+        return int((DATA_DIR / "session_generation").read_text().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _rotate_generation():
+    # 单管理员模型：logout 轮换全局 generation 使所有已签发 session 立即失效，并发轮换竞争无害
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path = DATA_DIR / "session_generation"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(str(_generation() + 1))
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+
+
 def _token(csrf):
     expires = str(int(time.time()) + 86400)
-    value = f"{expires}.{csrf}"
+    value = f"{expires}.{csrf}.{_generation()}"
     signature = hmac.new(_secret(), value.encode(), hashlib.sha256).hexdigest()
     return f"{value}.{signature}"
 
 
 def _authenticated(request):
     try:
-        expires, csrf, signature = request.cookies.get("session", "").split(".", 2)
-        expected = hmac.new(_secret(), f"{expires}.{csrf}".encode(), hashlib.sha256).hexdigest()
-        return int(expires) > time.time() and hmac.compare_digest(signature, expected)
+        expires, csrf, generation, signature = request.cookies.get("session", "").split(".", 3)
+        expected = hmac.new(_secret(), f"{expires}.{csrf}.{generation}".encode(), hashlib.sha256).hexdigest()
+        return (int(expires) > time.time() and generation == str(_generation())
+                and hmac.compare_digest(signature, expected))
     except (ValueError, AttributeError):
         return False
 
@@ -85,7 +106,7 @@ async def login(request: Request, response: Response):
     key = _client_ip(request)
     if login_limited(key):
         raise HTTPException(429, "登录失败次数过多，请5分钟后重试")
-    body = await request.json()
+    body = await read_bounded_json(request, LOGIN_MAX_BODY_BYTES, "登录")
     if not password_matches(str(body.get("password", "")), salt, expected):
         record_login_failure(key)
         raise HTTPException(401, "密码错误")
@@ -99,5 +120,6 @@ async def login(request: Request, response: Response):
 
 @router.post("/api/logout")
 def logout(response: Response):
+    _rotate_generation()
     response.delete_cookie("session", path="/", httponly=True, samesite="strict")
     return {"ok": True}

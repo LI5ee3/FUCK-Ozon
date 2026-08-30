@@ -62,17 +62,20 @@ class VueProductionTest(unittest.TestCase):
         self.assertNotIn(str(missing), response.body.decode())
 
     def test_catch_all_is_last_and_never_handles_reserved_namespaces(self):
-        fallback_indices = [
-            index for index, route in enumerate(main.app.routes)
-            if route.path == "/{path:path}"
-        ]
-        self.assertEqual(len(fallback_indices), 1)
-        fallback_index = fallback_indices[0]
-        self.assertEqual(fallback_index, len(main.app.routes) - 1)
+        # fastapi >= 0.141 将 include_router 的路由包在 _IncludedRouter 里，需展平取 path
+        def route_paths(route):
+            nested = getattr(route, "original_router", None)
+            if nested is not None:
+                return [item.path for item in nested.routes if hasattr(item, "path")]
+            return [route.path] if hasattr(route, "path") else []
+
+        paths = [path for route in main.app.routes for path in route_paths(route)]
+        self.assertEqual(paths.count("/{path:path}"), 1)
+        self.assertEqual(paths[-1], "/{path:path}")
+        self.assertTrue(any(path.startswith("/api") for path in paths))
         self.assertLess(
-            max(index for index, route in enumerate(main.app.routes)
-                if route.path.startswith("/api")),
-            fallback_index,
+            max(index for index, path in enumerate(paths) if path.startswith("/api")),
+            len(paths) - 1,
         )
         for path in ("api/does-not-exist", "static/missing.js", "assets/missing.js"):
             with self.assertRaises(HTTPException) as error:
