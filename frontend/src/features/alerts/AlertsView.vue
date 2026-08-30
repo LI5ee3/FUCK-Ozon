@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./alerts.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import AlertSummaryCards from "./components/AlertSummaryCards.vue";
@@ -182,7 +183,7 @@ const summaryCards = computed<SummaryCard[]>(() => {
       icon: "activity",
       label: "广告异常",
       value: formatInteger(data.advertising),
-      tone: data.advertising ? "peach" : "mint",
+      tone: data.advertising ? "azure" : "mint",
       note: "花费、DRR、点击与订单规则",
     },
     {
@@ -451,41 +452,37 @@ function metricLine(row: AlertEvent): string {
   }
 }
 
-function severityType(value: AlertSeverity): "error" | "warning" | "info" {
-  if (value === "critical") return "error";
-  if (value === "high") return "warning";
-  return "info";
-}
-
 function renderSeverity(row: AlertEvent): VNodeChild {
-  return h(NTag, { size: "small", round: true, bordered: false, type: severityType(row.severity) }, {
-    default: () => severityLabels[row.severity],
-  });
+  return h("span", { class: `alerts-pill alerts-pill--${row.severity}` }, severityLabels[row.severity]);
 }
 
 function renderStatus(row: AlertEvent): VNodeChild {
   return h("div", { class: "alerts-status-cell" }, [
-    h(NTag, { size: "small", round: true, bordered: false, type: row.status === "open" ? "error" : "success" }, {
+    h("span", { class: `alerts-pill alerts-pill--${row.status === "open" ? "open" : "resolved"}` }, {
       default: () => `${row.status === "open" ? "活动" : "已恢复"}${row.acknowledged_at ? " · 已读" : ""}`,
     }),
     row.last_notify_error ? h("small", { class: "alerts-notify-error" }, row.last_notify_error) : null,
   ]);
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x (100+200+90+300+250+160+160+
+// 130+100 = 1490), so long campaign/SKU names clip with ellipsis instead of
+// stretching columns and pushing the datetime columns off-screen.
 const eventColumns: DataTableColumns<AlertEvent> = [
-  { key: "severity", title: "等级", width: 92, render: renderSeverity },
+  { key: "severity", title: "等级", width: 100, render: renderSeverity },
   {
     key: "object",
     title: "类型 / 对象",
-    minWidth: 180,
-    render: (row) => h("div", { class: "alerts-object-cell" }, [h("strong", row.rule_label), h("small", row.object_name || row.entity_id)]),
+    width: 200,
+    render: (row) => h("div", { class: "analytics-identity-cell alerts-object-cell" }, [h("strong", row.rule_label), h("small", row.object_name || row.entity_id)]),
   },
-  { key: "shop", title: "店铺", width: 110, render: (row) => h("span", { class: "alerts-shop-badge" }, row.shop_name) },
-  { key: "message", title: "触发原因", minWidth: 280, render: (row) => h("div", { class: "alerts-reason-cell" }, row.message || "—") },
-  { key: "metrics", title: "当前值 / 阈值", minWidth: 260, render: (row) => h("small", { class: "alerts-metric-line" }, metricLine(row)) },
+  { key: "shop", title: "店铺", width: 90, render: (row) => h("span", { class: "analytics-shop-badge" }, row.shop_name) },
+  { key: "message", title: "触发原因", width: 300, render: (row) => h("div", { class: "alerts-reason-cell" }, row.message || "—") },
+  { key: "metrics", title: "当前值 / 阈值", width: 250, render: (row) => h("small", { class: "alerts-metric-line" }, metricLine(row)) },
   { key: "first_seen_at", title: "首次发现", width: 160, render: (row) => formatBeijingDateTime(row.first_seen_at) },
   { key: "last_seen_at", title: "最近发现", width: 160, render: (row) => formatBeijingDateTime(row.last_seen_at) },
-  { key: "status", title: "状态", minWidth: 150, render: renderStatus },
+  { key: "status", title: "状态", width: 130, render: renderStatus },
   {
     key: "action",
     title: "操作",
@@ -555,13 +552,13 @@ onBeforeUnmount(() => {
 <template>
   <section class="alerts-view">
     <AlertSummaryCards :items="summaryCards" :loading="summaryLoading" />
-    <NAlert v-if="summaryError" type="error" class="alerts-error" :title="summaryError">
-      <div class="alerts-error-content"><span>预警汇总未更新，请重试。</span><NButton size="small" @click="retrySummary">重试</NButton></div>
+    <NAlert v-if="summaryError" type="error" class="analytics-error" :title="summaryError">
+      <div class="analytics-error-content"><span>预警汇总未更新，请重试。</span><NButton size="small" @click="retrySummary">重试</NButton></div>
     </NAlert>
 
-    <NCard :bordered="false" class="alerts-panel">
+    <NCard :bordered="false" class="analytics-table-card">
       <template #header>
-        <div class="alerts-panel-header">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="alertTriangle" size="18" stroke-width="1.8" />异常预警</h2>
             <span>只基于已同步到本地 SQLite 的数据；数据过期时会跳过判断</span>
@@ -586,31 +583,32 @@ onBeforeUnmount(() => {
         </NButton>
       </form>
 
-      <NAlert v-if="eventsError" type="error" class="alerts-error" :title="eventsError">
-        <div class="alerts-error-content"><span>预警列表未更新，请重试。</span><NButton size="small" @click="retryEvents">重试</NButton></div>
+      <NAlert v-if="eventsError" type="error" class="analytics-error" :title="eventsError">
+        <div class="analytics-error-content"><span>预警列表未更新，请重试。</span><NButton size="small" @click="retryEvents">重试</NButton></div>
       </NAlert>
-      <div class="alerts-table-meta"><span>共 {{ formatInteger(eventsData?.total ?? 0) }} 条预警</span><span v-if="eventsLoading" class="alerts-loading-label">正在加载…</span></div>
+      <div class="analytics-table-meta"><span>共 {{ formatInteger(eventsData?.total ?? 0) }} 条预警</span><span v-if="eventsLoading" class="analytics-loading-label">正在加载…</span></div>
       <NDataTable
-        class="alerts-table"
+        class="analytics-table alerts-table"
         :columns="eventColumns"
         :data="eventsData?.items ?? []"
         :loading="eventsLoading"
         :pagination="false"
         :remote="true"
-        :scroll-x="1240"
+        :scroll-x="1490"
+        table-layout="fixed"
         :row-key="(row: AlertEvent) => row.id"
       >
-        <template #empty><EmptyState :title="eventsError ? '预警列表加载失败' : '当前筛选范围内暂无预警'" icon="shieldAlert" /></template>
+        <template #empty><EmptyState :title="eventsError ? '预警列表加载失败' : '当前筛选范围内暂无预警'" icon="alertTriangle" /></template>
       </NDataTable>
-      <div v-if="eventsData" class="alerts-pager">
+      <div v-if="eventsData" class="analytics-pager">
         <span>第 {{ filters.page }} / {{ eventPageCount }} 页，共 {{ formatInteger(eventsData.total) }} 条</span>
         <NPagination :page="filters.page" :page-count="eventPageCount" :page-size="PAGE_SIZE" :disabled="eventsLoading" :page-slot="7" @update:page="changePage" />
       </div>
     </NCard>
 
-    <NCard :bordered="false" class="alerts-panel alerts-rules-panel">
+    <NCard :bordered="false" class="analytics-table-card">
       <template #header>
-        <div class="alerts-panel-header">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="sliders" size="18" stroke-width="1.8" />预警规则</h2>
             <span>两个店铺分别设置；保存后仅影响后续检查</span>
@@ -633,8 +631,8 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <NAlert v-if="rulesError" type="error" class="alerts-error" :title="rulesError">
-        <div class="alerts-error-content"><span>预警规则未更新，请重试。</span><NButton size="small" @click="retryRules">重试</NButton></div>
+      <NAlert v-if="rulesError" type="error" class="analytics-error" :title="rulesError">
+        <div class="analytics-error-content"><span>预警规则未更新，请重试。</span><NButton size="small" @click="retryRules">重试</NButton></div>
       </NAlert>
       <div v-if="rulesLoading" class="alerts-loading-state"><NSpin size="small" /><span>预警规则加载中…</span></div>
       <div v-else-if="currentRules.length" class="alerts-rules-list">
@@ -662,7 +660,7 @@ onBeforeUnmount(() => {
           </div>
         </article>
       </div>
-      <EmptyState v-else title="暂无规则配置" icon="rules" />
+      <EmptyState v-else title="暂无规则配置" icon="sliders" />
     </NCard>
   </section>
 </template>
