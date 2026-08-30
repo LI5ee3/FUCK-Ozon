@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import {
   NButton,
@@ -38,6 +38,20 @@ const userMenuOptions = [{ label: "退出", key: "logout" }];
 function navigate(path: string): void {
   void router.push(path);
 }
+
+/* Click pulse: the item's icon spring-morphs to a check, then reverts. */
+const morphingPath = ref<string | null>(null);
+let morphTimer: ReturnType<typeof setTimeout> | undefined;
+
+function pulseNavIcon(path: string): void {
+  morphingPath.value = path;
+  clearTimeout(morphTimer);
+  morphTimer = setTimeout(() => {
+    morphingPath.value = null;
+  }, 700);
+}
+
+onBeforeUnmount(() => clearTimeout(morphTimer));
 
 function showLogoutDialog(): void {
   let dialogInstance: ReturnType<typeof dialog.warning> | undefined;
@@ -130,8 +144,13 @@ onMounted(async () => {
               [`tone-${group.tone}`]: route.path === item.path,
             }"
             :aria-current="route.path === item.path ? 'page' : undefined"
+            @click="pulseNavIcon(item.path)"
           >
-            <morph-icon :icon="item.icon" size="18" stroke-width="1.8" />
+            <morph-icon
+              :icon="morphingPath === item.path ? 'check' : item.icon"
+              size="18"
+              stroke-width="1.8"
+            />
             <span>{{ item.label }}</span>
           </RouterLink>
         </section>
