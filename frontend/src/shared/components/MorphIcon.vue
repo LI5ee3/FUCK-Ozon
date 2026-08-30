@@ -7,8 +7,9 @@ withDefaults(
     icon: IconName;
     size?: number | string;
     strokeWidth?: number | string;
+    spring?: "smooth" | "snappy" | "bouncy";
   }>(),
-  { size: 20, strokeWidth: 1.5 },
+  { size: 20, strokeWidth: 1.5, spring: "snappy" },
 );
 </script>
 
@@ -18,6 +19,7 @@ withDefaults(
     :icon="getIcon(icon)"
     :size="size"
     :stroke-width="strokeWidth"
+    :spring="spring"
     reduced-motion="user"
   />
 </template>

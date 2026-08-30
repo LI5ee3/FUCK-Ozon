@@ -23,3 +23,19 @@
   color: var(--tone-ink, var(--opanel-primary));
   background: color-mix(in srgb, var(--tone-ink, var(--opanel-primary)) 13%, transparent);
 }
+
+/* Icon press feedback: scale only, never color (Apple HIG). Applies inside
+   clickable elements; surfaces whose container already scales (sider footer)
+   are excluded to avoid compounding. */
+.morph-icon {
+  transition: transform 0.15s var(--opanel-ease-fluid);
+}
+.n-button:active .morph-icon,
+button:active .morph-icon,
+a:active .morph-icon {
+  transform: scale(0.88);
+}
+.opanel-sider-footer .n-button:active .morph-icon {
+  transform: none;
+}
+

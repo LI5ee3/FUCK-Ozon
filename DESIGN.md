@@ -108,11 +108,14 @@ shapes:
   rounded-xs: "4px"
 
 physics:
-  # Fluid easing is the only easing in the codebase (--opanel-ease-fluid).
+  # Fluid easing is the only CSS easing (--opanel-ease-fluid); icon morphs use
+  # morphicons' spring physics with the shared "snappy" preset.
   ease-fluid: "cubic-bezier(0.16, 1, 0.3, 1)"
-  # Press feedback is per-component, not a global spring curve:
-  #   sidebar footer buttons scale(0.95), menu items scale(0.97), drag panels scale(0.995)
-  press-scale: "0.95 – 0.995 depending on component"
+  spring: "snappy (ζ=0.73, fast with subtle overshoot) — smooth/bouncy available per-call"
+  # Press feedback = scale transform, never a color change (Apple HIG):
+  #   containers: sidebar footer buttons scale(0.95), menu items scale(0.97), drag panels scale(0.995)
+  #   icons: .morph-icon inside any clicked button/link scales to 0.88 (excluded where the container already scales)
+  press-scale: "containers 0.95 – 0.995; icons 0.88 inside interactive elements"
   # Icon state changes morph via <MorphIcon>; motion respects the user's
   # reduced-motion preference (reduced-motion="user").
   icon-morph: "src/shared/components/MorphIcon.vue (morphicons/vue)"
@@ -120,7 +123,7 @@ physics:
 iconography:
   system: "Tabler Icons 24x24 stroke paths — hand-curated registry in frontend/src/shared/icons/tabler.ts (add new icons there), rendered through frontend/src/shared/components/MorphIcon.vue, a thin wrapper over morphicons/vue MorphIcon"
   stroke: "views pass stroke-width 1.8–2; component default is 1.5"
-  morphing: "icon swaps animate as morphs; honors prefers-reduced-motion"
+  morphing: "icon swaps animate as spring morphs (snappy preset); press feedback scales the icon to 0.88 while active; honors prefers-reduced-motion"
 ---
 
 # Design Philosophy
@@ -140,9 +143,9 @@ iconography:
 - **Optical Vertical Centering**: Icon-text pairs are optically centered against font x-height to prevent baseline drift.
 
 ### 4. Fluid Motion & Morphing Icons
-- Transitions use the shared fluid easing `--opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1)`.
-- Press feedback is tactile but per-component (scale 0.95–0.995 depending on surface size); there is no global spring curve.
-- **Icon morphing is a core behavior**: icon state changes (theme toggle, status flips, menu icons) go through `<MorphIcon>` (`frontend/src/shared/components/MorphIcon.vue`), which animates the swap as a morph and honors the user's reduced-motion setting.
+- Transitions use the shared fluid easing `--opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1)`; hover color/background/transform changes always animate, never snap.
+- **Press feedback is a scale transform, never a color change** (Apple HIG): containers compress by surface size (0.95–0.995), and any icon inside a pressed button/link compresses to 0.88 — without compounding on surfaces whose container already scales.
+- **Icon morphing is a core behavior**: icon state changes (theme toggle, status flips, menu icons) go through `<MorphIcon>` (`frontend/src/shared/components/MorphIcon.vue`), which animates the swap with morphicons' spring physics (shared `snappy` preset) and honors the user's reduced-motion setting.
 
 ### 5. NCard KPI Card Anatomy & Grid Standards
 All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel-line` border and `--opanel-shadow-sm` via CSS, 18px radius) sharing one anatomy and a per-domain class prefix:
