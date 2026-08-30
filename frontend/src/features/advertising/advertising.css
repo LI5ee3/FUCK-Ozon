@@ -179,7 +179,9 @@
   color: var(--opanel-primary);
 }
 
-.ads-panel-heading span:not(.ads-loading-label) {
+/* Direct-child scoping: the campaigns header embeds NSelect filters whose
+   internal spans must not inherit the subtitle styling. */
+.ads-panel-heading > div > span:not(.ads-loading-label) {
   display: block;
   margin-top: 4px;
   color: var(--opanel-muted);
@@ -415,44 +417,14 @@
   padding: 0 24px 20px;
 }
 
-.ad-campaigns-panel-header,
+/* Panel heading reuses the shared .ads-panel-heading classes from the ads
+   overview; only the filter row stays campaigns-specific. */
 .ad-campaigns-filter-inline,
 .ad-campaigns-table-meta,
 .ad-campaigns-pager,
 .ad-campaigns-pager-actions {
   display: flex;
   align-items: center;
-}
-
-.ad-campaigns-panel-header {
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.ad-campaigns-panel-heading {
-  min-width: 0;
-}
-
-.ad-campaigns-panel-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--opanel-text);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.ad-campaigns-panel-heading h2 .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.ad-campaigns-panel-heading span {
-  display: block;
-  margin-top: 4px;
-  color: var(--opanel-muted);
-  font-size: 12px;
 }
 
 .ad-campaigns-filter-inline {
@@ -474,10 +446,6 @@
 
 .ad-campaigns-table-meta {
   margin: 0 4px 8px;
-}
-
-.ad-campaigns-loading-label {
-  color: var(--opanel-primary);
 }
 
 .ad-campaigns-table {
@@ -528,9 +496,53 @@
   white-space: nowrap;
 }
 
+.ad-campaigns-number {
+  white-space: nowrap;
+}
+
+/* Inline state tags consume the shared macaron tone tokens (styles/tokens.css):
+   running→mint, inactive→lavender, stopped→peach, archived→neutral chip.
+   !important beats Naive's runtime-injected .n-tag background/border on ties. */
+.ad-campaigns-state-tag {
+  font-weight: 600;
+}
+
+.ad-campaigns-state-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ad-campaigns-state-tag--running {
+  border: 1px solid color-mix(in srgb, var(--opanel-tone-mint-text) 25%, transparent) !important;
+  background: var(--opanel-tone-mint-bg) !important;
+  color: var(--opanel-tone-mint-text) !important;
+}
+
+.ad-campaigns-state-tag--inactive {
+  border: 1px solid color-mix(in srgb, var(--opanel-tone-lavender-text) 25%, transparent) !important;
+  background: var(--opanel-tone-lavender-bg) !important;
+  color: var(--opanel-tone-lavender-text) !important;
+}
+
+.ad-campaigns-state-tag--stopped {
+  border: 1px solid color-mix(in srgb, var(--opanel-tone-peach-text) 25%, transparent) !important;
+  background: var(--opanel-tone-peach-bg) !important;
+  color: var(--opanel-tone-peach-text) !important;
+}
+
+.ad-campaigns-state-tag--archived {
+  border: 1px solid var(--opanel-line) !important;
+  background: var(--opanel-panel-hover) !important;
+  color: var(--opanel-muted) !important;
+}
+
 .ad-campaigns-state {
-  color: var(--opanel-text);
+  overflow: hidden;
+  color: var(--opanel-muted);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ad-campaigns-pager {
@@ -542,7 +554,7 @@
 }
 
 @media (max-width: 900px) {
-  .ad-campaigns-panel-header {
+  .ad-campaigns-view .ads-panel-heading {
     align-items: stretch;
     flex-direction: column;
   }

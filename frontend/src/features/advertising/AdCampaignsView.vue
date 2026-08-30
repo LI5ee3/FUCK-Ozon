@@ -11,9 +11,12 @@ import {
   NDataTable,
   NDatePicker,
   NSelect,
+  NSpin,
+  NTag,
   useMessage,
 } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
+import type { IconName } from "../../shared/icons/tabler";
 import type { DataTableColumns } from "naive-ui";
 import { getAdCampaignStats, type AdCampaignStatsQuery } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
@@ -40,13 +43,26 @@ type DatePreset = StandardDatePreset;
 
 const PAGE_SIZE = 50;
 const DEFAULT_SORT: AdCampaignSort = "spend_rub";
+// One source for the state filter options and the inline tone state tags
+// (DESIGN.md §3: status tags render inline, tone shells carry the color).
+const campaignStateMeta: ReadonlyArray<{ value: Exclude<AdCampaignState, "">; label: string; icon: IconName; tagClass: string }> = [
+  { value: "CAMPAIGN_STATE_RUNNING", label: "运行中", icon: "bolt", tagClass: "ad-campaigns-state-tag--running" },
+  { value: "CAMPAIGN_STATE_INACTIVE", label: "未激活", icon: "clock", tagClass: "ad-campaigns-state-tag--inactive" },
+  { value: "CAMPAIGN_STATE_ARCHIVED", label: "已归档", icon: "folder", tagClass: "ad-campaigns-state-tag--archived" },
+  { value: "CAMPAIGN_STATE_STOPPED", label: "已停止", icon: "xCircle", tagClass: "ad-campaigns-state-tag--stopped" },
+];
 const stateOptions: Array<{ label: string; value: AdCampaignState }> = [
   { label: "全部状态", value: "" },
-  { label: "运行中", value: "CAMPAIGN_STATE_RUNNING" },
-  { label: "未激活", value: "CAMPAIGN_STATE_INACTIVE" },
-  { label: "已归档", value: "CAMPAIGN_STATE_ARCHIVED" },
-  { label: "已停止", value: "CAMPAIGN_STATE_STOPPED" },
+  ...campaignStateMeta.map(({ value, label }) => ({ value, label })),
 ];
+const objectTypeLabels: Record<string, string> = {
+  SKU: "商品推广",
+  SEARCH_PROMO: "搜索推广",
+};
+const placementLabels: Record<string, string> = {
+  PLACEMENT_SEARCH_AND_CATEGORY: "搜索与分类",
+  PLACEMENT_TOP_PROMOTION: "置顶推广",
+};
 const sortOptions: Array<{ label: string; value: AdCampaignSort }> = [
   { label: "广告花费", value: "spend_rub" },
   { label: "广告销售额", value: "revenue_rub" },
@@ -233,14 +249,36 @@ function renderCampaign(row: AdCampaignItem): VNodeChild {
 }
 
 function renderState(row: AdCampaignItem): VNodeChild {
-  const label = row.state ? stateOptions.find((option) => option.value === row.state)?.label ?? row.state : "—";
-  return h("span", { class: "ad-campaigns-state", title: row.state || "—" }, label);
+  const meta = campaignStateMeta.find((item) => item.value === row.state);
+  if (!meta) return h("span", { class: "ad-campaigns-state", title: row.state || "—" }, row.state || "—");
+  return h(NTag, { bordered: false, round: true, size: "small", class: `ad-campaigns-state-tag ${meta.tagClass}`, title: row.state }, {
+    default: () => h("span", { class: "ad-campaigns-state-content" }, [
+      h(MorphIcon, { icon: meta.icon, size: "13", strokeWidth: "2" }),
+      meta.label,
+    ]),
+  });
+}
+
+function placementText(value: string | null): string {
+  if (!value) return "—";
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) throw new Error("placement is not an array");
+    const items = parsed.filter((item): item is string => typeof item === "string" && item !== "");
+    if (!items.length) return "—";
+    return items
+      .map((item) => placementLabels[item] ?? item.replace(/^PLACEMENT_/, "").replace(/_/g, " ").toLowerCase())
+      .join("、");
+  } catch {
+    return placementLabels[value] ?? value;
+  }
 }
 
 function renderType(row: AdCampaignItem): VNodeChild {
+  const type = row.adv_object_type ? objectTypeLabels[row.adv_object_type] ?? row.adv_object_type : "—";
   return h("div", { class: "ad-campaigns-type-cell" }, [
-    h("span", row.adv_object_type || "—"),
-    h("small", { class: "ad-campaigns-subline" }, row.placement || "—"),
+    h("span", type),
+    h("small", { class: "ad-campaigns-subline" }, placementText(row.placement)),
   ]);
 }
 
@@ -264,20 +302,27 @@ function integer(value: number): string {
   return formatInteger(value);
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x, so long campaign names clip
+// with ellipsis instead of pushing numeric columns out of the viewport.
+function numberCell(value: string): VNodeChild {
+  return h("span", { class: "ad-campaigns-number" }, value);
+}
+
 const columns: DataTableColumns<AdCampaignItem> = [
-  { key: "campaign", title: "Campaign", minWidth: 230, render: renderCampaign },
+  { key: "campaign", title: "Campaign", width: 240, render: renderCampaign },
   { key: "state", title: "状态", width: 110, render: renderState },
-  { key: "type", title: "类型 / Placement", width: 170, render: renderType },
-  { key: "weekly_budget", title: "周预算", width: 130, align: "right", render: (row) => money(row.weekly_budget) },
-  { key: "impressions", title: "曝光", width: 105, align: "right", render: (row) => integer(row.impressions) },
-  { key: "clicks", title: "点击", width: 100, align: "right", render: (row) => integer(row.clicks) },
-  { key: "ctr", title: "CTR", width: 95, align: "right", render: (row) => rate(row.ctr) },
-  { key: "spend_rub", title: "广告花费", width: 135, align: "right", render: (row) => money(row.spend_rub) },
-  { key: "avg_cpc_rub", title: "平均 CPC", width: 135, align: "right", render: (row) => money(row.avg_cpc_rub) },
-  { key: "orders", title: "订单", width: 95, align: "right", render: (row) => integer(row.orders) },
-  { key: "revenue_rub", title: "销售额", width: 135, align: "right", render: (row) => money(row.revenue_rub) },
-  { key: "drr", title: "DRR", width: 95, align: "right", render: (row) => rate(row.drr) },
-  { key: "roas", title: "ROAS", width: 95, align: "right", render: (row) => ratio(row.roas) },
+  { key: "type", title: "类型 / 版位", width: 170, render: renderType },
+  { key: "weekly_budget", title: "周预算", width: 130, align: "right", render: (row) => numberCell(money(row.weekly_budget)) },
+  { key: "impressions", title: "曝光", width: 100, align: "right", render: (row) => numberCell(integer(row.impressions)) },
+  { key: "clicks", title: "点击", width: 90, align: "right", render: (row) => numberCell(integer(row.clicks)) },
+  { key: "ctr", title: "CTR", width: 90, align: "right", render: (row) => numberCell(rate(row.ctr)) },
+  { key: "spend_rub", title: "广告花费", width: 150, align: "right", render: (row) => numberCell(money(row.spend_rub)) },
+  { key: "avg_cpc_rub", title: "平均 CPC", width: 120, align: "right", render: (row) => numberCell(money(row.avg_cpc_rub)) },
+  { key: "orders", title: "订单", width: 90, align: "right", render: (row) => numberCell(integer(row.orders)) },
+  { key: "revenue_rub", title: "销售额", width: 150, align: "right", render: (row) => numberCell(money(row.revenue_rub)) },
+  { key: "drr", title: "DRR", width: 90, align: "right", render: (row) => numberCell(rate(row.drr)) },
+  { key: "roas", title: "ROAS", width: 90, align: "right", render: (row) => numberCell(ratio(row.roas)) },
 ];
 
 watch(() => route.fullPath, () => {
@@ -354,8 +399,8 @@ onBeforeUnmount(() => {
 
     <NCard :bordered="false" class="ad-campaigns-card">
       <template #header>
-        <div class="ad-campaigns-panel-header">
-          <div class="ad-campaigns-panel-heading">
+        <div class="ads-panel-heading">
+          <div>
             <h2><morph-icon icon="layers" size="18" stroke-width="1.8" />广告活动</h2>
             <span>Campaign 元数据与本地广告日统计区间汇总</span>
           </div>
@@ -380,7 +425,7 @@ onBeforeUnmount(() => {
 
       <div class="ad-campaigns-table-meta">
         <span>共 {{ formatNumber(total, 0) }} 个 Campaign</span>
-        <span v-if="loading" class="ad-campaigns-loading-label">正在加载…</span>
+        <span v-if="loading" class="ads-loading-label"><NSpin size="small" />正在加载…</span>
       </div>
 
       <NDataTable
@@ -390,10 +435,11 @@ onBeforeUnmount(() => {
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="1650"
+        :scroll-x="1620"
+        table-layout="fixed"
         :row-key="campaignRowKey"
       >
-        <template #empty><EmptyState :title="error ? '广告活动加载失败' : '所选范围暂无 Campaign 数据'" icon="barChart" /></template>
+        <template #empty><EmptyState :title="error ? '广告活动加载失败' : '所选范围暂无 Campaign 数据'" icon="layers" /></template>
       </NDataTable>
 
       <div class="ad-campaigns-pager">
