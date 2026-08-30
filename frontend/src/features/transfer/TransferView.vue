@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./transfer.css";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -242,9 +243,9 @@ onBeforeUnmount(() => {
 <template>
   <section class="transfer-view">
     <div class="transfer-grid">
-      <NCard :bordered="false" class="transfer-card transfer-import-card">
+      <NCard :bordered="false" class="analytics-table-card transfer-import-card">
         <template #header>
-          <div class="transfer-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="uploadCloud" size="18" stroke-width="1.8" />CSV 历史数据导入</h2>
               <span>仅补充 API 缺失的历史订单数据，时间按 UTC 解析</span>
@@ -318,9 +319,9 @@ onBeforeUnmount(() => {
         </form>
       </NCard>
 
-      <NCard :bordered="false" class="transfer-card transfer-export-card">
+      <NCard :bordered="false" class="analytics-table-card transfer-export-card">
         <template #header>
-          <div class="transfer-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="download" size="18" stroke-width="1.8" />结构化数据导出</h2>
               <span>保留适合 AI 深度分析的结构化字段，敏感密钥与隐私信息已自动脱敏</span>
@@ -386,9 +387,9 @@ onBeforeUnmount(() => {
       </NCard>
     </div>
 
-    <NCard :bordered="false" class="transfer-card transfer-history-card">
+    <NCard :bordered="false" class="analytics-table-card transfer-history-card">
       <template #header>
-        <div class="transfer-panel-heading">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="clock" size="18" stroke-width="1.8" />最近导入记录</h2>
             <span>保留最近 10 次 CSV 导入记录，不受时间范围影响</span>

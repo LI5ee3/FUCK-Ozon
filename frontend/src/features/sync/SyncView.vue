@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./sync.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -56,6 +57,7 @@ import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared
 
 type DatePreset = StandardDatePreset;
 type SummaryTone = "azure" | "peach" | "mint" | "lavender";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type AutoDraft = { enabled: boolean; interval_hours: number; range_days: number };
 
 const shopIds: ShopId[] = [1, 2];
@@ -148,7 +150,11 @@ const exchangeActivePreset = computed<DatePreset | "">(() => findActivePreset(ex
 const enabledCount = computed(() => autoSettings.value.filter((row) => Boolean(row.enabled)).length);
 const failedCount = computed(() => syncRuns.value.filter((row) => row.status === "failed").length);
 const lastSuccess = computed(() => syncRuns.value.find((row) => row.status === "success") ?? null);
-const summaryCards = computed<Array<{ icon: IconName; label: string; value: string; note: string; tone: SummaryTone }>>(() => [
+const summaryLoading = computed(() => historyLoading.value || autoLoading.value || exchangeLoading.value);
+const summaryReady = computed(() => Boolean(syncRuns.value.length || autoSettings.value.length || exchange.value));
+const summaryCards = computed<Array<{ icon: IconName; label: string; value: string; note: string; tone: SummaryTone }>>(() => {
+  if (!summaryReady.value) return [];
+  return [
   {
     icon: "sync",
     label: "自动拉取配置",
@@ -179,7 +185,8 @@ const summaryCards = computed<Array<{ icon: IconName; label: string; value: stri
     note: failedCount.value > 0 ? "发生同步异常时自动推送钉钉告警" : "最近 10 次拉取任务运行正常",
     tone: failedCount.value > 0 ? "peach" as SummaryTone : "azure" as SummaryTone,
   },
-]);
+  ];
+});
 const exchangeLastSuccess = computed(() => exchangeLoading.value ? "加载中…" : formatBeijingDateTime(exchange.value?.last_success_at));
 const exchangeDataThrough = computed(() => exchangeLoading.value ? "加载中…" : formatBeijingDateTime(exchange.value?.data_through));
 const historyEmptyDescription = computed(() => {
@@ -204,11 +211,7 @@ const historyColumns: DataTableColumns<SyncRun> = [
     width: 190,
     render: (row) => h("div", { class: "sync-history-module" }, [
       h("strong", moduleLabel(row.module)),
-      h(NTag, {
-        size: "small",
-        bordered: false,
-        type: row.run_source === "auto" ? "success" : "default",
-      }, { default: () => row.run_source === "auto" ? "自动" : "手动" }),
+      renderStatusTag(row.run_source === "auto" ? "自动" : "手动", row.run_source === "auto" ? "mint" : "", "small"),
     ]),
   },
   {
@@ -226,7 +229,7 @@ const historyColumns: DataTableColumns<SyncRun> = [
   {
     title: "执行详情 / 错误",
     key: "error",
-    minWidth: 220,
+    width: 220,
     render: (row) => h("span", {
       class: row.error ? "sync-history-error" : "sync-history-detail",
       title: row.error ?? undefined,
@@ -268,22 +271,34 @@ function successDetail(row: SyncRun): string {
   return row.status === "success" ? `共拉取 ${formatInteger(row.records)} 条记录` : "—";
 }
 
-function runStatusType(status: string): "success" | "error" | "info" {
-  if (status === "success") return "success";
-  if (status === "failed") return "error";
-  return "info";
+function runStatusTone(status: string): MacaronTone | "" {
+  if (status === "success") return "mint";
+  if (status === "failed") return "peach";
+  if (status === "running") return "lavender";
+  return "";
+}
+
+// Macaron tone mapping (DESIGN.md §colors.tones): mint = 成功/自动调度,
+// peach = 失败, lavender = 进行中; no shell = 描述性标签.
+function renderStatusTag(label: string, tone: MacaronTone | "", size: "small" | "medium" = "medium"): VNodeChild {
+  return h(NTag, {
+    size,
+    bordered: false,
+    type: "default",
+    class: tone ? `sync-tone-tag--${tone}` : "",
+  }, { default: () => label });
 }
 
 function renderRunStatus(row: SyncRun): VNodeChild {
   const label = row.status === "success" ? "成功" : row.status === "failed" ? "失败" : "进行中";
   if (row.status !== "running") {
-    return h(NTag, { type: runStatusType(row.status), bordered: false }, { default: () => label });
+    return renderStatusTag(label, runStatusTone(row.status));
   }
   const total = Math.max(1, row.progress_total);
   const done = Math.max(0, Math.min(row.progress_done, total));
   const percentage = Math.round((done / total) * 100);
   return h("div", { class: "sync-history-running" }, [
-    h(NTag, { type: "info", bordered: false }, { default: () => label }),
+    renderStatusTag(label, "lavender"),
     h("span", { class: "sync-progress-count" }, `${row.progress_done} / ${row.progress_total}`),
     h("span", { class: "sync-progress-records" }, `${formatInteger(row.records)} 条记录`),
     h(NProgress, {
@@ -566,29 +581,17 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="sync-view">
-    <div class="sync-page-heading">
-      <div>
-        <p class="sync-eyebrow">DATA SYNC CENTER</p>
-        <h1>数据同步中心</h1>
-        <p>集中管理订单、售后、库存与广告数据的手动拉取和自动同步。</p>
-      </div>
-      <div class="sync-page-context">
-        <morph-icon icon="clock" size="15" stroke-width="1.8" />
-        <span>自动调度使用北京时间 · 手动订单日期使用莫斯科时间</span>
-      </div>
-    </div>
-
-    <SyncSummaryCards :items="summaryCards" />
+    <SyncSummaryCards :items="summaryCards" :loading="summaryLoading" />
 
     <div class="sync-main-grid">
-      <NCard :bordered="false" class="sync-panel sync-manual-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
-          <div class="sync-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="sync" size="18" stroke-width="1.8" />手动数据同步</h2>
-              <span>选择单个店铺后执行一次性拉取，普通订单类任务会显示实时分段进度。</span>
+              <span>选择单个店铺后执行一次性拉取，普通订单类任务会显示实时分段进度。自动调度使用北京时间 · 手动订单日期使用莫斯科时间。</span>
             </div>
-            <NTag :type="selectedShopId === 0 ? 'warning' : 'info'" :bordered="false">
+            <NTag :bordered="false" :class="selectedShopId === 0 ? 'sync-tone-tag--butter' : 'sync-tone-tag--azure'">
               {{ manualShopHint }}
             </NTag>
           </div>
@@ -644,11 +647,11 @@ onBeforeUnmount(() => {
         </div>
       </NCard>
 
-      <NCard :bordered="false" class="sync-panel sync-exchange-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
-          <div class="sync-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
-          <h2><morph-icon icon="sync" size="18" stroke-width="1.8" />Ozon 官方汇率</h2>
+          <h2><morph-icon icon="coins" size="18" stroke-width="1.8" />Ozon 官方汇率</h2>
               <span>独立于 Profit 测算汇率，状态来自 `/api/exchange-rates`。</span>
             </div>
             <NSpin v-if="exchangeLoading" size="small" />
@@ -715,9 +718,9 @@ onBeforeUnmount(() => {
       </NCard>
     </div>
 
-    <NCard :bordered="false" class="sync-panel sync-auto-panel">
+    <NCard :bordered="false" class="analytics-table-card">
       <template #header>
-        <div class="sync-panel-heading">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="calendar" size="18" stroke-width="1.8" />自动同步配置</h2>
             <span>后端负责北京时间调度、同槽位去重、运行去重与失败冷却；这里仅保存每店铺每模块的配置。</span>
@@ -735,7 +738,7 @@ onBeforeUnmount(() => {
               <span class="sync-section-kicker">SHOP {{ shopId }}</span>
               <h3><morph-icon icon="store" size="16" stroke-width="1.8" />{{ shopName(shopId) }}</h3>
             </div>
-            <NTag size="small" type="info" :bordered="false">5 个模块</NTag>
+            <NTag size="small" :bordered="false" class="sync-tone-tag--azure">5 个模块</NTag>
           </div>
           <div class="sync-auto-list">
             <article v-for="item in autoModules" :key="item.module" class="sync-auto-row">
@@ -778,9 +781,9 @@ onBeforeUnmount(() => {
       </div>
     </NCard>
 
-    <NCard :bordered="false" class="sync-panel sync-history-panel">
+    <NCard :bordered="false" class="analytics-table-card">
       <template #header>
-        <div class="sync-panel-heading">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="clock" size="18" stroke-width="1.8" />最近同步记录</h2>
             <span>后端按最新 10 条记录返回；进行中的任务会在同步期间刷新。</span>
@@ -791,21 +794,19 @@ onBeforeUnmount(() => {
       <NAlert v-if="historyError" type="error" :bordered="false" class="sync-error-alert">
         拉取记录加载失败：{{ historyError }}
       </NAlert>
-      <div class="sync-history-table">
-        <NDataTable
-          :columns="historyColumns"
-          :data="syncRuns"
-          :row-key="(row) => row.id"
-          :scroll-x="980"
-          :bordered="false"
-          :single-line="false"
-          :loading="historyLoading"
-        >
-          <template #empty>
-            <EmptyState :title="historyEmptyDescription" icon="fileText" />
-          </template>
-        </NDataTable>
-      </div>
+      <NDataTable
+        class="analytics-table"
+        :columns="historyColumns"
+        :data="syncRuns"
+        :row-key="(row) => row.id"
+        :scroll-x="980"
+        table-layout="fixed"
+        :loading="historyLoading"
+      >
+        <template #empty>
+          <EmptyState :title="historyEmptyDescription" icon="clock" />
+        </template>
+      </NDataTable>
     </NCard>
   </section>
 </template>

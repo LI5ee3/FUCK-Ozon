@@ -3,62 +3,9 @@
   padding-top: 8px;
 }
 
-.profit-card {
-  min-width: 0;
-  margin-bottom: 20px;
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  background: var(--opanel-panel-solid) !important;
-  box-shadow: var(--opanel-shadow-sm);
-}
-
-.profit-card .n-card__header {
-  padding: 20px 24px 0;
-}
-
-.profit-card .n-card__content {
-  padding: 20px 24px 24px;
-}
-
-.profit-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.profit-panel-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--opanel-text);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.profit-panel-heading h2 .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.profit-panel-heading > div > span {
-  display: block;
-  margin-top: 4px;
-  color: var(--opanel-muted);
-  font-size: 12px;
-}
-
 .profit-notice {
   margin-top: 16px;
-  border: 1px solid color-mix(in srgb, var(--opanel-warning) 28%, var(--opanel-line)) !important;
   border-radius: var(--opanel-radius-input) !important;
-  background: color-mix(in srgb, var(--opanel-warning) 10%, var(--opanel-panel-solid)) !important;
-}
-
-.profit-notice .n-alert__content {
-  color: var(--opanel-text);
-  font-size: 12.5px;
 }
 
 .profit-input-grid {
@@ -217,55 +164,19 @@
   font-weight: 600;
 }
 
+/* Macaron tone shells for status tags (DESIGN.md §colors.tones): azure = 履约路径,
+   mint = 已接入, butter = 待输入; neutral default tag = 描述性状态. */
+.profit-tone-tag--azure { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.profit-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.profit-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+
 .profit-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  margin-bottom: 0;
 }
 
-.profit-summary-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-card);
-}
-
-.profit-summary-card > span {
-  color: var(--opanel-muted);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.profit-summary-card strong {
-  overflow: hidden;
-  color: var(--opanel-text);
-  font-size: 24px;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.025em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profit-summary-card strong.is-negative {
+.profit-summary-grid .analytics-kpi-value.is-negative {
   color: var(--opanel-danger);
 }
-
-.profit-summary-card small {
-  overflow: hidden;
-  color: var(--opanel-muted);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profit-summary-card.azure { background: color-mix(in srgb, var(--opanel-primary) 10%, var(--opanel-panel-solid)); }
-.profit-summary-card.peach { background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid)); }
-.profit-summary-card.mint { background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid)); }
-.profit-summary-card.lavender { background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)); }
 
 .profit-summary-note {
   margin: 14px 0 0;
@@ -277,28 +188,18 @@
   .profit-input-grid {
     grid-template-columns: 1fr;
   }
-
-  .profit-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 640px) {
-  .profit-card .n-card__header,
-  .profit-card .n-card__content {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .profit-panel-heading {
+  .profit-panel-heading,
+  .analytics-panel-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .profit-fields-grid,
   .profit-conversion-values,
-  .profit-cost-list,
-  .profit-summary-grid {
+  .profit-cost-list {
     grid-template-columns: 1fr;
   }
 }

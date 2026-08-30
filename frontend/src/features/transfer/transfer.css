@@ -10,51 +10,8 @@
   margin-bottom: 20px;
 }
 
-.transfer-card {
-  min-width: 0;
-  margin-bottom: 20px;
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  background: var(--opanel-panel-solid) !important;
-  box-shadow: var(--opanel-shadow-sm);
-}
-
-.transfer-card .n-card__header {
-  padding: 20px 24px 0;
-}
-
-.transfer-card .n-card__content {
-  min-width: 0;
-  padding: 20px 24px 24px;
-}
-
-.transfer-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.transfer-panel-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--opanel-text);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.transfer-panel-heading h2 .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.transfer-panel-heading span {
-  display: block;
-  margin-top: 4px;
-  color: var(--opanel-muted);
-  font-size: 12px;
+.transfer-grid > .n-card {
+  margin-bottom: 0;
 }
 
 .transfer-import-form,
@@ -74,12 +31,12 @@
 }
 
 .transfer-step-heading {
-  display: flex !important;
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 !important;
-  color: var(--opanel-text) !important;
-  font-size: 13px !important;
+  margin: 0;
+  color: var(--opanel-text);
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -119,14 +76,15 @@
   transform: scale(0.995);
 }
 
+/* Invalid → peach shell, ready → mint shell (DESIGN.md §colors.tones). */
 .transfer-file-panel.is-invalid {
   border-color: var(--opanel-danger);
-  background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid));
+  background: var(--opanel-tone-peach-bg);
 }
 
 .transfer-file-panel.is-ready {
-  border-color: color-mix(in srgb, var(--opanel-success) 50%, var(--opanel-primary));
-  background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid));
+  border-color: var(--opanel-success);
+  background: var(--opanel-tone-mint-bg);
 }
 
 .transfer-file-panel:focus-visible {
@@ -197,8 +155,8 @@
   line-height: 1.4;
 }
 
-.transfer-import-status.is-success { color: var(--opanel-success); }
-.transfer-import-status.is-error { color: var(--opanel-danger); }
+.transfer-import-status.is-success { color: var(--opanel-tone-mint-text); }
+.transfer-import-status.is-error { color: var(--opanel-tone-peach-text); }
 
 .transfer-date-controls {
   display: flex;
@@ -306,6 +264,7 @@
   border-radius: var(--opanel-radius-sm);
 }
 
+/* Module icon badges consume the shared tone ink tokens (13% tint, like tone-badge). */
 .transfer-export-module.transfer-accent-butter .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-butter-text) 13%, transparent); color: var(--opanel-tone-butter-text); }
 .transfer-export-module.transfer-accent-peach .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-peach-text) 13%, transparent); color: var(--opanel-tone-peach-text); }
 .transfer-export-module.transfer-accent-lavender .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-lavender-text) 13%, transparent); color: var(--opanel-tone-lavender-text); }
@@ -344,20 +303,20 @@
 }
 
 .transfer-history-refresh {
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--opanel-primary) !important;
+  color: var(--opanel-primary);
   white-space: nowrap;
 }
 
 .transfer-history-error {
   margin-bottom: 12px;
   padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--opanel-danger) 30%, var(--opanel-line));
+  border: 1px solid var(--opanel-danger);
   border-radius: var(--opanel-radius-input);
-  background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid));
-  color: var(--opanel-danger);
+  background: var(--opanel-tone-peach-bg);
+  color: var(--opanel-tone-peach-text);
   font-size: 12px;
 }
 
@@ -412,7 +371,7 @@
   width: 26px;
   height: 26px;
   border-radius: var(--opanel-radius-sm);
-  background: color-mix(in srgb, var(--opanel-primary) 12%, var(--opanel-panel-solid));
+  background: var(--opanel-primary-soft);
   color: var(--opanel-primary);
 }
 
@@ -437,9 +396,10 @@
   font-size: 10px;
 }
 
-.transfer-channel-tag.is-FBP { color: var(--opanel-primary); }
-.transfer-channel-tag.is-realFBS { color: var(--opanel-success); }
-.transfer-channel-tag.is-WHD { color: var(--opanel-warning); }
+/* Channel hue shells (DESIGN.md §colors.tones): FBP → azure, realFBS → mint, WHD → butter. */
+.transfer-channel-tag.is-FBP { background: var(--opanel-tone-azure-bg); color: var(--opanel-tone-azure-text); }
+.transfer-channel-tag.is-realFBS { background: var(--opanel-tone-mint-bg); color: var(--opanel-tone-mint-text); }
+.transfer-channel-tag.is-WHD { background: var(--opanel-tone-butter-bg); color: var(--opanel-tone-butter-text); }
 
 .transfer-history-table td small {
   color: var(--opanel-muted);
@@ -469,9 +429,8 @@
 }
 
 @media (max-width: 640px) {
-  .transfer-card .n-card__header,
-  .transfer-card .n-card__content { padding-right: 16px; padding-left: 16px; }
-  .transfer-panel-heading { align-items: flex-start; flex-direction: column; }
+  .transfer-panel-heading,
+  .analytics-panel-heading { align-items: flex-start; flex-direction: column; }
   .transfer-file-panel { align-items: flex-start; flex-wrap: wrap; }
   .transfer-file-meta { flex-basis: calc(100% - 60px); }
   .transfer-file-panel > .n-button { margin-left: 58px; }

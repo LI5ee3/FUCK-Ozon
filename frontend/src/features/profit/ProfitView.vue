@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./profit.css";
 import { computed, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -82,7 +83,7 @@ const summaryNote = computed(() => result.value.profit_cny === null
   ? `请输入有效的平台售价、采购价格和测算汇率；${profitNotice.value}`
   : profitNotice.value);
 
-type ProfitTagType = "default" | "info" | "success" | "warning";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 
 function updateShop(value: string | number | null): void {
   if (value === 1 || value === "1") profitShopId.value = 1;
@@ -97,11 +98,12 @@ function updateChannel(value: string | number | null): void {
   if (value === "hongkong" || value === "shenzhen") realFbsChannel.value = value;
 }
 
-function statusTagType(status: ProfitCostStatus): ProfitTagType {
-  if (status === "implemented") return "success";
-  if (status === "missing_input") return "warning";
-  if (status === "not_applicable") return "info";
-  return "default";
+// Macaron tone mapping (DESIGN.md §colors.tones): mint = 已接入,
+// butter = 待输入, descriptive statuses stay neutral.
+function statusTone(status: ProfitCostStatus): MacaronTone | "" {
+  if (status === "implemented") return "mint";
+  if (status === "missing_input") return "butter";
+  return "";
 }
 
 function formatProfitMoney(value: number | null, currency = "CNY"): string {
@@ -119,13 +121,13 @@ function formatProfitPercent(value: number | null): string {
 
 <template>
   <section class="profit-view">
-    <NCard :bordered="false" class="profit-card profit-intro-panel">
-      <div class="profit-panel-heading">
+    <NCard :bordered="false" class="analytics-table-card profit-intro-panel">
+      <div class="analytics-panel-heading">
         <div>
           <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />利润测算</h2>
           <span>按店铺定价币种换算，当前结果统一以人民币展示</span>
         </div>
-        <NTag type="primary" round>第一阶段框架</NTag>
+        <NTag round>第一阶段框架</NTag>
       </div>
       <NAlert type="warning" class="profit-notice" role="status">
         <template #icon><morph-icon icon="alertCircle" size="15" stroke-width="1.8" /></template>
@@ -134,9 +136,9 @@ function formatProfitPercent(value: number | null): string {
     </NCard>
 
     <div class="profit-input-grid">
-      <NCard :bordered="false" class="profit-card profit-input-panel">
+      <NCard :bordered="false" class="analytics-table-card profit-input-panel">
         <template #header>
-          <div class="profit-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="settings" size="18" stroke-width="1.8" />基础信息</h2>
               <span>店铺币种固定，不能自由选择售价币种</span>
@@ -190,9 +192,9 @@ function formatProfitPercent(value: number | null): string {
         </div>
       </NCard>
 
-      <NCard :bordered="false" class="profit-card profit-price-panel">
+      <NCard :bordered="false" class="analytics-table-card profit-price-panel">
         <template #header>
-          <div class="profit-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="layers" size="18" stroke-width="1.8" />售价折算</h2>
               <span>输入变化后即时更新标准化价格</span>
@@ -216,21 +218,23 @@ function formatProfitPercent(value: number | null): string {
       </NCard>
     </div>
 
-    <NCard :bordered="false" class="profit-card profit-cost-panel">
+    <NCard :bordered="false" class="analytics-table-card profit-cost-panel">
       <template #header>
-        <div class="profit-panel-heading">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="package" size="18" stroke-width="1.8" />费用明细</h2>
             <span>费用均以 CNY 核算；“—”表示规则尚未接入</span>
           </div>
-          <NTag type="info" round>{{ profitPathLabels[result.fulfillment_path] }}</NTag>
+          <NTag size="small" round class="profit-tone-tag--azure">{{ profitPathLabels[result.fulfillment_path] }}</NTag>
         </div>
       </template>
       <div class="profit-cost-list">
         <div v-for="key in PROFIT_COST_KEYS" :key="key" class="profit-cost-row">
           <div class="profit-cost-label">
             <strong>{{ profitCostLabels[key] }}</strong>
-            <NTag :type="statusTagType(result.costs[key].status)" size="small" round>{{ profitStatusLabels[result.costs[key].status] }}</NTag>
+            <NTag size="small" round :bordered="false" type="default" :class="statusTone(result.costs[key].status) ? `profit-tone-tag--${statusTone(result.costs[key].status)}` : ''">
+              {{ profitStatusLabels[result.costs[key].status] }}
+            </NTag>
           </div>
           <strong class="profit-cost-value" :class="{ 'is-pending': result.costs[key].status !== 'implemented' }">
             {{ result.costs[key].status === "implemented" ? formatProfitMoney(result.costs[key].value) : "—" }}
@@ -239,36 +243,36 @@ function formatProfitPercent(value: number | null): string {
       </div>
     </NCard>
 
-    <NCard :bordered="false" class="profit-card profit-summary-panel">
+    <NCard :bordered="false" class="analytics-table-card profit-summary-panel">
       <template #header>
-        <div class="profit-panel-heading">
+        <div class="analytics-panel-heading">
           <div>
             <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />利润汇总</h2>
             <span>基于当前已接入费用计算</span>
           </div>
         </div>
       </template>
-      <div class="profit-summary-grid">
-        <article class="profit-summary-card azure">
-          <span>销售收入</span>
-          <strong>{{ formatProfitMoney(result.revenue_cny) }}</strong>
+      <div class="analytics-kpi-grid profit-summary-grid">
+        <NCard :bordered="false" class="analytics-kpi-card tone-azure">
+          <div class="analytics-kpi-head"><span>销售收入</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="coins" size="18" stroke-width="1.8" /></span></div>
+          <strong class="analytics-kpi-value tone-value">{{ formatProfitMoney(result.revenue_cny) }}</strong>
           <small>price_cny</small>
-        </article>
-        <article class="profit-summary-card peach">
-          <span>总成本</span>
-          <strong>{{ formatProfitMoney(result.total_cost_cny) }}</strong>
+        </NCard>
+        <NCard :bordered="false" class="analytics-kpi-card tone-peach">
+          <div class="analytics-kpi-head"><span>总成本</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="wallet" size="18" stroke-width="1.8" /></span></div>
+          <strong class="analytics-kpi-value tone-value">{{ formatProfitMoney(result.total_cost_cny) }}</strong>
           <small>已接入费用之和</small>
-        </article>
-        <article class="profit-summary-card mint">
-          <span>预计利润</span>
-          <strong :class="{ 'is-negative': result.profit_cny !== null && result.profit_cny < 0 }">{{ formatProfitMoney(result.profit_cny) }}</strong>
+        </NCard>
+        <NCard :bordered="false" class="analytics-kpi-card tone-mint">
+          <div class="analytics-kpi-head"><span>预计利润</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="trendingUp" size="18" stroke-width="1.8" /></span></div>
+          <strong class="analytics-kpi-value tone-value" :class="{ 'is-negative': result.profit_cny !== null && result.profit_cny < 0 }">{{ formatProfitMoney(result.profit_cny) }}</strong>
           <small>销售收入 − 当前总成本</small>
-        </article>
-        <article class="profit-summary-card lavender">
-          <span>净利润率</span>
-          <strong :class="{ 'is-negative': result.net_margin !== null && result.net_margin < 0 }">{{ formatProfitPercent(result.net_margin) }}</strong>
+        </NCard>
+        <NCard :bordered="false" class="analytics-kpi-card tone-lavender">
+          <div class="analytics-kpi-head"><span>净利润率</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="percent" size="18" stroke-width="1.8" /></span></div>
+          <strong class="analytics-kpi-value tone-value" :class="{ 'is-negative': result.net_margin !== null && result.net_margin < 0 }">{{ formatProfitPercent(result.net_margin) }}</strong>
           <small>当前阶段性结果</small>
-        </article>
+        </NCard>
       </div>
       <p class="profit-summary-note">{{ summaryNote }}</p>
     </NCard>

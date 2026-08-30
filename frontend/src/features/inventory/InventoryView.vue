@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./inventory.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -11,12 +12,14 @@ import {
   NInput,
   NPagination,
   NSelect,
+  NSkeleton,
   NTag,
   useMessage,
 } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
 import type { DataTableColumns } from "naive-ui";
 import { getErrorMessage } from "../../shared/api/client";
+import { copyText } from "../../shared/utils/clipboard";
 import { listInventory } from "./api";
 import { useShop } from "../../shared/composables/useShop";
 import type {
@@ -32,7 +35,7 @@ import type { Channel, ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
 
 type InventorySortKey = Exclude<InventorySort, "">;
-type TagType = "default" | "success" | "warning" | "error";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type InventoryFilters = {
   shopId: ShopSelection;
   sku: string;
@@ -204,15 +207,7 @@ function toggleSort(key: InventorySortKey): void {
 
 async function copyValue(value: string): Promise<void> {
   try {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
-    else {
-      const input = document.createElement("textarea");
-      input.value = value;
-      document.body.append(input);
-      input.select();
-      document.execCommand("copy");
-      input.remove();
-    }
+    await copyText(value);
     message.success(`已复制：${value}`);
   } catch {
     message.error("复制失败");
@@ -231,11 +226,11 @@ function channelClass(channel: Channel): string {
   return channel === "FBP" ? "fbp" : channel === "realFBS" ? "fbs" : "whd";
 }
 
-function riskTagType(risk: InventoryRiskCode): TagType {
-  if (risk === "out_of_stock" || risk === "urgent_replenishment") return "error";
-  if (risk === "replenish" || risk === "overstock") return "warning";
-  if (risk === "sufficient") return "success";
-  return "default";
+function riskTone(risk: InventoryRiskCode): MacaronTone | "" {
+  if (risk === "out_of_stock" || risk === "urgent_replenishment") return "peach";
+  if (risk === "replenish" || risk === "overstock") return "butter";
+  if (risk === "sufficient") return "mint";
+  return "";
 }
 
 function riskIcon(risk: InventoryRiskCode): IconName {
@@ -267,7 +262,7 @@ function renderProductCell(row: InventoryRow): VNodeChild {
       ? h("small", { class: "inventory-raw-name", title: row.product_name_raw }, `原名 ${row.product_name_raw}`)
       : null,
     h("div", { class: "inventory-meta-chips" }, [
-      h("span", { class: "inventory-shop-badge" }, row.shop_name),
+      h("span", { class: "analytics-shop-badge" }, row.shop_name),
       h("span", { class: "inventory-meta-chip" }, [h("span", { class: "inventory-meta-label" }, "SKU"), renderCopyValue(row.sku, "SKU")]),
       h("span", { class: "inventory-meta-chip" }, [h("span", { class: "inventory-meta-label" }, "货号"), renderCopyValue(row.offer_id, "货号")]),
     ]),
@@ -326,13 +321,14 @@ function renderStockout(row: InventoryRow): VNodeChild {
 }
 
 function renderDecision(row: InventoryRow): VNodeChild {
+  const tone = riskTone(row.risk_code);
   return h("div", { class: "inventory-decision-cell" }, [
     h(NTag, {
       bordered: false,
       round: true,
       size: "small",
-      type: riskTagType(row.risk_code),
-      class: `inventory-risk-tag inventory-risk-tag--${row.risk_code}`,
+      type: "default",
+      class: tone ? `inventory-risk-tag inventory-tone-tag--${tone}` : "inventory-risk-tag",
     }, {
       default: () => h("span", { class: "inventory-tag-content" }, [
         h(MorphIcon, { icon: riskIcon(row.risk_code), size: "12", strokeWidth: "2" }),
@@ -389,16 +385,43 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="inventory-view">
-    <section class="inventory-toolbar">
-      <div class="inventory-heading">
-        <div>
-          <h2><morph-icon icon="stock" size="18" stroke-width="1.8" />库存预测与补货建议</h2>
-          <p>预测销量 = FBP + realFBS；补货库存仅使用 FBP；WHD 不参与预测｜销量截至昨日完整自然日｜未计入在途库存</p>
-        </div>
-        <span class="inventory-updated">库存更新至 {{ response ? formatBeijingDateTime(response.data_through) : "暂无" }}｜销量截至 {{ response?.sales_window_end ?? "昨日" }}（完整自然日）</span>
-      </div>
+    <div v-if="summaryCards.length || loading" class="inventory-kpi-grid">
+      <template v-if="summaryCards.length">
+        <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="analytics-kpi-card" :class="`tone-${card.tone}`">
+          <div class="analytics-kpi-head"><span>{{ card.label }}</span><span class="analytics-icon-badge tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span></div>
+          <strong class="analytics-kpi-value tone-value">{{ card.value }}</strong>
+          <small>{{ card.note }}</small>
+        </NCard>
+      </template>
+      <template v-else>
+        <NCard v-for="i in 5" :key="i" :bordered="false" class="analytics-kpi-card">
+          <NSkeleton text width="55%" />
+          <NSkeleton text width="72%" class="kpi-skeleton-value" />
+          <NSkeleton text width="42%" />
+        </NCard>
+      </template>
+    </div>
 
-      <form class="inventory-filter-grid" @submit.prevent="submitFilters">
+    <NAlert v-if="error" type="error" class="analytics-error" :title="error">
+      <div class="analytics-error-content"><span>库存列表未更新，请重试。</span><NButton size="small" @click="loadInventory">重试</NButton></div>
+    </NAlert>
+
+    <NCard :bordered="false" class="analytics-table-card">
+      <template #header>
+        <div class="analytics-panel-heading">
+          <div>
+            <h2><morph-icon icon="stock" size="18" stroke-width="1.8" />库存预测与补货建议</h2>
+            <span>预测销量 = FBP + realFBS；补货库存仅使用 FBP；WHD 不参与预测｜销量截至昨日完整自然日｜未计入在途库存</span>
+          </div>
+          <span class="analytics-data-through">
+            <span class="analytics-data-dot" aria-hidden="true" />库存更新至
+            <strong>{{ response ? formatBeijingDateTime(response.data_through) : "暂无" }}</strong>
+            <span>｜销量截至 {{ response?.sales_window_end ?? "昨日" }}（完整自然日）</span>
+          </span>
+        </div>
+      </template>
+
+      <form class="inventory-filter" @submit.prevent="submitFilters">
         <NInput v-model:value="filters.sku" placeholder="搜索 SKU…" aria-label="筛选SKU" @keydown.enter.prevent="submitFilters">
           <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
         </NInput>
@@ -415,37 +438,26 @@ onBeforeUnmount(() => {
           <NButton attr-type="button" @click="resetFilters"><template #icon><morph-icon icon="rotateCcw" size="14" stroke-width="2" /></template>重置</NButton>
         </div>
       </form>
-    </section>
 
-    <div v-if="summaryCards.length" class="inventory-summary">
-      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="inventory-summary-card" :class="`tone-${card.tone}`">
-        <div class="inventory-summary-head"><span>{{ card.label }}</span><span class="inventory-summary-icon tone-badge"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></span></div>
-        <strong class="tone-value">{{ card.value }}</strong>
-        <small>{{ card.note }}</small>
-      </NCard>
-    </div>
+      <div class="analytics-table-meta"><span>共 {{ formatInteger(total) }} 个 SKU</span><span v-if="loading" class="analytics-loading-label">正在加载…</span></div>
+      <NDataTable
+        class="analytics-table"
+        :columns="columns"
+        :data="items"
+        :loading="loading"
+        :pagination="false"
+        :remote="true"
+        :scroll-x="1636"
+        table-layout="fixed"
+        :row-key="rowKey"
+      >
+        <template #empty><EmptyState :title="emptyDescription" icon="stock" /></template>
+      </NDataTable>
 
-    <NAlert v-if="error" type="error" class="inventory-error" :title="error">
-      <div class="inventory-error-content"><span>库存列表未更新，请重试。</span><NButton size="small" @click="loadInventory">重试</NButton></div>
-    </NAlert>
-
-    <div class="inventory-table-meta"><span>共 {{ formatInteger(total) }} 个 SKU</span><span v-if="loading" class="inventory-loading-label">正在加载…</span></div>
-    <NDataTable
-      class="inventory-table"
-      :columns="columns"
-      :data="items"
-      :loading="loading"
-      :pagination="false"
-      :remote="true"
-      :scroll-x="1636"
-      :row-key="rowKey"
-    >
-      <template #empty><EmptyState :title="emptyDescription" icon="box" /></template>
-    </NDataTable>
-
-    <div class="inventory-pager">
-      <span>第 {{ filters.page }} / {{ pageCount }} 页，共 {{ formatInteger(total) }} 个 SKU</span>
-      <NPagination :page="filters.page" :page-count="pageCount" :page-size="PAGE_SIZE" :disabled="loading" :page-slot="7" @update:page="changePage" />
-    </div>
+      <div class="analytics-pager">
+        <span>第 {{ filters.page }} / {{ pageCount }} 页，共 {{ formatInteger(total) }} 个 SKU</span>
+        <NPagination :page="filters.page" :page-count="pageCount" :page-size="PAGE_SIZE" :disabled="loading" :page-slot="7" @update:page="changePage" />
+      </div>
+    </NCard>
   </section>
 </template>
