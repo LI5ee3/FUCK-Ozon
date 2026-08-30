@@ -3,20 +3,8 @@
   padding-top: 8px;
 }
 
-.push-intro-card,
-.push-shop-card,
-.push-form-card {
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  box-shadow: var(--opanel-shadow-sm);
-}
-
 .push-intro-card {
-  background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)) !important;
-}
-
-.push-intro-card .n-card__content {
-  padding: 18px 20px;
+  margin-bottom: 18px;
 }
 
 .push-intro {
@@ -61,64 +49,37 @@
   gap: 20px;
 }
 
-.push-shop-card {
+.push-shop-grid > .n-card {
   min-width: 0;
-  background: var(--opanel-panel-solid) !important;
+  margin-bottom: 0;
 }
 
-.push-shop-card .n-card__header {
-  padding: 20px 24px 0;
-}
-
-.push-shop-card .n-card__content {
+.push-card-heading {
   display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px 24px 24px;
-}
-
-.push-card-heading,
-.push-section-heading,
-.push-form-actions,
-.push-subscription,
-.push-subscription-actions,
-.push-enable-control,
-.push-subscription-details {
-  display: flex;
-  align-items: center;
-}
-
-.push-card-heading,
-.push-section-heading {
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
-.push-card-heading {
-  align-items: flex-start;
+.push-card-heading > .n-tag {
+  flex-shrink: 0;
 }
 
-.push-card-heading h2,
+.push-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .push-section-heading h3 {
   margin: 0;
   color: var(--opanel-text);
+  font-size: 13.5px;
   font-weight: 650;
   letter-spacing: -0.015em;
 }
 
-.push-card-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-}
-
-.push-card-heading h2 .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.push-card-heading > div > span,
 .push-section-heading > div > span {
   display: block;
   margin-top: 4px;
@@ -128,7 +89,7 @@
 
 .push-status-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -136,6 +97,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
+  justify-content: center;
   gap: 5px;
   padding: 10px 12px;
   border: 1px solid var(--opanel-line);
@@ -151,6 +113,7 @@
 
 .push-status-item > strong {
   color: var(--opanel-text);
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -173,25 +136,22 @@
   font-size: 11px;
 }
 
+.push-form-skeleton {
+  padding: 14px 16px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+  background: var(--opanel-panel-hover);
+}
+
 .push-alert {
   border-radius: var(--opanel-radius-input) !important;
 }
 
 .push-form-card {
+  border: 1px solid var(--opanel-line) !important;
+  border-radius: var(--opanel-radius-card) !important;
   background: var(--opanel-panel-hover) !important;
   box-shadow: none;
-}
-
-.push-form-card .n-card__header {
-  padding: 16px 18px 0;
-}
-
-.push-form-card .n-card__content {
-  padding: 16px 18px 18px;
-}
-
-.push-section-heading h3 {
-  font-size: 13.5px;
 }
 
 .push-form,
@@ -226,12 +186,12 @@
   border: 1px solid var(--opanel-line);
   border-radius: var(--opanel-radius-input);
   background: var(--opanel-panel-solid);
-  transition: background 0.16s ease, border-color 0.16s ease;
+  transition: background 0.16s var(--opanel-ease-fluid), border-color 0.16s var(--opanel-ease-fluid);
 }
 
 .push-type-option:hover {
   border-color: color-mix(in srgb, var(--opanel-primary) 28%, var(--opanel-line));
-  background: color-mix(in srgb, var(--opanel-primary) 4%, var(--opanel-panel-solid));
+  background: var(--opanel-primary-soft);
 }
 
 .push-type-option .n-checkbox__label {
@@ -260,6 +220,8 @@
 }
 
 .push-form-actions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
@@ -277,6 +239,7 @@
 }
 
 .push-subscription {
+  display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
@@ -317,6 +280,8 @@
 }
 
 .push-subscription-details {
+  display: flex;
+  align-items: center;
   gap: 8px;
   flex-wrap: wrap;
   color: var(--opanel-muted);
@@ -330,11 +295,15 @@
 }
 
 .push-subscription-actions {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
   gap: 10px;
 }
 
 .push-enable-control {
+  display: flex;
+  align-items: center;
   gap: 7px;
   color: var(--opanel-muted);
   font-size: 11.5px;
@@ -347,17 +316,19 @@
   font-size: 11px;
 }
 
+/* Macaron tone shells (DESIGN.md §colors.tones): mint = 已配置/可用,
+   lavender = 未配置, peach = 失败/不可用, azure = Push 事件类型。 */
+.push-tone-tag--azure { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.push-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.push-tone-tag--lavender { background: var(--opanel-tone-lavender-bg) !important; color: var(--opanel-tone-lavender-text) !important; }
+.push-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+
 @media (max-width: 1100px) {
   .push-shop-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
-  .push-intro-card .n-card__content,
-  .push-shop-card .n-card__header,
-  .push-shop-card .n-card__content,
-  .push-form-card .n-card__header,
-  .push-form-card .n-card__content { padding-right: 16px; padding-left: 16px; }
-  .push-status-grid,
+  .push-status-grid { grid-template-columns: 1fr; }
   .push-type-list { grid-template-columns: 1fr; }
   .push-card-heading,
   .push-section-heading { align-items: flex-start; }

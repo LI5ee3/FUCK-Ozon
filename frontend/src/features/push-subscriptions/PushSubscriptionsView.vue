@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./push-subscriptions.css";
 import { onBeforeUnmount, onMounted, reactive } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -8,7 +9,7 @@ import {
   NCard,
   NCheckbox,
   NInput,
-  NSpin,
+  NSkeleton,
   NSwitch,
   NTag,
   useDialog,
@@ -105,9 +106,11 @@ function subscriptionStatus(data: PushShopState): string {
   return data.subscriptions.length ? "已配置" : "未配置";
 }
 
-function subscriptionStatusType(data: PushShopState): "default" | "success" | "warning" {
-  if (!data.listReady) return "warning";
-  return data.subscriptions.length ? "success" : "default";
+/* Macaron tone roles (DESIGN.md §colors.tones): mint = 已配置/可用,
+   lavender = 未配置待设置, peach = 读取失败/不可用。 */
+function subscriptionStatusTone(data: PushShopState): "mint" | "lavender" | "peach" {
+  if (!data.listReady) return "peach";
+  return data.subscriptions.length ? "mint" : "lavender";
 }
 
 function subscriptionCount(data: PushShopState): string {
@@ -351,7 +354,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="push-view">
-    <NCard :bordered="false" class="push-intro-card">
+    <NCard :bordered="false" class="analytics-table-card push-intro-card">
       <div class="push-intro">
         <span class="push-intro-icon" aria-hidden="true"><morph-icon icon="zap" size="20" stroke-width="1.8" /></span>
         <div>
@@ -363,37 +366,60 @@ onBeforeUnmount(() => {
     </NCard>
 
     <div class="push-shop-grid">
-      <NCard v-for="shopId in shopIds" :key="shopId" :bordered="false" class="push-shop-card">
+      <NCard v-for="shopId in shopIds" :key="shopId" :bordered="false" class="analytics-table-card push-shop-card">
         <template #header>
-          <div class="push-card-heading">
+          <div class="analytics-panel-heading push-card-heading">
             <div>
               <h2><morph-icon icon="store" size="18" stroke-width="1.8" />{{ shopName(shopId) }}</h2>
               <span>店铺 {{ shopId }} · 单独管理 Seller API Push 订阅</span>
             </div>
-            <NTag size="small" round :bordered="false" type="info">店铺 {{ shopId }}</NTag>
+            <NTag
+              v-if="shopState(shopId).loading"
+              size="small"
+              round
+              :bordered="false"
+              class="push-tone-tag--lavender"
+            >
+              读取中
+            </NTag>
+            <NTag
+              v-else
+              size="small"
+              round
+              :bordered="false"
+              :class="`push-tone-tag--${subscriptionStatusTone(shopState(shopId))}`"
+            >
+              {{ subscriptionStatus(shopState(shopId)) }}
+            </NTag>
           </div>
         </template>
 
         <template v-if="shopState(shopId).loading">
-          <div class="push-loading" role="status"><NSpin size="small" /><span>正在读取 Ozon Push 配置…</span></div>
+          <div class="push-status-grid" aria-busy="true">
+            <div v-for="i in 4" :key="i" class="push-status-item">
+              <NSkeleton text width="45%" />
+              <NSkeleton text width="70%" class="kpi-skeleton-value" />
+            </div>
+            <div class="push-status-item push-status-url">
+              <NSkeleton text width="36%" />
+              <NSkeleton text width="88%" />
+            </div>
+          </div>
+          <div class="push-form-skeleton">
+            <NSkeleton text :repeat="4" width="64%" />
+          </div>
         </template>
 
         <template v-else>
           <div class="push-status-grid">
             <div class="push-status-item">
               <span>Ozon API</span>
-              <NTag size="small" round :bordered="false" :type="shopState(shopId).apiAvailable ? 'success' : 'error'">
+              <NTag size="small" round :bordered="false" :class="shopState(shopId).apiAvailable ? 'push-tone-tag--mint' : 'push-tone-tag--peach'">
                 {{ shopState(shopId).apiAvailable ? "可用" : "不可用" }}
               </NTag>
             </div>
             <div class="push-status-item">
-              <span>Push 订阅</span>
-              <NTag size="small" round :bordered="false" :type="subscriptionStatusType(shopState(shopId))">
-                {{ subscriptionStatus(shopState(shopId)) }}
-              </NTag>
-            </div>
-            <div class="push-status-item">
-              <span>当前订阅数量</span>
+              <span>订阅数量</span>
               <strong>{{ subscriptionCount(shopState(shopId)) }}</strong>
             </div>
             <div class="push-status-item">
@@ -483,14 +509,22 @@ onBeforeUnmount(() => {
             <NAlert v-if="!shopState(shopId).listReady" type="error" class="push-alert" title="订阅读取失败">
               {{ shopState(shopId).listError || "Ozon 未返回订阅列表" }}
             </NAlert>
-            <EmptyState v-else-if="!shopState(shopId).subscriptions.length" title="暂无 Push 订阅" hint="填写 Webhook 地址并选择事件后即可注册。" />
+            <EmptyState v-else-if="!shopState(shopId).subscriptions.length" icon="zap" title="暂无 Push 订阅" hint="填写 Webhook 地址并选择事件后即可注册。" />
             <div v-else class="push-subscription-list">
               <article v-for="row in shopState(shopId).subscriptions" :key="`${shopId}-${row.id ?? row.url}`" class="push-subscription">
                 <div class="push-subscription-main">
                   <div class="push-subscription-id"><span>ID</span><code>{{ row.id ?? "—" }}</code></div>
                   <code class="push-subscription-url" title="Webhook 地址已隐藏密钥">{{ maskPushUrl(row.url) }}</code>
                   <div class="push-subscription-types">
-                    <NTag v-for="type in row.types" :key="type" size="small" round :bordered="false" type="info" :title="type">
+                    <NTag
+                      v-for="type in row.types"
+                      :key="type"
+                      size="small"
+                      round
+                      :bordered="false"
+                      class="push-tone-tag--azure"
+                      :title="type"
+                    >
                       {{ pushEventLabel(type) === "Ozon Push 事件" ? type : pushEventLabel(type) }}
                     </NTag>
                     <span v-if="!row.types.length" class="push-muted">未返回事件类型</span>
