@@ -1,19 +1,18 @@
 .settings-view {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
+  gap: 20px;
   padding-top: 8px;
 }
 
-.settings-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 96px;
-  color: var(--opanel-muted);
+/* 面板复用共享 analytics-table-card chrome，节奏交给 flex gap */
+.settings-grid > .n-card,
+.settings-view > .n-card {
+  margin-bottom: 0;
 }
 
 .settings-error {
-  margin-bottom: 16px;
   border-radius: var(--opanel-radius-input) !important;
 }
 
@@ -29,60 +28,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
-  margin-bottom: 20px;
-}
-
-.settings-panel,
-.settings-api-panel {
-  min-width: 0;
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  box-shadow: var(--opanel-shadow-sm);
-  background: var(--opanel-panel-solid) !important;
-}
-
-.settings-panel .n-card__header,
-.settings-api-panel .n-card__header {
-  padding: 20px 24px 0;
-}
-
-.settings-panel .n-card__content,
-.settings-api-panel .n-card__content {
-  min-width: 0;
-  padding: 20px 24px 24px;
-}
-
-.settings-panel-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-panel-heading > div {
-  min-width: 0;
-}
-
-.settings-panel-heading h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  color: var(--opanel-text);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.settings-panel-heading h2 .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.settings-panel-heading > div > span {
-  display: block;
-  margin-top: 4px;
-  color: var(--opanel-muted);
-  font-size: 12px;
 }
 
 .settings-body {
@@ -98,9 +43,7 @@
   gap: 7px;
 }
 
-.settings-label,
-.settings-input-tag,
-.settings-permission-label {
+.settings-label {
   color: var(--opanel-muted);
   font-size: 12px;
   font-weight: 600;
@@ -116,23 +59,40 @@
   flex: 1 1 0;
 }
 
-.settings-hint-box {
+.settings-api-heading {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 11px 12px;
-  border: 1px solid color-mix(in srgb, var(--opanel-primary) 16%, var(--opanel-line));
-  border-radius: var(--opanel-radius-input);
-  background: color-mix(in srgb, var(--opanel-primary) 5%, var(--opanel-panel-solid));
-  color: var(--opanel-muted);
-  font-size: 12px;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-api-heading .n-button {
+  flex: 0 0 auto;
+}
+
+.settings-note,
+.settings-system-banner {
+  border-radius: var(--opanel-radius-input) !important;
+}
+
+.settings-note .n-alert__content,
+.settings-system-banner .n-alert__content {
+  color: var(--opanel-text);
+  font-size: 12.5px;
   line-height: 1.55;
 }
 
-.settings-hint-box .morph-icon {
-  flex-shrink: 0;
-  margin-top: 2px;
+.settings-system-banner {
+  margin-bottom: 16px;
+}
+
+.settings-system-banner code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--opanel-primary-soft);
   color: var(--opanel-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
 }
 
 .settings-shop-inputs {
@@ -145,6 +105,9 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .settings-input-tag .morph-icon {
@@ -157,32 +120,6 @@
   gap: 8px;
   color: var(--opanel-primary);
   font-size: 12px;
-}
-
-.settings-api-heading .n-button {
-  flex: 0 0 auto;
-}
-
-.settings-system-banner {
-  margin-bottom: 16px;
-  border: 1px solid color-mix(in srgb, var(--opanel-primary) 18%, var(--opanel-line)) !important;
-  border-radius: var(--opanel-radius-input) !important;
-  background: color-mix(in srgb, var(--opanel-primary) 6%, var(--opanel-panel-solid)) !important;
-}
-
-.settings-system-banner .n-alert__content {
-  color: var(--opanel-text);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.settings-system-banner code {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
 }
 
 .settings-shop-grid {
@@ -260,11 +197,12 @@
 
 .settings-probe-label,
 .settings-permission-label {
+  color: var(--opanel-muted);
   font-size: 11.5px;
+  font-weight: 600;
 }
 
 .settings-probe-label {
-  color: var(--opanel-muted);
   font-weight: 650;
 }
 
@@ -314,15 +252,15 @@
   white-space: normal;
 }
 
+/* 失败详情走 peach tone 壳，不再手派 danger color-mix */
 .settings-probe-error {
   display: flex;
   align-items: flex-start;
   gap: 7px;
   padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, var(--opanel-danger) 28%, var(--opanel-line));
   border-radius: var(--opanel-radius-input);
-  background: color-mix(in srgb, var(--opanel-danger) 7%, var(--opanel-panel-solid));
-  color: var(--opanel-danger);
+  background: var(--opanel-tone-peach-bg);
+  color: var(--opanel-tone-peach-text);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -366,6 +304,13 @@
   font-size: 10.5px;
 }
 
+/* Macaron tone shells (DESIGN.md §colors.tones): mint = 凭据有效/可用,
+   butter = 正在检测/权限降级, peach = 连接失败, lavender = 待检测。 */
+.settings-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.settings-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+.settings-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+.settings-tone-tag--lavender { background: var(--opanel-tone-lavender-bg) !important; color: var(--opanel-tone-lavender-text) !important; }
+
 @media (max-width: 1100px) {
   .settings-grid,
   .settings-shop-grid {
@@ -374,15 +319,7 @@
 }
 
 @media (max-width: 640px) {
-  .settings-panel .n-card__header,
-  .settings-panel .n-card__content,
-  .settings-api-panel .n-card__header,
-  .settings-api-panel .n-card__content {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .settings-panel-heading,
+  .settings-api-heading,
   .settings-error-content {
     align-items: flex-start;
     flex-direction: column;

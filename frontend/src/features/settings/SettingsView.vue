@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./settings.css";
 import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -9,6 +10,7 @@ import {
   NInput,
   NRadioButton,
   NRadioGroup,
+  NSkeleton,
   NSpin,
   NTag,
   useMessage,
@@ -25,6 +27,7 @@ import { copyText } from "../../shared/utils/clipboard";
 type ShopNames = { 1: string; 2: string };
 type ProbeState = { status: OzonProbeStatus; response: OzonProbeResponse | null; error: string };
 type PermissionKey = keyof OzonProbePermissions;
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 
 const shopIds: ShopId[] = [1, 2];
 const themeOptions: Array<{ label: string; value: ThemeMode }> = [
@@ -180,11 +183,13 @@ async function probeAll(): Promise<void> {
   }
 }
 
-function statusType(status: OzonProbeStatus): "default" | "success" | "warning" | "error" {
-  if (status === "success") return "success";
-  if (status === "error") return "error";
-  if (status === "loading") return "warning";
-  return "default";
+/* Macaron tone mapping (DESIGN.md §colors.tones): success → mint,
+   failure → peach, in-flight → butter, pending → lavender. */
+function statusTone(status: OzonProbeStatus): MacaronTone {
+  if (status === "success") return "mint";
+  if (status === "error") return "peach";
+  if (status === "loading") return "butter";
+  return "lavender";
 }
 
 function identityValue(response: OzonProbeResponse | null, values: Array<string | number | null | undefined>): string {
@@ -226,10 +231,10 @@ function permissionValue(state: ProbeState, key: PermissionKey): string {
   return state.response?.permissions?.[key] || (state.status === "success" ? "可用" : "未返回");
 }
 
-function permissionType(state: ProbeState, key: PermissionKey): "default" | "success" | "warning" {
-  if (state.status === "success" && permissionValue(state, key) === "可用") return "success";
-  if (state.status === "idle" || state.status === "loading") return "default";
-  return "warning";
+function permissionTone(state: ProbeState, key: PermissionKey): MacaronTone {
+  if (state.status === "success" && permissionValue(state, key) === "可用") return "mint";
+  if (state.status === "idle" || state.status === "loading") return "lavender";
+  return "butter";
 }
 
 function copyable(value: string): boolean {
@@ -260,11 +265,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="settings-view">
-    <div v-if="shopLoading && !shopNamesLoaded" class="settings-loading" role="status">
-      <NSpin size="small" />
-      <span>正在读取店铺设置…</span>
-    </div>
-
     <NAlert v-if="loadError" type="error" class="settings-error" title="店铺设置加载失败">
       <div class="settings-error-content">
         <span>{{ loadError }}</span>
@@ -273,9 +273,9 @@ onBeforeUnmount(() => {
     </NAlert>
 
     <div class="settings-grid">
-      <NCard :bordered="false" class="settings-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
-          <div class="settings-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="sun" size="18" stroke-width="1.8" />界面与显示偏好</h2>
               <span>控制当前浏览器的界面外观主题与色彩渲染模式</span>
@@ -297,23 +297,27 @@ onBeforeUnmount(() => {
               </NRadioButton>
             </NRadioGroup>
           </div>
-          <div class="settings-hint-box">
-            <morph-icon icon="sparkles" size="15" stroke-width="1.8" />
-            <span>采用 Open Macaron 低饱和粉彩与高对比度文字排版，全局支持 Apple HIG 减淡微边框与平滑回弹。</span>
-          </div>
         </div>
       </NCard>
 
-      <NCard :bordered="false" class="settings-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
-          <div class="settings-panel-heading">
+          <div class="analytics-panel-heading">
             <div>
               <h2><morph-icon icon="store" size="18" stroke-width="1.8" />店铺展示名称</h2>
               <span>自定义各店铺在数据总览与各模块中的别名</span>
             </div>
           </div>
         </template>
-        <form class="settings-body" @submit.prevent="requestShopNameSave">
+        <div v-if="shopLoading && !shopNamesLoaded" class="settings-body" aria-busy="true">
+          <div class="settings-shop-inputs">
+            <div v-for="i in 2" :key="i" class="settings-input-group">
+              <NSkeleton text width="56px" />
+              <NSkeleton height="34px" />
+            </div>
+          </div>
+        </div>
+        <form v-else class="settings-body" @submit.prevent="requestShopNameSave">
           <div class="settings-shop-inputs">
             <label class="settings-input-group">
               <span class="settings-input-tag"><morph-icon icon="tag" size="12" stroke-width="2" />店铺 1</span>
@@ -344,17 +348,16 @@ onBeforeUnmount(() => {
             <NSpin size="small" />
             <span>正在保存店铺名称…</span>
           </div>
-          <div class="settings-hint-box">
-            <morph-icon icon="checkCircle" size="15" stroke-width="1.8" />
-            <span>修改店铺名称后，失焦或回车即可自动即时保存并全局同步更新。</span>
-          </div>
+          <NAlert type="info" :bordered="false" class="settings-note">
+            修改店铺名称后，失焦或回车即可自动即时保存并全局同步更新。
+          </NAlert>
         </form>
       </NCard>
     </div>
 
-    <NCard :bordered="false" class="settings-api-panel">
+    <NCard :bordered="false" class="analytics-table-card">
       <template #header>
-        <div class="settings-panel-heading settings-api-heading">
+        <div class="analytics-panel-heading settings-api-heading">
           <div>
             <h2><morph-icon icon="shieldCheck" size="18" stroke-width="1.8" />API 连接与权限诊断</h2>
             <span>实时检测 Client-Id / Api-Key 凭据、主体身份与各模块接口权限，不同步任何业务数据</span>
@@ -393,7 +396,7 @@ onBeforeUnmount(() => {
           <div class="settings-probe-result">
             <div class="settings-probe-top">
               <span class="settings-probe-label">诊断状态</span>
-              <NTag :type="statusType(probeState(shopId).status)" round :bordered="false">
+              <NTag size="small" round :bordered="false" :class="`settings-tone-tag--${statusTone(probeState(shopId).status)}`">
                 {{ statusLabels[probeState(shopId).status] }}
               </NTag>
             </div>
@@ -456,7 +459,7 @@ onBeforeUnmount(() => {
                   :key="permission.key"
                   round
                   :bordered="false"
-                  :type="permissionType(probeState(shopId), permission.key)"
+                  :class="`settings-tone-tag--${permissionTone(probeState(shopId), permission.key)}`"
                   class="settings-permission"
                 >
                   <strong>{{ permission.label }}</strong>
