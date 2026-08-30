@@ -5,13 +5,13 @@ import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
 import type { LocationQuery } from "vue-router";
 import { useRoute, useRouter } from "vue-router";
-import { NAlert, NButton, NCard, NDatePicker, NSpin, useMessage } from "naive-ui";
+import { NAlert, NButton, NCard, NDatePicker, NSkeleton, NSpin, useMessage } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
 import { getAdsOverview } from "./api";
 import { getErrorMessage } from "../../shared/api/client";
 import AdsTrendChart from "./components/AdsTrendChart.vue";
 import { useShop } from "../../shared/composables/useShop";
-import type { AdsOverviewResponse, AdsSummary } from "./types";
+import type { AdsOverviewResponse, AdsShopSummary, AdsSummary } from "./types";
 import type { ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
 import { parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
@@ -20,6 +20,7 @@ import { queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/u
 type DatePreset = StandardDatePreset;
 type AdsFilters = { shopId: ShopSelection; from: string; to: string };
 type AdsKpi = { icon: IconName; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "butter" };
+type AdsInsight = { icon: IconName; label: string; value: string; foot: string };
 
 const route = useRoute();
 const router = useRouter();
@@ -55,17 +56,34 @@ const kpis = computed<AdsKpi[]>(() => {
   if (!data) return [];
   const summary: AdsSummary = data.summary ?? data;
   return [
-    { icon: "wallet", label: "广告花费", value: formatAdsMoney(summary.spend_rub), tone: "peach" },
-    { icon: "shoppingBag", label: "广告销售额", value: formatAdsMoney(summary.revenue_rub), tone: "azure" },
-    { icon: "orders", label: "广告订单", value: formatInteger(summary.orders), tone: "mint" },
-    { icon: "barChart", label: "曝光", value: formatInteger(summary.impressions), tone: "lavender" },
-    { icon: "activity", label: "点击", value: formatInteger(summary.clicks), tone: "butter" },
-    { icon: "percent", label: "CTR", value: formatAdsRate(summary.ctr), tone: "lavender" },
-    { icon: "coins", label: "平均 CPC", value: formatAdsMoney(summary.avg_cpc_rub), tone: "mint" },
+    { icon: "wallet", label: "广告花费", value: formatAdsMoney(summary.spend_rub), note: "统计期投放支出", tone: "butter" },
+    { icon: "shoppingBag", label: "广告销售额", value: formatAdsMoney(summary.revenue_rub), note: "广告归因成交额", tone: "azure" },
+    { icon: "orders", label: "广告订单", value: formatInteger(summary.orders), note: "广告归因订单数", tone: "mint" },
     { icon: "percent", label: "广告成本率（DRR）", value: formatAdsRate(summary.drr), note: "广告花费 ÷ 广告销售额", tone: "peach" },
-    { icon: "trendingUp", label: "ROAS", value: formatAdsRatio(summary.roas), note: "广告销售额 ÷ 广告花费", tone: "azure" },
+    { icon: "trendingUp", label: "ROAS", value: formatAdsRatio(summary.roas), note: "广告销售额 ÷ 广告花费", tone: "lavender" },
   ];
 });
+const adsInsights = computed<AdsInsight[]>(() => {
+  const data = overview.value;
+  if (!data) return [];
+  const summary: AdsSummary = data.summary ?? data;
+  return [
+    { icon: "barChart", label: "曝光", value: formatInteger(summary.impressions), foot: "统计期合计" },
+    { icon: "activity", label: "点击", value: formatInteger(summary.clicks), foot: "统计期合计" },
+    { icon: "percent", label: "点击率（CTR）", value: formatAdsRate(summary.ctr), foot: "点击 ÷ 曝光" },
+    { icon: "package", label: "加购量", value: formatInteger(summary.cart_adds), foot: "统计期合计" },
+    { icon: "coins", label: "平均 CPC", value: formatAdsMoney(summary.avg_cpc_rub), foot: "广告花费 ÷ 点击" },
+  ];
+});
+const shopRows = computed(() => {
+  const shops = overview.value?.shops ?? [];
+  return [...shops].sort((left, right) => right.spend_rub - left.spend_rub);
+});
+
+function shopSpendShare(shop: AdsShopSummary): number {
+  const total = overview.value?.summary?.spend_rub ?? 0;
+  return total > 0 ? Math.max(0, Math.min(100, Math.round((shop.spend_rub / total) * 100))) : 0;
+}
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AdsFilters {
   const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), standardDatePresetRange("7days"));
@@ -216,14 +234,22 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <NAlert v-if="error" type="error" class="ads-error" :title="error">
+    <NAlert v-if="error" type="error" title="广告总览加载失败" class="ads-error" role="alert">
       <div class="ads-error-content">
-        <span>广告总览数据未更新，请重试。</span>
-        <NButton size="small" @click="retry">重试</NButton>
+        <span>{{ error }}</span>
+        <NButton text type="error" @click="retry">重试</NButton>
       </div>
     </NAlert>
 
-    <div v-if="kpis.length" class="ads-kpi-grid">
+    <div v-if="loading && !overview" class="ads-kpi-grid" aria-live="polite">
+      <NCard v-for="i in 5" :key="i" :bordered="false" class="ads-kpi-card">
+        <NSkeleton text width="55%" />
+        <NSkeleton text width="72%" class="kpi-skeleton-value" />
+        <NSkeleton text width="42%" />
+      </NCard>
+    </div>
+
+    <div v-else-if="kpis.length" class="ads-kpi-grid">
       <NCard
         v-for="kpi in kpis"
         :key="kpi.label"
@@ -245,14 +271,49 @@ onBeforeUnmount(() => {
         <div class="ads-panel-heading">
           <div>
             <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />广告趋势</h2>
-            <span>Performance API 自然日；金额单位 RUB</span>
+            <span>各自然日广告花费与销售额对比</span>
           </div>
           <span v-if="loading" class="ads-loading-label"><NSpin size="small" />正在加载…</span>
         </div>
       </template>
       <div v-if="loading && !overview" class="ads-loading"><NSpin size="medium" /><span>广告总览加载中…</span></div>
-      <AdsTrendChart v-else-if="overview?.trend.length" :data="overview.trend" />
+      <template v-else-if="overview?.trend.length">
+        <AdsTrendChart :data="overview.trend" />
+        <div class="ads-insights">
+          <div v-for="insight in adsInsights" :key="insight.label" class="ads-insight-card">
+            <div class="ads-insight-head"><morph-icon :icon="insight.icon" size="14" stroke-width="1.8" /><span>{{ insight.label }}</span></div>
+            <strong class="ads-insight-value">{{ insight.value }}</strong>
+            <span class="ads-insight-foot">{{ insight.foot }}</span>
+          </div>
+        </div>
+      </template>
       <EmptyState v-else :title="error ? '广告总览加载失败' : '所选范围暂无广告日统计，请先同步。'" icon="barChart" />
+    </NCard>
+
+    <NCard v-if="shopRows.length > 1" :bordered="false" class="ads-trend-card">
+      <template #header>
+        <div class="ads-panel-heading">
+          <div>
+            <h2><morph-icon icon="store" size="18" stroke-width="1.8" />分店铺表现</h2>
+            <span>所选范围内各店铺的广告花费与产出；按花费排序</span>
+          </div>
+        </div>
+      </template>
+      <div class="ads-shops-grid">
+        <div v-for="shop in shopRows" :key="shop.shop_id" class="ads-shop-card">
+          <div class="ads-shop-brand">
+            <strong :title="shop.shop_name">{{ shop.shop_name }}</strong>
+            <span>花费占比 <b>{{ shopSpendShare(shop) }}%</b></span>
+          </div>
+          <div class="ads-shop-track"><span :style="{ width: `${shopSpendShare(shop)}%` }" /></div>
+          <div class="ads-shop-metrics">
+            <div><span>花费</span><strong>{{ formatAdsMoney(shop.spend_rub) }}</strong></div>
+            <div><span>销售额</span><strong>{{ formatAdsMoney(shop.revenue_rub) }}</strong></div>
+            <div><span>订单</span><strong>{{ formatInteger(shop.orders) }}</strong></div>
+            <div><span>ROAS</span><strong>{{ formatAdsRatio(shop.roas) }}</strong></div>
+          </div>
+        </div>
+      </div>
     </NCard>
 
     <p class="ads-data-note">页面只读取本地 SQLite；请在“数据同步中心”先同步广告日统计。</p>

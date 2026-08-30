@@ -51,6 +51,7 @@ function tooltipFormatter(params: unknown): string {
 
 function chartOption() {
   const colors = palette.value;
+  const ink = (hue: keyof typeof macaronTokens.tones) => macaronTokens.tones[hue][isDark.value ? "dark" : "light"].text;
   return {
     animationDuration: 280,
     grid: { left: 12, right: 18, top: 32, bottom: 24, containLabel: true },
@@ -93,7 +94,7 @@ function chartOption() {
         name: "广告花费",
         data: props.data.map((point) => point.spend_rub),
         barMaxWidth: 22,
-        itemStyle: { color: colors.danger, borderRadius: [5, 5, 0, 0] },
+        itemStyle: { color: ink("butter"), borderRadius: [5, 5, 0, 0] },
         emphasis: { focus: "series" },
       },
       {
@@ -101,7 +102,7 @@ function chartOption() {
         name: "广告销售额",
         data: props.data.map((point) => point.revenue_rub),
         barMaxWidth: 22,
-        itemStyle: { color: colors.primary, borderRadius: [5, 5, 0, 0] },
+        itemStyle: { color: ink("azure"), borderRadius: [5, 5, 0, 0] },
         emphasis: { focus: "series" },
       },
     ],
