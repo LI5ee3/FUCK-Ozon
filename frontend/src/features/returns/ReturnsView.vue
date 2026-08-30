@@ -46,14 +46,14 @@ type ReturnsFilters = {
   page: number;
 };
 type ApiBase = Pick<ReturnsFilters, "shopId" | "from" | "to">;
-type TagType = "default" | "info" | "success" | "warning" | "error";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type ReturnsKpi = {
   icon: IconName;
   label: string;
   value: string;
   badge: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
+  tone: MacaronTone;
 };
 
 const PAGE_SIZE = 50;
@@ -463,12 +463,14 @@ function renderQuantity(value: number | null): VNodeChild {
   return h("span", { class: "returns-quantity-badge" }, [h("b", value == null ? "—" : formatInteger(value)), " 件"]);
 }
 
-function rfbsStatusType(status: string | null): TagType {
+// Macaron tone mapping (DESIGN.md §colors.tones): mint = 已接收/完成,
+// peach = 拒绝/争议/取消, butter = 审核中/在途, no shell = 未知状态.
+function rfbsStatusTone(status: string | null): MacaronTone | "" {
   const value = String(status || "").toLowerCase();
-  if (/approved|accepted|delivered|同意|已接收|已批准|完成|已签收/.test(value)) return "success";
-  if (/rejected|declined|dispute|cancelled|拒绝|争议|取消/.test(value)) return "error";
-  if (/pending|progress|审核|审批|处理中|在途|退回中/.test(value)) return "warning";
-  return "info";
+  if (/approved|accepted|delivered|同意|已接收|已批准|完成|已签收/.test(value)) return "mint";
+  if (/rejected|declined|dispute|cancelled|拒绝|争议|取消/.test(value)) return "peach";
+  if (/pending|progress|审核|审批|处理中|确认|在途|退回中/.test(value)) return "butter";
+  return "";
 }
 
 function formatRawMoney(value: string | number, currency: string): string {
@@ -506,13 +508,14 @@ function renderRfbsIdentity(row: RfbsReturnRecord): VNodeChild {
 }
 
 function renderRfbsState(row: RfbsReturnRecord): VNodeChild {
+  const tone = rfbsStatusTone(`${row.status_raw || ""} ${row.status_name || ""}`);
   return h("div", { class: "returns-state-cell" }, [
     h(NTag, {
       bordered: false,
       round: true,
       size: "small",
-      type: rfbsStatusType(row.status_raw || row.status_name),
-      class: "returns-status-tag",
+      type: "default",
+      class: tone ? `returns-status-tag returns-tone-tag--${tone}` : "returns-status-tag",
     }, { default: () => display(row.status_name || row.status_raw, "待处理") }),
     h("small", { class: "returns-compensation-text" }, `退款：${row.refund_amount == null ? "—" : formatMoney(row.refund_amount, row.refund_currency || "")}`),
     h("small", { class: "returns-compensation-text" }, compensationLine(row, "platform")),
@@ -542,19 +545,23 @@ function renderRfbsReason(row: RfbsReturnRecord): VNodeChild {
   ]);
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x (cancel 200+180+300+110+210,
+// rfbs 190+190+280+210+135+270), so long product names clip with ellipsis
+// instead of stretching columns and pushing stats off-screen.
 const cancelColumns: DataTableColumns<ReturnRecord> = [
-  { key: "shop_time", title: "店铺与取消时间", minWidth: 190, render: renderReturnTime },
-  { key: "posting_number", title: "订单号", minWidth: 180, render: (row) => renderCopyButton(row.posting_number, "点击复制订单号", "returns-order-number") },
-  { key: "product", title: "商品信息", minWidth: 280, render: renderProductCell },
+  { key: "shop_time", title: "店铺与取消时间", width: 200, render: renderReturnTime },
+  { key: "posting_number", title: "订单号", width: 180, render: (row) => renderCopyButton(row.posting_number, "点击复制订单号", "returns-order-number") },
+  { key: "product", title: "商品信息", width: 300, render: renderProductCell },
   { key: "quantity", title: "取消件数", width: 110, align: "right", render: (row) => renderQuantity(row.quantity) },
-  { key: "reason", title: "取消原因与状态", minWidth: 230, render: renderCancelReason },
+  { key: "reason", title: "取消原因与状态", width: 210, render: renderCancelReason },
 ];
 
 const rfbsColumns: DataTableColumns<RfbsReturnRecord> = [
   {
     key: "shop_time",
     title: "店铺与申请时间",
-    minWidth: 190,
+    width: 190,
     render: (row) => renderReturnTime({
       shop_name: row.shop_name,
       cancelled_at: row.created_at,
@@ -563,11 +570,11 @@ const rfbsColumns: DataTableColumns<RfbsReturnRecord> = [
       complaint_deadline_status: row.complaint_deadline_status,
     }),
   },
-  { key: "identity", title: "申请编号与订单号", minWidth: 190, render: renderRfbsIdentity },
-  { key: "product", title: "商品信息", minWidth: 280, render: renderProductCell },
-  { key: "state", title: "状态与赔偿", minWidth: 210, render: renderRfbsState },
+  { key: "identity", title: "申请编号与订单号", width: 190, render: renderRfbsIdentity },
+  { key: "product", title: "商品信息", width: 280, render: renderProductCell },
+  { key: "state", title: "状态与赔偿", width: 210, render: renderRfbsState },
   { key: "quantity", title: "件数与金额", width: 135, align: "right", render: renderRfbsQuantity },
-  { key: "reason", title: "原因与退件跟踪", minWidth: 270, render: renderRfbsReason },
+  { key: "reason", title: "原因与退件跟踪", width: 270, render: renderRfbsReason },
 ];
 
 function cancelRowKey(row: ReturnRecord): string {
@@ -617,7 +624,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="returns-view">
-    <div class="analytics-toolbar returns-toolbar">
+    <div class="analytics-toolbar">
       <div class="returns-date-control analytics-date-control">
         <span>统计日期</span>
         <NDatePicker
@@ -653,7 +660,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="returns-tabs" role="tablist" aria-label="异常订单明细子板块">
+    <div class="analytics-tabs" role="tablist" aria-label="异常订单明细子板块">
       <NButton
         size="small"
         attr-type="button"
@@ -685,7 +692,7 @@ onBeforeUnmount(() => {
     <template v-if="filters.tab === 'cancel'">
       <ReturnsKpiCards :items="cancelKpis" />
 
-      <NCard :bordered="false" class="analytics-table-card returns-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
           <div class="returns-panel-header">
             <div>
@@ -710,8 +717,8 @@ onBeforeUnmount(() => {
             </form>
           </div>
         </template>
-        <NAlert v-if="cancelError" type="error" class="analytics-error returns-error" :title="cancelError">
-          <div class="analytics-error-content returns-error-content">
+        <NAlert v-if="cancelError" type="error" class="analytics-error" :title="cancelError">
+          <div class="analytics-error-content">
             <span>取消明细未更新，请重试。</span>
             <NButton size="small" @click="retryActive">重试</NButton>
           </div>
@@ -724,9 +731,10 @@ onBeforeUnmount(() => {
           :pagination="false"
           :remote="true"
           :scroll-x="1000"
+          table-layout="fixed"
           :row-key="cancelRowKey"
         >
-          <template #empty><EmptyState :title="cancelError ? '取消明细加载失败' : '当前筛选范围内没有取消记录'" icon="returns" /></template>
+          <template #empty><EmptyState :title="cancelError ? '取消明细加载失败' : '当前筛选范围内没有取消记录'" icon="xCircle" /></template>
         </NDataTable>
         <div v-if="cancelData" class="analytics-pager returns-pager">
           <NButton
@@ -755,7 +763,7 @@ onBeforeUnmount(() => {
     <template v-else>
       <ReturnsKpiCards :items="rfbsKpis" />
 
-      <NCard :bordered="false" class="analytics-table-card returns-panel">
+      <NCard :bordered="false" class="analytics-table-card">
         <template #header>
           <div class="returns-panel-header">
             <div>
@@ -780,8 +788,8 @@ onBeforeUnmount(() => {
             </form>
           </div>
         </template>
-        <NAlert v-if="rfbsError" type="error" class="analytics-error returns-error" :title="rfbsError">
-          <div class="analytics-error-content returns-error-content">
+        <NAlert v-if="rfbsError" type="error" class="analytics-error" :title="rfbsError">
+          <div class="analytics-error-content">
             <span>退货明细未更新，请重试。</span>
             <NButton size="small" @click="retryActive">重试</NButton>
           </div>
@@ -794,9 +802,10 @@ onBeforeUnmount(() => {
           :pagination="false"
           :remote="true"
           :scroll-x="1275"
+          table-layout="fixed"
           :row-key="rfbsRowKey"
         >
-          <template #empty><EmptyState :title="rfbsError ? '退货明细加载失败' : '当前筛选范围内没有退货申请'" icon="returns" /></template>
+          <template #empty><EmptyState :title="rfbsError ? '退货明细加载失败' : '当前筛选范围内没有退货申请'" icon="rotateCcw" /></template>
         </NDataTable>
         <div v-if="rfbsData" class="analytics-pager returns-pager">
           <NButton

@@ -18,7 +18,7 @@ defineProps<{
 </script>
 
 <template>
-  <div v-if="items.length" class="analytics-kpi-grid returns-summary">
+  <div v-if="items.length" class="analytics-kpi-grid">
     <NCard
       v-for="kpi in items"
       :key="kpi.label"
