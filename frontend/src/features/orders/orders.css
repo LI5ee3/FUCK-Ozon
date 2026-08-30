@@ -40,24 +40,89 @@
   width: 250px;
 }
 
-.orders-date-presets,
-.orders-status-filters {
+.orders-date-presets {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.orders-status-filters {
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--opanel-line);
+/* Status filter cards: NCard anatomy per DESIGN.md §5, macaron tone shells
+   (.tone-* supplies bg + --tone-ink); the selected card borders in tone ink. */
+.orders-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-.orders-status-filters .n-tag {
-  margin-left: 2px;
+.orders-kpi-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--opanel-line) !important;
+  border-radius: var(--opanel-radius-card) !important;
+  box-shadow: var(--opanel-shadow-sm);
+  cursor: pointer;
+  transition: transform 0.16s var(--opanel-ease-fluid), border-color 0.16s var(--opanel-ease-fluid);
+}
+
+.orders-kpi-card:hover {
+  border-color: color-mix(in srgb, var(--tone-ink, var(--opanel-primary)) 45%, var(--opanel-line)) !important;
+}
+
+.orders-kpi-card.is-selected {
+  border-color: var(--tone-ink, var(--opanel-primary)) !important;
+}
+
+.orders-kpi-card:active {
+  transform: scale(0.98);
+}
+
+.orders-kpi-card .n-card__content {
+  min-height: 130px;
+  padding: 18px 20px;
+}
+
+.orders-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--opanel-muted);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.orders-icon-badge {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: var(--opanel-radius-sm);
+}
+
+.orders-kpi-value {
+  display: block;
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
+}
+
+.orders-kpi-card small {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orders-kpi-skeleton-value {
+  margin: 14px 0 10px;
 }
 
 .orders-error {
@@ -182,20 +247,11 @@
   font-weight: 650;
 }
 
-.orders-channel-tag--fbp {
-  background: color-mix(in srgb, var(--opanel-primary) 12%, transparent) !important;
-  color: var(--opanel-primary) !important;
-}
-
-.orders-channel-tag--fbs {
-  background: color-mix(in srgb, var(--opanel-success) 12%, transparent) !important;
-  color: var(--opanel-success) !important;
-}
-
-.orders-channel-tag--whd {
-  background: color-mix(in srgb, var(--opanel-warning) 14%, transparent) !important;
-  color: var(--opanel-warning) !important;
-}
+/* Channel tags consume the shared --opanel-tone-* tokens (styles/tokens.css,
+   theme-aware) — FBP→azure, realFBS→mint, WHD→butter, same as the dashboard. */
+.orders-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.orders-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.orders-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
 .orders-product-title,
 .orders-product-original {
@@ -225,9 +281,9 @@
 }
 
 .orders-meta-chip--quantity {
-  border-color: color-mix(in srgb, var(--opanel-primary) 20%, transparent);
-  background: color-mix(in srgb, var(--opanel-primary) 8%, transparent);
-  color: var(--opanel-primary);
+  border-color: color-mix(in srgb, var(--opanel-tone-azure-text) 20%, transparent);
+  background: var(--opanel-tone-azure-bg);
+  color: var(--opanel-tone-azure-text);
   font-weight: 700;
 }
 
@@ -338,31 +394,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Milestone states consume the macaron tone shells: mint=completed/fulfilled,
+   azure=in-flight (primary), peach=cancelled, pending stays muted. */
 .orders-milestone.is-completed {
-  border-color: color-mix(in srgb, var(--opanel-success) 35%, var(--opanel-line));
-  background: color-mix(in srgb, var(--opanel-success) 6%, var(--opanel-panel-hover));
+  border-color: color-mix(in srgb, var(--opanel-tone-mint-text) 25%, transparent);
+  background: var(--opanel-tone-mint-bg);
 }
 
 .orders-milestone.is-completed .orders-milestone-head {
-  color: var(--opanel-success);
+  color: var(--opanel-tone-mint-text);
 }
 
 .orders-milestone.is-active {
-  border-color: color-mix(in srgb, var(--opanel-primary) 35%, var(--opanel-line));
-  background: color-mix(in srgb, var(--opanel-primary) 6%, var(--opanel-panel-hover));
+  border-color: color-mix(in srgb, var(--opanel-tone-azure-text) 25%, transparent);
+  background: var(--opanel-tone-azure-bg);
 }
 
 .orders-milestone.is-active .orders-milestone-head {
-  color: var(--opanel-primary);
+  color: var(--opanel-tone-azure-text);
 }
 
 .orders-milestone.is-cancelled {
-  border-color: color-mix(in srgb, var(--opanel-danger) 35%, var(--opanel-line));
-  background: color-mix(in srgb, var(--opanel-danger) 6%, var(--opanel-panel-hover));
+  border-color: color-mix(in srgb, var(--opanel-tone-peach-text) 25%, transparent);
+  background: var(--opanel-tone-peach-bg);
 }
 
 .orders-milestone.is-cancelled .orders-milestone-head {
-  color: var(--opanel-danger);
+  color: var(--opanel-tone-peach-text);
 }
 
 .orders-milestone.is-pending {
@@ -494,16 +552,20 @@
 }
 
 .orders-alert-box--danger {
-  background: color-mix(in srgb, var(--opanel-danger) 9%, transparent);
-  color: var(--opanel-danger);
+  background: var(--opanel-tone-peach-bg);
+  color: var(--opanel-tone-peach-text);
 }
 
 .orders-alert-box--warning {
-  background: color-mix(in srgb, var(--opanel-warning) 10%, transparent);
-  color: var(--opanel-warning);
+  background: var(--opanel-tone-butter-bg);
+  color: var(--opanel-tone-butter-text);
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1260px) {
+  .orders-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .orders-filter-row {
     grid-template-columns: minmax(220px, 1fr) 160px;
   }
@@ -513,7 +575,17 @@
   }
 }
 
+@media (max-width: 800px) {
+  .orders-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
+  .orders-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
   .orders-filter-row {
     grid-template-columns: 1fr;
   }

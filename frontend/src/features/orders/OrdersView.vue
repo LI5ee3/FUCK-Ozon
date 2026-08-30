@@ -8,11 +8,13 @@ import { useRoute, useRouter } from "vue-router";
 import {
   NAlert,
   NButton,
+  NCard,
   NDataTable,
   NDatePicker,
   NInput,
   NPagination,
   NSelect,
+  NSkeleton,
   NTag,
   useMessage,
 } from "naive-ui";
@@ -33,6 +35,7 @@ import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } fro
 import OrderDetailPanel from "./components/OrderDetailPanel.vue";
 
 type DatePreset = StandardDatePreset;
+type ToneName = "azure" | "lavender" | "mint" | "peach" | "butter";
 type OrderFilters = {
   shopId: ShopSelection;
   channel: Channel | "";
@@ -68,12 +71,20 @@ const channelOptions = [
   { label: "realFBS", value: "realFBS" },
   { label: "WHD", value: "WHD" },
 ];
-const statusFilters: ReadonlyArray<{ key: OrderStatusFilter; label: string; icon: IconName; countKey: keyof OrderStatusCounts }> = [
-  { key: "", label: "全部订单", icon: "layers", countKey: "all" },
-  { key: "pending", label: "待备货", icon: "box", countKey: "pending" },
-  { key: "shipping", label: "运输中", icon: "truck", countKey: "shipping" },
-  { key: "delivered", label: "已签收", icon: "checkCircle", countKey: "delivered" },
-  { key: "cancelled", label: "已取消", icon: "alertTriangle", countKey: "cancelled" },
+// Tone roles per DESIGN.md: azure=primary, lavender=pending, mint=fulfillment, peach=cancellations.
+const statusCards: ReadonlyArray<{
+  key: OrderStatusFilter;
+  label: string;
+  icon: IconName;
+  tone: ToneName;
+  countKey: keyof OrderStatusCounts;
+  noteKey: keyof OrderStatusCounts | "share";
+}> = [
+  { key: "", label: "全部订单", icon: "layers", tone: "azure", countKey: "all", noteKey: "anomaly" },
+  { key: "pending", label: "待备货", icon: "box", tone: "lavender", countKey: "pending", noteKey: "share" },
+  { key: "shipping", label: "运输中", icon: "truck", tone: "butter", countKey: "shipping", noteKey: "share" },
+  { key: "delivered", label: "已签收", icon: "checkCircle", tone: "mint", countKey: "delivered", noteKey: "share" },
+  { key: "cancelled", label: "已取消", icon: "alertTriangle", tone: "peach", countKey: "cancelled", noteKey: "cancelled_shipped" },
 ];
 const datePresets: ReadonlyArray<{ key: DatePreset; label: string }> = [
   { key: "today", label: "今天" },
@@ -367,14 +378,25 @@ const columns = computed<DataTableColumns<Order>>(() => [
     width: 48,
     renderExpand: (order) => h(OrderDetailPanel, { order, copyValue }),
   },
-  { key: "order", title: "订单", minWidth: 210, render: renderOrderCell },
-  { key: "product", title: "商品信息", minWidth: 330, render: renderProductCell },
+  { key: "order", title: "订单", width: 210, render: renderOrderCell },
+  { key: "product", title: "商品信息", width: 330, render: renderProductCell },
   { key: "status", title: "状态与时间", width: 190, render: renderStatusCell },
   { key: "amount", title: "金额", width: 150, align: "right", render: renderAmountCell },
 ]);
 
-function statusCount(countKey: keyof OrderStatusCounts): string | number {
-  return statusCounts.value?.[countKey] ?? "—";
+function statusValue(countKey: keyof OrderStatusCounts): string {
+  const counts = statusCounts.value;
+  return counts ? formatInteger(counts[countKey]) : "—";
+}
+
+function statusCardNote(card: (typeof statusCards)[number]): string {
+  const counts = statusCounts.value;
+  if (!counts) return "—";
+  if (card.noteKey === "share") {
+    return counts.all > 0 ? `占全部 ${Math.round((counts[card.countKey] / counts.all) * 100)}%` : "—";
+  }
+  const label = card.noteKey === "anomaly" ? "数据异常" : "发货后取消";
+  return `${label} ${formatInteger(counts[card.noteKey])} 单`;
 }
 
 function updateExpandedRowKeys(keys: Array<string | number>): void {
@@ -461,27 +483,37 @@ onBeforeUnmount(() => {
           查询
         </NButton>
       </div>
-
-      <div class="orders-status-filters" role="tablist" aria-label="订单状态快速筛选">
-        <NButton
-          v-for="item in statusFilters"
-          :key="item.key || 'all'"
-          size="small"
-          :type="filters.status === item.key ? 'primary' : 'default'"
-          :secondary="filters.status !== item.key"
-          attr-type="button"
-          role="tab"
-          :aria-selected="filters.status === item.key"
-          @click="handleStatusChange(item.key)"
-        >
-          <template #icon><morph-icon :icon="item.icon" size="13" stroke-width="2" /></template>
-          {{ item.label }}
-          <NTag size="tiny" round :bordered="false" :type="filters.status === item.key ? 'default' : 'info'">
-            {{ statusCount(item.countKey) }}
-          </NTag>
-        </NButton>
-      </div>
     </form>
+
+    <div v-if="loading && !statusCounts" class="orders-kpi-grid" aria-hidden="true">
+      <NCard v-for="i in 5" :key="i" :bordered="false" class="orders-kpi-card">
+        <NSkeleton text width="55%" />
+        <NSkeleton text width="72%" class="orders-kpi-skeleton-value" />
+        <NSkeleton text width="42%" />
+      </NCard>
+    </div>
+    <div v-else-if="statusCounts" class="orders-kpi-grid" role="tablist" aria-label="订单状态筛选">
+      <NCard
+        v-for="card in statusCards"
+        :key="card.key || 'all'"
+        :bordered="false"
+        class="orders-kpi-card"
+        :class="[`tone-${card.tone}`, { 'is-selected': filters.status === card.key }]"
+        role="tab"
+        tabindex="0"
+        :aria-selected="filters.status === card.key"
+        @click="handleStatusChange(card.key)"
+        @keydown.enter.prevent="handleStatusChange(card.key)"
+        @keydown.space.prevent="handleStatusChange(card.key)"
+      >
+        <div class="orders-kpi-head">
+          <span>{{ card.label }}</span>
+          <span class="orders-icon-badge tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
+        </div>
+        <strong class="orders-kpi-value tone-value">{{ statusValue(card.countKey) }}</strong>
+        <small>{{ statusCardNote(card) }}</small>
+      </NCard>
+    </div>
 
     <NAlert v-if="error" type="error" class="orders-error" :title="error">
       <div class="orders-error-content">
@@ -502,7 +534,8 @@ onBeforeUnmount(() => {
       :loading="loading"
       :pagination="false"
       :remote="true"
-      :scroll-x="980"
+      :scroll-x="928"
+      table-layout="fixed"
       :row-key="orderKey"
       :expanded-row-keys="expandedRowKeys"
       @update:expanded-row-keys="updateExpandedRowKeys"
