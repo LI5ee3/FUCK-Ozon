@@ -33,9 +33,9 @@ import {
 } from "../../shared/utils/format";
 import { formatGmvAmount } from "./format";
 import OrderTrendChart from "./components/OrderTrendChart.vue";
-import { beijingToday, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
+import { beijingThreeMonthRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all" | "";
+type DatePreset = StandardDatePreset | "";
 type Insight = {
   icon: IconName;
   label: string;
@@ -56,12 +56,7 @@ const loading = ref(false);
 const error = ref("");
 let requestId = 0;
 
-function defaultDateRange(): DateRange {
-  const today = beijingToday();
-  return [subtractMonths(today, 3), today];
-}
-
-const dateRange = ref<DateRange>(defaultDateRange());
+const dateRange = ref<DateRange>(beijingThreeMonthRange());
 const activePreset = ref<DatePreset>("3months");
 const presets: ReadonlyArray<{ key: Exclude<DatePreset, "">; label: string }> = [
   { key: "today", label: "今天" },
@@ -76,17 +71,8 @@ const granularities: ReadonlyArray<{ key: Granularity; label: string }> = [
   { key: "month", label: "月" },
 ];
 
-function presetRange(preset: Exclude<DatePreset, "">): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "3months") return [subtractMonths(today, 3), today];
-  return ["2020-01-01", today];
-}
-
 async function loadDashboard(): Promise<void> {
-  if (activePreset.value) dateRange.value = presetRange(activePreset.value);
+  if (activePreset.value) dateRange.value = standardDatePresetRange(activePreset.value);
   const currentRequest = ++requestId;
   loading.value = true;
   error.value = "";
@@ -126,7 +112,7 @@ function updateDateRange(value: string | [string, string] | null): void {
 }
 
 function selectPreset(preset: Exclude<DatePreset, "">): void {
-  dateRange.value = presetRange(preset);
+  dateRange.value = standardDatePresetRange(preset);
   activePreset.value = preset;
   void loadDashboard();
 }

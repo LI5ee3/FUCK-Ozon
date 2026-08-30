@@ -33,10 +33,10 @@ import type {
 } from "./types";
 import type { ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
-import { isShopSelection, positiveInteger, queryValue } from "../../shared/utils/query";
+import { beijingToday, parseValidDateRange, shiftDays, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
+import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type AnalyticsTab = "traffic" | "queries";
 type AnalyticsFilters = {
   shopId: ShopSelection;
@@ -93,7 +93,7 @@ let ignoreNextShopChange = false;
 const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const [from, to] = presetRange(preset.key);
+    const [from, to] = standardDatePresetRange(preset.key);
     if (filters.from === from && filters.to === to) return preset.key;
   }
   return "";
@@ -153,26 +153,16 @@ function parseDateRange(from: string, to: string): DateRange {
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AnalyticsFilters {
-  const shop = queryValue(query, "shop_id");
   const tab = queryValue(query, "tab");
   const [from, to] = parseDateRange(queryValue(query, "from"), queryValue(query, "to"));
   return {
-    shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop,
+    shopId: shopSelectionFromQuery(query, fallbackShop),
     sku: queryValue(query, "sku").trim(),
     from,
     to,
     page: positiveInteger(queryValue(query, "page"), 1),
     tab: isAnalyticsTab(tab) ? tab : "traffic",
   };
-}
-
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "3months") return [subtractMonths(today, 3), today];
-  return ["2020-01-01", today];
 }
 
 function queryFor(value: AnalyticsFilters): Record<string, string> {
@@ -187,12 +177,6 @@ function queryFor(value: AnalyticsFilters): Record<string, string> {
     query.to = value.to;
   }
   return query;
-}
-
-function queryMatches(query: LocationQuery, value: AnalyticsFilters): boolean {
-  const expected = queryFor(value);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
 }
 
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): AnalyticsFilters {
@@ -211,7 +195,7 @@ function updateRoute(next: AnalyticsFilters, replace = false): void {
   const normalized = { ...next, sku: next.sku.trim() };
   Object.assign(filters, normalized);
   skuDraft.value = normalized.sku;
-  if (queryMatches(route.query, normalized)) {
+  if (queryMatches(route.query, queryFor(normalized))) {
     void loadActiveTab(normalized);
     return;
   }
@@ -383,7 +367,7 @@ function handleDateRangeChange(value: string | DateRange | null): void {
 }
 
 function selectPreset(preset: DatePreset): void {
-  const [from, to] = presetRange(preset);
+  const [from, to] = standardDatePresetRange(preset);
   resetTablePages();
   updateFilters({ from, to, page: 1 });
 }
@@ -504,7 +488,7 @@ watch(selectedShopId, (shopId) => {
 onMounted(() => {
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     void router.replace({ query: queryFor(next) });
   } else {
     void loadActiveTab(next);

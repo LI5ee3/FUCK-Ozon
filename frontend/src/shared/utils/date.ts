@@ -1,4 +1,5 @@
 export type DateRange = [string, string];
+export type StandardDatePreset = "today" | "3days" | "7days" | "3months" | "all";
 
 function todayInTimeZone(timeZone: string, now: Date): string {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
@@ -38,6 +39,18 @@ export function subtractMonths(value: string, months: number): string {
   const target = new Date(Date.UTC(year, month - 1 - months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   return dateText(target.getUTCFullYear(), target.getUTCMonth() + 1, Math.min(day, lastDay));
+}
+
+export function beijingThreeMonthRange(end = beijingToday()): DateRange {
+  return [subtractMonths(end, 3), end];
+}
+
+export function standardDatePresetRange(preset: StandardDatePreset, end = beijingToday()): DateRange {
+  if (preset === "today") return [end, end];
+  if (preset === "3days") return [shiftDays(end, -2), end];
+  if (preset === "7days") return [shiftDays(end, -6), end];
+  if (preset === "3months") return [subtractMonths(end, 3), end];
+  return ["2020-01-01", end];
 }
 
 export function isValidDate(value: string): boolean {

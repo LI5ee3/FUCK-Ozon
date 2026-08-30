@@ -33,11 +33,11 @@ import type {
   RiskStats,
 } from "./types";
 import type { Channel, ShopSelection } from "../../shared/types/common";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
+import { beijingThreeMonthRange, parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
 import { formatInteger } from "../../shared/utils/format";
-import { isShopSelection, queryValue } from "../../shared/utils/query";
+import { queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type RiskFilters = {
   shopId: ShopSelection;
   search: string;
@@ -85,7 +85,7 @@ let ignoreNextShopChange = false;
 const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const [from, to] = presetRange(preset.key);
+    const [from, to] = standardDatePresetRange(preset.key);
     if (filters.from === from && filters.to === to) return preset.key;
   }
   return "";
@@ -147,16 +147,10 @@ const summaryKpis = computed<RiskKpi[]>(() => {
   ];
 });
 
-function defaultDateRange(): DateRange {
-  const today = beijingToday();
-  return [subtractMonths(today, 3), today];
-}
-
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): RiskFilters {
-  const shop = queryValue(query, "shop_id");
-  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), defaultDateRange());
+  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), beijingThreeMonthRange());
   return {
-    shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop,
+    shopId: shopSelectionFromQuery(query, fallbackShop),
     search: queryValue(query, "q").trim(),
     highOnly: queryValue(query, "high") === "1",
     from,
@@ -164,17 +158,8 @@ function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): RiskFi
   };
 }
 
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "3months") return defaultDateRange();
-  return ["2020-01-01", today];
-}
-
 function queryFor(value: RiskFilters): Record<string, string> {
-  const defaultRange = defaultDateRange();
+  const defaultRange = beijingThreeMonthRange();
   const query: Record<string, string> = { shop_id: String(value.shopId) };
   if (value.search.trim()) query.q = value.search.trim();
   if (value.highOnly) query.high = "1";
@@ -183,12 +168,6 @@ function queryFor(value: RiskFilters): Record<string, string> {
     query.to = value.to;
   }
   return query;
-}
-
-function queryMatches(query: LocationQuery, value: RiskFilters): boolean {
-  const expected = queryFor(value);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
 }
 
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): RiskFilters {
@@ -206,7 +185,7 @@ function updateRoute(next: RiskFilters, replace = false): void {
   const normalized = { ...next, search: next.search.trim() };
   Object.assign(filters, normalized);
   searchDraft.value = normalized.search;
-  if (queryMatches(route.query, normalized)) {
+  if (queryMatches(route.query, queryFor(normalized))) {
     void loadRisk(normalized);
     return;
   }
@@ -216,7 +195,7 @@ function updateRoute(next: RiskFilters, replace = false): void {
 function currentFilters(): RiskFilters {
   const next = { ...filters, search: searchDraft.value };
   if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
-    [next.from, next.to] = defaultDateRange();
+    [next.from, next.to] = beijingThreeMonthRange();
   }
   return next;
 }
@@ -274,13 +253,13 @@ function toggleHighRisk(): void {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const [from, to] = parseValidDateRange(value[0], value[1], defaultDateRange());
+  const [from, to] = parseValidDateRange(value[0], value[1], beijingThreeMonthRange());
   if (from !== value[0] || to !== value[1]) return;
   updateFilters({ from, to });
 }
 
 function selectPreset(preset: DatePreset): void {
-  const [from, to] = presetRange(preset);
+  const [from, to] = standardDatePresetRange(preset);
   updateFilters({ from, to });
 }
 
@@ -466,7 +445,7 @@ watch(selectedShopId, (shopId) => {
 onMounted(() => {
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     void router.replace({ query: queryFor(next) });
   } else {
     void loadRisk(next);

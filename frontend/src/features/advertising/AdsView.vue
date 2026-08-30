@@ -13,10 +13,10 @@ import { useShop } from "../../shared/composables/useShop";
 import type { AdsOverviewResponse, AdsSummary } from "./types";
 import type { ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
-import { isShopSelection, queryValue } from "../../shared/utils/query";
+import { parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
+import { queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type AdsFilters = { shopId: ShopSelection; from: string; to: string };
 type AdsKpi = { icon: IconName; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "blue" };
 
@@ -43,7 +43,7 @@ let ignoreNextShopChange = false;
 const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const [from, to] = presetRange(preset.key);
+    const [from, to] = standardDatePresetRange(preset.key);
     if (filters.from === from && filters.to === to) return preset.key;
   }
   return "";
@@ -66,34 +66,13 @@ const kpis = computed<AdsKpi[]>(() => {
   ];
 });
 
-function adsDefaultRange(): DateRange {
-  const end = beijingToday();
-  return [shiftDays(end, -6), end];
-}
-
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AdsFilters {
-  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), adsDefaultRange());
-  const shop = queryValue(query, "shop_id");
-  return { shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop, from, to };
-}
-
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "3months") return [subtractMonths(today, 3), today];
-  return ["2020-01-01", today];
+  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), standardDatePresetRange("7days"));
+  return { shopId: shopSelectionFromQuery(query, fallbackShop), from, to };
 }
 
 function queryFor(value: AdsFilters): Record<string, string> {
   return { shop_id: String(value.shopId), from: value.from, to: value.to };
-}
-
-function queryMatches(query: LocationQuery, value: AdsFilters): boolean {
-  const expected = queryFor(value);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
 }
 
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): AdsFilters {
@@ -131,7 +110,7 @@ function loadOverview(queryFilters: AdsFilters): void {
 
 function updateRoute(next: AdsFilters, replace = false): void {
   Object.assign(filters, next);
-  if (queryMatches(route.query, next)) {
+  if (queryMatches(route.query, queryFor(next))) {
     loadOverview(next);
     return;
   }
@@ -141,13 +120,13 @@ function updateRoute(next: AdsFilters, replace = false): void {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const [from, to] = parseValidDateRange(value[0], value[1], adsDefaultRange());
+  const [from, to] = parseValidDateRange(value[0], value[1], standardDatePresetRange("7days"));
   if (from !== value[0] || to !== value[1]) return;
   updateRoute({ ...currentFilters(), from, to });
 }
 
 function selectPreset(preset: DatePreset): void {
-  const [from, to] = presetRange(preset);
+  const [from, to] = standardDatePresetRange(preset);
   updateRoute({ ...currentFilters(), from, to });
 }
 
@@ -189,7 +168,7 @@ watch(selectedShopId, (shopId) => {
 onMounted(() => {
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     void router.replace({ query: queryFor(next) });
   } else {
     loadOverview(next);

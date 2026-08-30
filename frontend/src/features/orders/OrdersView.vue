@@ -28,11 +28,11 @@ import type {
 } from "./types";
 import type { Channel, ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatMoney, formatNumber } from "../../shared/utils/format";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
-import { isShopSelection, positiveInteger, queryValue } from "../../shared/utils/query";
+import { beijingThreeMonthRange, parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
+import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 import OrderDetailPanel from "./components/OrderDetailPanel.vue";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type OrderFilters = {
   shopId: ShopSelection;
   channel: Channel | "";
@@ -85,17 +85,12 @@ const datePresets: ReadonlyArray<{ key: DatePreset; label: string }> = [
 const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const [from, to] = presetRange(preset.key);
+    const [from, to] = standardDatePresetRange(preset.key);
     if (filters.from === from && filters.to === to) return preset.key;
   }
   return "";
 });
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / PAGE_SIZE)));
-
-function defaultDateRange(): DateRange {
-  const today = beijingToday();
-  return [subtractMonths(today, 3), today];
-}
 
 function isChannel(value: string): value is Channel {
   return value === "FBP" || value === "realFBS" || value === "WHD";
@@ -106,16 +101,15 @@ function isStatusFilter(value: string): value is Exclude<OrderStatusFilter, ""> 
 }
 
 function parseDateRange(from: string, to: string): DateRange {
-  return parseValidDateRange(from, to, defaultDateRange());
+  return parseValidDateRange(from, to, beijingThreeMonthRange());
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): OrderFilters {
-  const shop = queryValue(query, "shop_id");
   const status = queryValue(query, "status");
   const channel = queryValue(query, "channel");
   const [from, to] = parseDateRange(queryValue(query, "from"), queryValue(query, "to"));
   return {
-    shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop,
+    shopId: shopSelectionFromQuery(query, fallbackShop),
     channel: isChannel(channel) ? channel : "",
     status: isStatusFilter(status) ? status : "",
     search: queryValue(query, "q"),
@@ -125,17 +119,8 @@ function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): OrderF
   };
 }
 
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "all") return ["2020-01-01", today];
-  return defaultDateRange();
-}
-
 function queryFor(filtersValue: OrderFilters): Record<string, string> {
-  const defaultRange = defaultDateRange();
+  const defaultRange = beijingThreeMonthRange();
   const query: Record<string, string> = { shop_id: String(filtersValue.shopId) };
   if (filtersValue.page !== 1) query.page = String(filtersValue.page);
   if (filtersValue.channel) query.channel = filtersValue.channel;
@@ -146,12 +131,6 @@ function queryFor(filtersValue: OrderFilters): Record<string, string> {
     query.to = filtersValue.to;
   }
   return query;
-}
-
-function queryMatches(query: LocationQuery, filtersValue: OrderFilters): boolean {
-  const expected = queryFor(filtersValue);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
 }
 
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): OrderFilters {
@@ -168,7 +147,7 @@ function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): Ord
 function updateRoute(next: OrderFilters, replace = false): void {
   Object.assign(filters, next);
   searchDraft.value = next.search;
-  if (queryMatches(route.query, next)) {
+  if (queryMatches(route.query, queryFor(next))) {
     void loadOrders(next);
     return;
   }
@@ -179,7 +158,7 @@ function updateRoute(next: OrderFilters, replace = false): void {
 function currentFilters(): OrderFilters {
   const next = { ...filters, search: searchDraft.value };
   if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
-    [next.from, next.to] = defaultDateRange();
+    [next.from, next.to] = beijingThreeMonthRange();
   }
   return next;
 }
@@ -245,13 +224,13 @@ function handleStatusChange(status: OrderStatusFilter): void {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const [from, to] = parseValidDateRange(value[0], value[1], defaultDateRange());
+  const [from, to] = parseValidDateRange(value[0], value[1], beijingThreeMonthRange());
   if (from !== value[0] || to !== value[1]) return;
   updateFilters({ from, to, page: 1 });
 }
 
 function selectPreset(preset: DatePreset): void {
-  const [from, to] = presetRange(preset);
+  const [from, to] = standardDatePresetRange(preset);
   updateFilters({ from, to, page: 1 });
 }
 
@@ -420,7 +399,7 @@ watch(selectedShopId, (shopId) => {
 onMounted(() => {
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     void router.replace({ query: queryFor(next) });
   } else {
     void loadOrders(next);

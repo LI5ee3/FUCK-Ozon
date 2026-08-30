@@ -14,14 +14,13 @@ import {
   type ImportKind,
 } from "./api";
 import { useShop } from "../../shared/composables/useShop";
-import type { DateRange } from "../../shared/utils/date";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths } from "../../shared/utils/date";
+import { beijingThreeMonthRange, parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
 import type { ShopId } from "../../shared/types/common";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type ImportStatusTone = "muted" | "success" | "error";
 type FileValidation = { valid: boolean; detail: string; status: string };
 
@@ -37,7 +36,7 @@ const importStatusTone = ref<ImportStatusTone>("muted");
 const historyRows = ref<ImportHistoryItem[]>([]);
 const historyLoading = ref(false);
 const historyError = ref("");
-const exportRange = ref<DateRange>(defaultExportRange());
+const exportRange = ref<DateRange>(beijingThreeMonthRange());
 const exportPreparing = reactive<Record<ExportModule, boolean>>({
   orders: false,
   risk: false,
@@ -94,25 +93,11 @@ const exportShopName = computed(() => {
 const exportScope = computed(() => `当前店铺：${exportShopName.value} ｜ 时间范围：${exportRange.value[0]} 至 ${exportRange.value[1]}`);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const range = presetRange(preset.key);
+    const range = standardDatePresetRange(preset.key);
     if (range[0] === exportRange.value[0] && range[1] === exportRange.value[1]) return preset.key;
   }
   return "";
 });
-
-function defaultExportRange(): DateRange {
-  const today = beijingToday();
-  return [subtractMonths(today, 3), today];
-}
-
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "all") return ["2020-01-01", today];
-  return defaultExportRange();
-}
 
 function validateFile(file: File | null): FileValidation {
   if (!file) return { valid: false, detail: "支持标准 UTF-8 .csv 文件，单文件上限 50MB", status: "" };
@@ -220,14 +205,14 @@ async function submitImport(): Promise<void> {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const fallback = defaultExportRange();
+  const fallback = beijingThreeMonthRange();
   const next = parseValidDateRange(value[0], value[1], fallback);
   if (next[0] !== value[0] || next[1] !== value[1]) return;
   exportRange.value = next;
 }
 
 function selectPreset(preset: DatePreset): void {
-  exportRange.value = presetRange(preset);
+  exportRange.value = standardDatePresetRange(preset);
 }
 
 function startExport(module: ExportModule): void {

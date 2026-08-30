@@ -44,16 +44,17 @@ import type {
 } from "./types";
 import type { ShopId } from "../../shared/types/common";
 import {
+  beijingThreeMonthRange,
   beijingToday,
   moscowToday,
   parseValidDateRange,
-  shiftDays,
-  subtractMonths,
+  standardDatePresetRange,
   type DateRange,
+  type StandardDatePreset,
 } from "../../shared/utils/date";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
 
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 type SummaryTone = "azure" | "peach" | "mint" | "lavender";
 type AutoDraft = { enabled: boolean; interval_hours: number; range_days: number };
 
@@ -105,8 +106,8 @@ const { shops, selectedShopId } = useShop();
 const syncRuns = ref<SyncRun[]>([]);
 const exchange = ref<ExchangeRateStatus | null>(null);
 const autoSettings = ref<AutoSyncSetting[]>([]);
-const manualRange = ref<DateRange>(defaultManualRange());
-const exchangeRange = ref<DateRange>(defaultExchangeRange());
+const manualRange = ref<DateRange>(standardDatePresetRange("7days", moscowToday()));
+const exchangeRange = ref<DateRange>(beijingThreeMonthRange());
 const historyLoading = ref(false);
 const historyError = ref("");
 const autoLoading = ref(false);
@@ -233,27 +234,9 @@ const historyColumns: DataTableColumns<SyncRun> = [
   },
 ];
 
-function defaultManualRange(): DateRange {
-  const today = moscowToday();
-  return [shiftDays(today, -6), today];
-}
-
-function defaultExchangeRange(): DateRange {
-  const today = beijingToday();
-  return [subtractMonths(today, 3), today];
-}
-
-function presetRange(preset: DatePreset, today: string): DateRange {
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "all") return ["2020-01-01", today];
-  return [subtractMonths(today, 3), today];
-}
-
 function findActivePreset(range: DateRange, today: string): DatePreset | "" {
   return datePresets.find((preset) => {
-    const candidate = presetRange(preset.key, today);
+    const candidate = standardDatePresetRange(preset.key, today);
     return candidate[0] === range[0] && candidate[1] === range[1];
   })?.key ?? "";
 }
@@ -329,11 +312,11 @@ function handleExchangeRangeChange(value: string | DateRange | null): void {
 }
 
 function selectManualPreset(preset: DatePreset): void {
-  manualRange.value = presetRange(preset, moscowToday());
+  manualRange.value = standardDatePresetRange(preset, moscowToday());
 }
 
 function selectExchangePreset(preset: DatePreset): void {
-  exchangeRange.value = presetRange(preset, beijingToday());
+  exchangeRange.value = standardDatePresetRange(preset, beijingToday());
 }
 
 async function loadSyncRuns(isPolling = false): Promise<void> {

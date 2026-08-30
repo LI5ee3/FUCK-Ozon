@@ -38,7 +38,7 @@ import type {
 } from "./types";
 import type { ShopId, ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
-import { isShopSelection, positiveInteger, queryValue } from "../../shared/utils/query";
+import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 
 type AlertFilters = {
   shopId: ShopSelection;
@@ -121,12 +121,11 @@ function isAlertCategory(value: string): value is AlertCategory {
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AlertFilters {
-  const shop = queryValue(query, "shop_id");
   const status = queryValue(query, "status");
   const severity = queryValue(query, "severity");
   const category = queryValue(query, "category");
   return {
-    shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop,
+    shopId: shopSelectionFromQuery(query, fallbackShop),
     status: isAlertStatus(status) ? status : "open",
     severity: isAlertSeverity(severity) ? severity : "",
     category: isAlertCategory(category) ? category : "",
@@ -208,12 +207,6 @@ function queryFor(value: AlertFilters): Record<string, string> {
   return query;
 }
 
-function queryMatches(query: LocationQuery, value: AlertFilters): boolean {
-  const expected = queryFor(value);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
-}
-
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): AlertFilters {
   const next = parseFilters(query, fallbackShop);
   Object.assign(filters, next);
@@ -235,7 +228,7 @@ function updateRoute(next: AlertFilters, replace = false): void {
   Object.assign(filters, normalized);
   searchDraft.value = normalized.search;
   if (previousShop !== normalized.shopId) void loadSummary(normalized.shopId);
-  if (queryMatches(route.query, normalized)) {
+  if (queryMatches(route.query, queryFor(normalized))) {
     void loadEvents(normalized);
     return;
   }
@@ -539,7 +532,7 @@ onMounted(() => {
   mounted = true;
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     skipNextRouteLoad = true;
     void router.replace({ query: queryFor(next) }).catch(() => {
       skipNextRouteLoad = false;

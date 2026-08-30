@@ -24,9 +24,9 @@ import type {
   AdCampaignState,
 } from "./types";
 import type { ShopSelection } from "../../shared/types/common";
-import { beijingToday, parseValidDateRange, shiftDays, subtractMonths, type DateRange } from "../../shared/utils/date";
+import { parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
 import { formatBeijingDateTime, formatInteger, formatNumber } from "../../shared/utils/format";
-import { isShopSelection, positiveInteger, queryValue } from "../../shared/utils/query";
+import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 
 type AdCampaignFilters = {
   shopId: ShopSelection;
@@ -36,7 +36,7 @@ type AdCampaignFilters = {
   sort: AdCampaignSort;
   page: number;
 };
-type DatePreset = "today" | "3days" | "7days" | "3months" | "all";
+type DatePreset = StandardDatePreset;
 
 const PAGE_SIZE = 50;
 const DEFAULT_SORT: AdCampaignSort = "spend_rub";
@@ -82,17 +82,12 @@ let ignoreNextShopChange = false;
 const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
 const activePreset = computed<DatePreset | "">(() => {
   for (const preset of datePresets) {
-    const [from, to] = presetRange(preset.key);
+    const [from, to] = standardDatePresetRange(preset.key);
     if (filters.from === from && filters.to === to) return preset.key;
   }
   return "";
 });
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / responsePageSize.value), loading.value ? filters.page : 1));
-
-function defaultDateRange(): DateRange {
-  const today = beijingToday();
-  return [shiftDays(today, -6), today];
-}
 
 function isCampaignState(value: string): value is AdCampaignState {
   return stateOptions.some((option) => option.value === value);
@@ -103,27 +98,17 @@ function isCampaignSort(value: string): value is AdCampaignSort {
 }
 
 function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): AdCampaignFilters {
-  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), defaultDateRange());
-  const shop = queryValue(query, "shop_id");
+  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), standardDatePresetRange("7days"));
   const state = queryValue(query, "state");
   const sort = queryValue(query, "sort");
   return {
-    shopId: isShopSelection(shop) ? Number(shop) as ShopSelection : fallbackShop,
+    shopId: shopSelectionFromQuery(query, fallbackShop),
     from,
     to,
     state: isCampaignState(state) ? state : "",
     sort: isCampaignSort(sort) ? sort : DEFAULT_SORT,
     page: positiveInteger(queryValue(query, "page"), 1),
   };
-}
-
-function presetRange(preset: DatePreset): DateRange {
-  const today = beijingToday();
-  if (preset === "today") return [today, today];
-  if (preset === "3days") return [shiftDays(today, -2), today];
-  if (preset === "7days") return [shiftDays(today, -6), today];
-  if (preset === "3months") return [subtractMonths(today, 3), today];
-  return ["2020-01-01", today];
 }
 
 function queryFor(value: AdCampaignFilters): Record<string, string> {
@@ -135,12 +120,6 @@ function queryFor(value: AdCampaignFilters): Record<string, string> {
     sort: value.sort,
     page: String(value.page),
   };
-}
-
-function queryMatches(query: LocationQuery, value: AdCampaignFilters): boolean {
-  const expected = queryFor(value);
-  const keys = new Set([...Object.keys(query), ...Object.keys(expected)]);
-  return [...keys].every((key) => queryValue(query, key) === (expected[key] ?? ""));
 }
 
 function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): AdCampaignFilters {
@@ -168,7 +147,7 @@ function resetDataForLoad(): void {
 function updateFilters(overrides: Partial<AdCampaignFilters>): void {
   const next = { ...currentFilters(), ...overrides };
   Object.assign(filters, next);
-  if (queryMatches(route.query, next)) {
+  if (queryMatches(route.query, queryFor(next))) {
     void loadCampaigns(next);
     return;
   }
@@ -216,13 +195,13 @@ function retry(): void {
 
 function handleDateRangeChange(value: string | DateRange | null): void {
   if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
-  const [from, to] = parseValidDateRange(value[0], value[1], defaultDateRange());
+  const [from, to] = parseValidDateRange(value[0], value[1], standardDatePresetRange("7days"));
   if (from !== value[0] || to !== value[1]) return;
   updateFilters({ from, to, page: 1 });
 }
 
 function selectPreset(preset: DatePreset): void {
-  const [from, to] = presetRange(preset);
+  const [from, to] = standardDatePresetRange(preset);
   updateFilters({ from, to, page: 1 });
 }
 
@@ -319,7 +298,7 @@ watch(selectedShopId, (shopId) => {
 onMounted(() => {
   const next = applyRouteQuery(route.query, selectedShopId.value);
   routeReady = true;
-  if (!queryMatches(route.query, next)) {
+  if (!queryMatches(route.query, queryFor(next))) {
     void router.replace({ query: queryFor(next) });
   } else {
     void loadCampaigns(next);
