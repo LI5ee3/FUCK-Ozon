@@ -6,19 +6,23 @@
   padding-top: 8px;
 }
 
-.dingtalk-loading,
-.dingtalk-refreshing {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 88px;
-  color: var(--opanel-muted);
+/* 视图容器已用 flex gap 控制节奏,抵消共享 KPI 网格自带的外边距 */
+.dingtalk-view > .analytics-kpi-grid {
+  margin-bottom: 0;
+}
+
+/* 日期时间类 KPI 值按 28px 规范展示,超长时省略不换行 */
+.dingtalk-summary .analytics-kpi-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dingtalk-refreshing {
+  display: flex;
+  align-items: center;
   justify-content: flex-start;
-  min-height: 0;
+  gap: 8px;
   color: var(--opanel-primary);
   font-size: 12px;
 }
@@ -36,91 +40,6 @@
   font-size: 12px;
 }
 
-.dingtalk-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.dingtalk-summary-card,
-.dingtalk-panel {
-  min-width: 0;
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
-  box-shadow: var(--opanel-shadow-sm);
-}
-
-.dingtalk-summary-card {
-  overflow: hidden;
-}
-
-.dingtalk-summary-card .n-card__content {
-  min-height: 130px;
-  padding: 18px 20px;
-}
-
-.dingtalk-summary-head,
-.dingtalk-summary-label,
-.dingtalk-panel-heading,
-.dingtalk-toggle-row,
-.dingtalk-actions,
-.dingtalk-spec-head {
-  display: flex;
-  align-items: center;
-}
-
-.dingtalk-summary-head,
-.dingtalk-panel-heading {
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.dingtalk-summary-label {
-  min-width: 0;
-  gap: 6px;
-  color: var(--opanel-muted);
-  font-size: 13px;
-  font-weight: 550;
-}
-
-.dingtalk-summary-label > span:first-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dingtalk-summary-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  place-items: center;
-  border-radius: var(--opanel-radius-sm);
-}
-
-.dingtalk-summary-card > .n-card__content > strong {
-  display: block;
-  margin-top: 10px;
-  overflow: hidden;
-  font-size: 22px;
-  font-weight: 750;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dingtalk-summary-card small {
-  display: block;
-  margin-top: 6px;
-  overflow: hidden;
-  color: var(--opanel-muted);
-  font-size: 12px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .dingtalk-dual-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(390px, 0.9fr);
@@ -128,52 +47,21 @@
   align-items: start;
 }
 
-.dingtalk-panel {
-  overflow: hidden;
-  background: var(--opanel-panel-solid) !important;
-}
-
-.dingtalk-panel .n-card__header {
-  padding: 20px 24px 0;
-}
-
-.dingtalk-panel .n-card__content {
+.dingtalk-dual-grid > .n-card {
   min-width: 0;
-  padding: 20px 24px 24px;
+  margin-bottom: 0;
 }
 
 .dingtalk-panel-heading {
-  align-items: flex-start;
-}
-
-.dingtalk-panel-heading h2 {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 8px;
-  margin: 0;
-  color: var(--opanel-text);
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-}
-
-.dingtalk-panel-heading h2 .morph-icon,
-.dingtalk-spec-head .morph-icon {
-  color: var(--opanel-primary);
-}
-
-.dingtalk-panel-heading > div > span {
-  display: block;
-  margin-top: 4px;
-  color: var(--opanel-muted);
-  font-size: 12px;
 }
 
 .dingtalk-security-banner {
   margin-bottom: 16px;
-  border: 1px solid color-mix(in srgb, var(--opanel-primary) 18%, var(--opanel-line)) !important;
   border-radius: var(--opanel-radius-input) !important;
-  background: color-mix(in srgb, var(--opanel-primary) 6%, var(--opanel-panel-solid)) !important;
 }
 
 .dingtalk-security-banner .n-alert__content {
@@ -198,6 +86,8 @@
 }
 
 .dingtalk-toggle-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 14px 16px;
@@ -291,7 +181,10 @@
 }
 
 .dingtalk-actions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   padding-top: 2px;
 }
 
@@ -333,9 +226,16 @@
   font-weight: inherit;
 }
 
+/* Macaron tone shells (DESIGN.md §colors.tones): mint = 发送成功,
+   butter = 发送中, peach = 发送失败, lavender = 暂无记录。 */
+.dingtalk-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.dingtalk-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+.dingtalk-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+.dingtalk-tone-tag--lavender { background: var(--opanel-tone-lavender-bg) !important; color: var(--opanel-tone-lavender-text) !important; }
+
 .dingtalk-error-text,
 .dingtalk-error-text strong {
-  color: var(--opanel-danger) !important;
+  color: var(--opanel-tone-peach-text) !important;
 }
 
 .dingtalk-spec-card {
@@ -346,10 +246,12 @@
   padding: 14px 16px;
   border: 1px solid var(--opanel-line);
   border-radius: var(--opanel-radius-input);
-  background: color-mix(in srgb, var(--opanel-muted) 4%, var(--opanel-panel-solid));
+  background: var(--opanel-panel-hover);
 }
 
 .dingtalk-spec-head {
+  display: flex;
+  align-items: center;
   gap: 8px;
   color: var(--opanel-text);
   font-size: 12.5px;
@@ -377,13 +279,11 @@
 }
 
 @media (max-width: 900px) {
-  .dingtalk-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dingtalk-view > .analytics-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
-  .dingtalk-summary { grid-template-columns: 1fr; }
-  .dingtalk-panel .n-card__header,
-  .dingtalk-panel .n-card__content { padding-right: 16px; padding-left: 16px; }
+  .dingtalk-view > .analytics-kpi-grid { grid-template-columns: 1fr; }
   .dingtalk-error-content,
   .dingtalk-time-field { align-items: flex-start; flex-direction: column; }
   .dingtalk-time-input { width: 100%; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import "../../styles/analytics.css";
 import "./dingtalk.css";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -9,6 +10,7 @@ import {
   NCard,
   NCheckbox,
   NCheckboxGroup,
+  NSkeleton,
   NSpin,
   NSwitch,
   NTag,
@@ -102,13 +104,6 @@ function statusIcon(status: DingTalkRunStatus | null): IconName {
   return "rotateCcw";
 }
 
-function statusTagType(status: DingTalkRunStatus | null): "default" | "success" | "error" | "warning" {
-  if (status === "success") return "success";
-  if (status === "failed") return "error";
-  if (status === "sending") return "warning";
-  return "default";
-}
-
 function dateTime(value: string | null | undefined): string {
   return value ? formatBeijingDateTime(value) : "—";
 }
@@ -116,7 +111,7 @@ function dateTime(value: string | null | undefined): string {
 const lastRun = computed(() => settings.value?.last_run ?? null);
 const lastRunStatus = computed(() => runStatus(lastRun.value));
 const lastRunLabel = computed(() => statusLabel(lastRunStatus.value));
-const lastRunTagType = computed(() => statusTagType(lastRunStatus.value));
+const lastRunTone = computed(() => statusTone(lastRunStatus.value));
 
 const summaryCards = computed<SummaryCard[]>(() => {
   const data = settings.value;
@@ -214,10 +209,13 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="dingtalk-view">
-    <section v-if="loading && !settings" class="dingtalk-loading" role="status">
-      <NSpin size="medium" />
-      <span>正在读取钉钉机器人设置…</span>
-    </section>
+    <div v-if="loading && !settings" class="analytics-kpi-grid" aria-busy="true">
+      <NCard v-for="i in 4" :key="i" :bordered="false" class="analytics-kpi-card">
+        <NSkeleton text width="55%" />
+        <NSkeleton text width="72%" class="kpi-skeleton-value" />
+        <NSkeleton text width="42%" />
+      </NCard>
+    </div>
 
     <NAlert v-if="loadError" type="error" class="dingtalk-error" title="钉钉设置加载失败">
       <div class="dingtalk-error-content">
@@ -229,30 +227,27 @@ onBeforeUnmount(() => {
     <template v-if="settings">
       <div v-if="loading" class="dingtalk-refreshing" role="status"><NSpin size="small" />正在更新钉钉设置…</div>
 
-      <div class="dingtalk-summary">
+      <div class="analytics-kpi-grid dingtalk-summary">
         <NCard
           v-for="card in summaryCards"
           :key="card.label"
           :bordered="false"
-          class="dingtalk-summary-card"
+          class="analytics-kpi-card"
           :class="`tone-${card.tone}`"
         >
-          <div class="dingtalk-summary-head">
-            <div class="dingtalk-summary-label">
-              <span>{{ card.label }}</span>
-              <NTag v-if="card.badge" size="small" round :bordered="false" type="default">{{ card.badge }}</NTag>
-            </div>
-            <span class="dingtalk-summary-icon tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
+          <div class="analytics-kpi-head">
+            <span>{{ card.label }} <NTag v-if="card.badge" size="small" round :bordered="false" type="default">{{ card.badge }}</NTag></span>
+            <span class="analytics-icon-badge tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
           </div>
-          <strong class="tone-value">{{ card.value }}</strong>
+          <strong class="analytics-kpi-value tone-value">{{ card.value }}</strong>
           <small>{{ card.note }}</small>
         </NCard>
       </div>
 
       <div class="dingtalk-dual-grid">
-        <NCard :bordered="false" class="dingtalk-panel">
+        <NCard :bordered="false" class="analytics-table-card">
           <template #header>
-            <div class="dingtalk-panel-heading">
+            <div class="analytics-panel-heading dingtalk-panel-heading">
               <div>
                 <h2><morph-icon icon="clock" size="18" stroke-width="1.8" />推送计划与调度</h2>
                 <span>定时按北京时间汇总昨日取消与退货订单并推送到钉钉群</span>
@@ -311,9 +306,9 @@ onBeforeUnmount(() => {
           </form>
         </NCard>
 
-        <NCard :bordered="false" class="dingtalk-panel">
+        <NCard :bordered="false" class="analytics-table-card">
           <template #header>
-            <div class="dingtalk-panel-heading">
+            <div class="analytics-panel-heading dingtalk-panel-heading">
               <div>
                 <h2><morph-icon icon="rotateCcw" size="18" stroke-width="1.8" />最近一次汇总投递</h2>
                 <span>展示最近一次正式定时推送的执行记录与投递结果</span>
@@ -328,7 +323,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="dingtalk-fact-item">
               <dt>投递执行状态</dt>
-              <dd><NTag size="small" round :bordered="false" :type="lastRunTagType">{{ lastRunLabel }}</NTag></dd>
+              <dd><NTag size="small" round :bordered="false" :class="`dingtalk-tone-tag--${lastRunTone}`">{{ lastRunLabel }}</NTag></dd>
             </div>
             <div class="dingtalk-fact-item">
               <dt>实际发送时间</dt>
