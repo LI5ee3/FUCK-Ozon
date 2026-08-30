@@ -60,9 +60,9 @@ const exportModules: ReadonlyArray<{
   title: string;
   description: string;
   icon: IconName;
-  tone: "blue" | "peach" | "lavender" | "mint";
+  tone: "butter" | "peach" | "lavender" | "mint";
 }> = [
-  { module: "orders", title: "订单数据", description: "包含订单号、履约渠道、创单时间、发货状态及交易金额", icon: "package", tone: "blue" },
+  { module: "orders", title: "订单数据", description: "包含订单号、履约渠道、创单时间、发货状态及交易金额", icon: "package", tone: "butter" },
   { module: "risk", title: "取消与风险分析", description: "包含 SKU、渠道、货件及固定取消原因结构化数据", icon: "alertTriangle", tone: "peach" },
   { module: "returns", title: "退货与异常订单", description: "包含取消记录、客户退货申请及处理流转数据", icon: "rotateCcw", tone: "lavender" },
   { module: "complaints", title: "异常投诉与赔付", description: "包含投诉编号、状态、赔付金额及处理备注", icon: "messageSquareAlert", tone: "mint" },
@@ -360,7 +360,7 @@ onBeforeUnmount(() => {
           <small>受顶部全局店铺与时间筛选影响</small>
         </div>
         <div class="transfer-export-grid">
-          <article v-for="item in exportModules" :key="item.module" class="transfer-export-module" :class="`tone-${item.tone}`">
+          <article v-for="item in exportModules" :key="item.module" class="transfer-export-module" :class="`transfer-accent-${item.tone}`">
             <div class="transfer-export-head">
               <strong>{{ item.title }}</strong>
               <span class="transfer-export-icon"><morph-icon :icon="item.icon" size="15" stroke-width="2" /></span>

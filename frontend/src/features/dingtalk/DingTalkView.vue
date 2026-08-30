@@ -19,7 +19,7 @@ import { getErrorMessage } from "../../shared/api/client";
 import type { DingTalkLastRun, DingTalkRunStatus, DingTalkSettings, DingTalkSettingsUpdate } from "./types";
 import { formatBeijingDateTime } from "../../shared/utils/format";
 
-type DingTalkTone = "azure" | "peach" | "mint" | "lavender" | "warning";
+type DingTalkTone = "azure" | "peach" | "mint" | "lavender" | "butter";
 type SummaryCard = {
   icon: IconName;
   label: string;
@@ -92,7 +92,7 @@ function statusTone(status: DingTalkRunStatus | null): DingTalkTone {
   if (!status) return "lavender";
   if (status === "success") return "mint";
   if (status === "failed") return "peach";
-  return "warning";
+  return "butter";
 }
 
 function statusIcon(status: DingTalkRunStatus | null): IconName {
@@ -235,16 +235,16 @@ onBeforeUnmount(() => {
           :key="card.label"
           :bordered="false"
           class="dingtalk-summary-card"
-          :class="`dingtalk-tone-${card.tone}`"
+          :class="card.tone"
         >
           <div class="dingtalk-summary-head">
             <div class="dingtalk-summary-label">
               <span>{{ card.label }}</span>
               <NTag v-if="card.badge" size="small" round :bordered="false" type="default">{{ card.badge }}</NTag>
             </div>
-            <span class="dingtalk-summary-icon"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
+            <span class="dingtalk-summary-icon tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
           </div>
-          <strong>{{ card.value }}</strong>
+          <strong class="tone-value">{{ card.value }}</strong>
           <small>{{ card.note }}</small>
         </NCard>
       </div>

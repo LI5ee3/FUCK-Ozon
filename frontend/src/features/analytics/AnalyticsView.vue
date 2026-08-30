@@ -53,7 +53,7 @@ type AnalyticsKpi = {
   value?: string;
   lines?: string[];
   note?: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 type AnalyticsIdentity = Pick<AnalyticsTrafficRow, "shop_name" | "sku">;
 
@@ -119,7 +119,7 @@ const trafficKpis = computed<AnalyticsKpi[]>(() => {
     { icon: "package", label: "商品详情浏览量", value: formatInteger(productViews), tone: "lavender" },
     { icon: "activity", label: "独立访客", value: formatInteger(total("unique_visitors")), tone: "mint" },
     { icon: "shoppingBag", label: "加购量", value: formatInteger(cartAdds), tone: "peach" },
-    { icon: "orders", label: "下单件数", value: formatInteger(orderedUnits), tone: "blue" },
+    { icon: "orders", label: "下单件数", value: formatInteger(orderedUnits), tone: "butter" },
     {
       icon: "wallet",
       label: "成交金额",

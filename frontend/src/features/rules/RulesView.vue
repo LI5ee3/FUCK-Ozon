@@ -355,13 +355,13 @@ onMounted(() => { void loadRules(); });
           :key="card.label"
           :bordered="false"
           class="rules-summary-card"
-          :class="`rules-tone-${card.tone}`"
+          :class="card.tone"
         >
           <div class="rules-summary-head">
             <span>{{ card.label }} <NTag size="small" round :bordered="false" type="default">{{ card.badge }}</NTag></span>
-            <span class="rules-summary-icon"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
+            <span class="rules-summary-icon tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span>
           </div>
-          <strong>{{ formatInteger(card.value) }}<small>{{ card.unit }}</small></strong>
+          <strong class="tone-value">{{ formatInteger(card.value) }}<small>{{ card.unit }}</small></strong>
           <small>{{ card.note }}</small>
         </NCard>
       </div>

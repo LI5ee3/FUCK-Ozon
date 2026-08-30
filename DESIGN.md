@@ -1,7 +1,7 @@
 ---
-version: 1.3.0
+version: 1.4.0
 name: oPanel-Design-System
-description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro Text, negative tracking, tabular nums, 1px hairlines, 18px cards) with low-saturation harmonic card tints derived from semantic colors via color-mix, rigid left/right table alignment, fluid motion, and morphing Tabler icons."
+description: "High-density e-commerce analytics system combining Apple HIG minimalism (SF Pro Text, negative tracking, tabular nums, 1px hairlines, 18px cards) with an Open Macaron pastel tone system (five hue shells, light pastel + dark ganache pairs), rigid left/right table alignment, fluid motion, and morphing Tabler icons."
 
 colors:
   # Source of truth: frontend/src/theme/tokens.ts, the --opanel-* variables in
@@ -42,17 +42,18 @@ colors:
   success-light: "#34C759"
   success-dark: "#32D74B"
 
-  # Card Tint System — the only tone mechanism. There are no fixed pastel hex
-  # presets and no per-theme dark variants; card backgrounds and icon badges
-  # are derived at runtime from the semantic variables above:
-  #   card background: color-mix(in srgb, <source var> N%, var(--opanel-panel-solid))
-  #   icon badge:      color-mix(in srgb, <status var> 13%, transparent) or var(--opanel-primary-soft)
+  # Macaron Tone System — the only tone mechanism. Five distinct hue shells,
+  # each a light pastel background with high-contrast ganache ink text, and a
+  # dark deep background with bright ink. Values live in theme/tokens.ts and
+  # the --opanel-tone-*-bg/-text variables in styles/tokens.css; applied via
+  # the shared .tone-* classes in styles/components.css. Never hardcode or
+  # re-derive these hexes in feature CSS.
   tones:
-    azure:    { source: "--opanel-primary", background: "10%", badge: "var(--opanel-primary-soft)" }
-    blue:     { source: "--opanel-primary", background: "6%",  badge: "var(--opanel-primary-soft)" }
-    lavender: { source: "--opanel-primary", background: "7%",  badge: "var(--opanel-primary-soft)" }
-    mint:     { source: "--opanel-success", background: "8%",  badge: "success 13%" }
-    peach:    { source: "--opanel-danger",  background: "8%",  badge: "danger 13%" }
+    azure:    { hue: "blue",   light: { bg: "#EBF3FF", text: "#0066CC" }, dark: { bg: "#172A46", text: "#6CAFFF" }, role: "GMV & primary metrics" }
+    lavender: { hue: "purple", light: { bg: "#F0EDFF", text: "#5944B3" }, dark: { bg: "#312847", text: "#BBA8FF" }, role: "Timeliness, pending & disputes" }
+    mint:     { hue: "green",  light: { bg: "#E6F7F0", text: "#127546" }, dark: { bg: "#16382C", text: "#7EE0B3" }, role: "Success, fulfillment & healthy state" }
+    peach:    { hue: "red",    light: { bg: "#FFEBEA", text: "#C42B24" }, dark: { bg: "#3D2226", text: "#FF859F" }, role: "Danger, cancellations & risk" }
+    butter:   { hue: "amber",  light: { bg: "#FFF5E5", text: "#B86614" }, dark: { bg: "#3D2B19", text: "#FFAE61" }, role: "Warning, rates & payout states" }
 
 alignment:
   grid-unit: "8px"
@@ -124,8 +125,8 @@ iconography:
 
 # Design Philosophy
 
-### 1. Tint-Harmonic Palette × Apple HIG Synergy
-- **Open Macaron Harmonic Tints**: Replaces sterile, fatiguing dashboard tables with breathable, low-saturation card shells derived from the semantic status colors via `color-mix`, so light and dark themes adapt automatically from one definition. High-contrast ink text sits on every shell.
+### 1. Open Macaron × Apple HIG Synergy
+- **Open Macaron Tone System**: Replaces sterile, fatiguing dashboard tables with breathable, low-saturation macaron card shells — five distinct hues (azure/lavender/mint/peach/butter), each pairing a pastel background with high-contrast ganache ink in light theme and a deep shell with bright ink in dark theme. One definition per theme in `styles/tokens.css`; no runtime derivation.
 - **Apple Architectural Rigor**: 1px crisp hairlines (`rgba(0,0,0,0.08)` / `rgba(255,255,255,0.08)`), negative display tracking (`-0.015em` to `-0.025em`), and 18px card radii.
 - **Single Token Source**: `frontend/src/theme/tokens.ts` (consumed by `naive-theme.ts` for Naive UI overrides) and the `--opanel-*` variables in `frontend/src/styles/tokens.css` mirror each other; never hardcode theme hexes in views.
 
@@ -150,7 +151,7 @@ All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel
 - **Card Head**: left label `span` (13px, weight 550, muted) + top-right icon badge (`{prefix}-icon-badge`, `32x32px`, 8px radius, tone-tinted).
 - **Metric Value (`strong`)**: `{prefix}-kpi-value` — `28px`, weight 750, letter-spacing `-0.025em`, `tabular-nums`. Multi-line money variant: `{prefix}-kpi-money` (15px, column flex).
 - **Metric Note (`small`)**: `12px`, muted secondary text.
-- **Tone Classes**: `{prefix}-tone-{azure | blue | lavender | mint | peach}` apply the color-mix formulas defined in `colors.tones` above; icon badges re-tint via 13% transparent mixes of the matching status variable.
+- **Tone Classes**: cards get the shared bare class `tone-{azure | lavender | mint | peach | butter}` (`styles/components.css`), which sets the macaron shell background and exposes `--tone-ink`; the metric value adds `tone-value` (ganache ink) and the icon badge `tone-badge` (13% ink tint). Feature stylesheets never redefine tone colors.
 - **Grid Layout Standards**:
   - **5-Column Grid (`repeat(5, minmax(0, 1fr))`)**: Dashboard KPIs (`.dashboard-kpi-grid`).
   - **4-Column Grid (`repeat(4, minmax(0, 1fr))`)**: Analytics/Risk/Returns/Timeliness KPIs (`.analytics-kpi-grid`).

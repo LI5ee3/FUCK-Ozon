@@ -306,10 +306,10 @@
   border-radius: var(--opanel-radius-sm);
 }
 
-.transfer-export-module.tone-blue .transfer-export-icon { background: color-mix(in srgb, var(--opanel-primary) 12%, var(--opanel-panel-solid)); color: var(--opanel-primary); }
-.transfer-export-module.tone-peach .transfer-export-icon { background: color-mix(in srgb, var(--opanel-danger) 10%, var(--opanel-panel-solid)); color: var(--opanel-danger); }
-.transfer-export-module.tone-lavender .transfer-export-icon { background: color-mix(in srgb, var(--opanel-primary) 8%, var(--opanel-panel-solid)); color: var(--opanel-primary); }
-.transfer-export-module.tone-mint .transfer-export-icon { background: color-mix(in srgb, var(--opanel-success) 12%, var(--opanel-panel-solid)); color: var(--opanel-success); }
+.transfer-export-module.transfer-accent-butter .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-butter-text) 13%, transparent); color: var(--opanel-tone-butter-text); }
+.transfer-export-module.transfer-accent-peach .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-peach-text) 13%, transparent); color: var(--opanel-tone-peach-text); }
+.transfer-export-module.transfer-accent-lavender .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-lavender-text) 13%, transparent); color: var(--opanel-tone-lavender-text); }
+.transfer-export-module.transfer-accent-mint .transfer-export-icon { background: color-mix(in srgb, var(--opanel-tone-mint-text) 13%, transparent); color: var(--opanel-tone-mint-text); }
 
 .transfer-export-module p {
   min-height: 34px;

@@ -114,12 +114,9 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: var(--opanel-radius-sm);
-  background: color-mix(in srgb, var(--opanel-primary) 10%, transparent);
-  color: var(--opanel-primary);
 }
 
 .inventory-summary-card > .n-card__content > strong {
-  color: var(--opanel-text);
   font-size: 23px;
   font-weight: 750;
   letter-spacing: -0.025em;
@@ -131,21 +128,6 @@
   color: var(--opanel-muted);
   font-size: 11px;
   line-height: 1.4;
-}
-
-.inventory-summary-card--danger .inventory-summary-icon {
-  background: color-mix(in srgb, var(--opanel-danger) 12%, transparent);
-  color: var(--opanel-danger);
-}
-
-.inventory-summary-card--warning .inventory-summary-icon {
-  background: color-mix(in srgb, var(--opanel-warning) 13%, transparent);
-  color: var(--opanel-warning);
-}
-
-.inventory-summary-card--safe .inventory-summary-icon {
-  background: color-mix(in srgb, var(--opanel-success) 13%, transparent);
-  color: var(--opanel-success);
 }
 
 .inventory-error {

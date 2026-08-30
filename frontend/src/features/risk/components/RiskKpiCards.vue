@@ -9,7 +9,7 @@ type RiskKpi = {
   value: string;
   badge?: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 defineProps<{
@@ -24,13 +24,13 @@ defineProps<{
       :key="kpi.label"
       :bordered="false"
       class="analytics-kpi-card"
-      :class="'analytics-tone-' + kpi.tone"
+      :class="kpi.tone"
     >
       <div class="analytics-kpi-head">
         <span>{{ kpi.label }}</span>
-        <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+        <span class="analytics-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
       </div>
-      <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
+      <strong class="analytics-kpi-value tone-value">{{ kpi.value }}</strong>
       <small v-if="kpi.badge" class="risk-kpi-badge">{{ kpi.badge }}</small>
       <small>{{ kpi.note }}</small>
     </NCard>

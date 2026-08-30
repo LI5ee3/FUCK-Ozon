@@ -73,8 +73,11 @@
 .sync-panel {
   border: 1px solid var(--opanel-line) !important;
   border-radius: var(--opanel-radius-card) !important;
-  background: var(--opanel-panel) !important;
   box-shadow: var(--opanel-shadow);
+}
+
+.sync-panel {
+  background: var(--opanel-panel) !important;
 }
 
 .sync-summary-card .n-card__content {
@@ -85,11 +88,6 @@
   padding: 16px;
 }
 
-.sync-summary-card.azure { background: color-mix(in srgb, var(--opanel-primary) 9%, var(--opanel-panel-solid)) !important; }
-.sync-summary-card.peach { background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid)) !important; }
-.sync-summary-card.mint { background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid)) !important; }
-.sync-summary-card.lavender { background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)) !important; }
-
 .sync-summary-icon,
 .sync-module-icon {
   display: grid;
@@ -97,6 +95,9 @@
   height: 30px;
   place-items: center;
   border-radius: 9px;
+}
+
+.sync-module-icon {
   background: var(--opanel-primary-soft);
   color: var(--opanel-primary);
 }
@@ -111,7 +112,6 @@
 
 .sync-summary-card strong {
   overflow: hidden;
-  color: var(--opanel-text);
   font-size: 20px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;

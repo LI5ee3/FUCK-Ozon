@@ -80,11 +80,11 @@ const summaryCards = computed<Array<{ icon: IconName; label: string; value: stri
   const value = summary.value;
   if (!value) return [];
   return [
-    { icon: "alertTriangle", label: "需要补货 SKU", value: `${formatInteger(value.need_replenishment_skus)} 款`, note: "缺货、紧急补货或需要补货", tone: value.need_replenishment_skus ? "warning" : "safe" },
-    { icon: "clock", label: "到货前可能缺货", value: `${formatInteger(value.stockout_before_arrival_skus)} 款`, note: "可售天数小于补货交期", tone: value.stockout_before_arrival_skus ? "danger" : "safe" },
-    { icon: "calendar", label: "预计缺货 SKU", value: `${formatInteger(value.expected_stockout_skus)} 款`, note: "有正预测日销且可计算缺货日期", tone: value.expected_stockout_skus ? "warning" : "safe" },
-    { icon: "shoppingBag", label: "FBP建议补货总件数", value: `${formatInteger(value.recommended_replenishment_total)} 件`, note: "按 FBP 库存与到货后目标计算", tone: value.recommended_replenishment_total ? "primary" : "safe" },
-    { icon: "box", label: "FBP有效库存", value: `${formatInteger(value.effective_stock)} 件`, note: "仅用于补货计算；预留单独展示", tone: "safe" },
+    { icon: "alertTriangle", label: "需要补货 SKU", value: `${formatInteger(value.need_replenishment_skus)} 款`, note: "缺货、紧急补货或需要补货", tone: value.need_replenishment_skus ? "butter" : "mint" },
+    { icon: "clock", label: "到货前可能缺货", value: `${formatInteger(value.stockout_before_arrival_skus)} 款`, note: "可售天数小于补货交期", tone: value.stockout_before_arrival_skus ? "peach" : "mint" },
+    { icon: "calendar", label: "预计缺货 SKU", value: `${formatInteger(value.expected_stockout_skus)} 款`, note: "有正预测日销且可计算缺货日期", tone: value.expected_stockout_skus ? "butter" : "mint" },
+    { icon: "shoppingBag", label: "FBP建议补货总件数", value: `${formatInteger(value.recommended_replenishment_total)} 件`, note: "按 FBP 库存与到货后目标计算", tone: value.recommended_replenishment_total ? "azure" : "mint" },
+    { icon: "box", label: "FBP有效库存", value: `${formatInteger(value.effective_stock)} 件`, note: "仅用于补货计算；预留单独展示", tone: "mint" },
   ];
 });
 
@@ -418,9 +418,9 @@ onBeforeUnmount(() => {
     </section>
 
     <div v-if="summaryCards.length" class="inventory-summary">
-      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="inventory-summary-card" :class="`inventory-summary-card--${card.tone}`">
-        <div class="inventory-summary-head"><span>{{ card.label }}</span><span class="inventory-summary-icon"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></span></div>
-        <strong>{{ card.value }}</strong>
+      <NCard v-for="card in summaryCards" :key="card.label" :bordered="false" class="inventory-summary-card" :class="card.tone">
+        <div class="inventory-summary-head"><span>{{ card.label }}</span><span class="inventory-summary-icon tone-badge"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></span></div>
+        <strong class="tone-value">{{ card.value }}</strong>
         <small>{{ card.note }}</small>
       </NCard>
     </div>

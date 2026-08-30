@@ -47,7 +47,7 @@ type TimelinessKpi = {
   value: string;
   badge?: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 const PAGE_SIZE = 30;
@@ -94,7 +94,7 @@ const summaryKpis = computed<TimelinessKpi[]>(() => {
       value: `${formatInteger(summary.orders)} 单`,
       badge: "全量统计",
       note: "当前店铺与筛选时间范围内有效订单",
-      tone: "blue",
+      tone: "butter",
     },
     {
       icon: "box",
@@ -509,16 +509,16 @@ onBeforeUnmount(() => {
         :key="kpi.label"
         :bordered="false"
         class="analytics-kpi-card timeliness-kpi-card"
-        :class="`analytics-tone-${kpi.tone}`"
+        :class="kpi.tone"
       >
         <div class="analytics-kpi-head">
           <span class="timeliness-kpi-label">
             <span>{{ kpi.label }}</span>
             <NTag v-if="kpi.badge" size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag>
           </span>
-          <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+          <span class="analytics-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
         </div>
-        <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
+        <strong class="analytics-kpi-value tone-value">{{ kpi.value }}</strong>
         <small>{{ kpi.note }}</small>
       </NCard>
     </div>

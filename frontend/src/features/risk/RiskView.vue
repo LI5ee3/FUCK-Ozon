@@ -51,7 +51,7 @@ type RiskKpi = {
   value: string;
   badge?: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 const route = useRoute();
@@ -142,7 +142,7 @@ const summaryKpis = computed<RiskKpi[]>(() => {
       value: hasSamples ? formatInteger(summary.customs) + " 件" : "数据不足",
       badge: hasSamples ? formatRiskRate(summary.customs_rate) + " 拦截率" : undefined,
       note: "海关查验未通过导致的退运拦截",
-      tone: "blue",
+      tone: "butter",
     },
   ];
 });

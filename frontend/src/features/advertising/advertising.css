@@ -123,14 +123,11 @@
   height: 32px;
   place-items: center;
   border-radius: var(--opanel-radius-sm);
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
 }
 
 .ads-kpi-value {
   display: block;
   margin-top: 10px;
-  color: var(--opanel-text);
   font-size: 28px;
   font-weight: 750;
   letter-spacing: -0.025em;
@@ -147,14 +144,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.ads-tone-azure { background: color-mix(in srgb, var(--opanel-primary) 10%, var(--opanel-panel-solid)) !important; }
-.ads-tone-peach { background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid)) !important; }
-.ads-tone-mint { background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid)) !important; }
-.ads-tone-lavender { background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)) !important; }
-.ads-tone-blue { background: color-mix(in srgb, var(--opanel-primary) 6%, var(--opanel-panel-solid)) !important; }
-.ads-tone-peach .ads-icon-badge { background: color-mix(in srgb, var(--opanel-danger) 13%, transparent); color: var(--opanel-danger); }
-.ads-tone-mint .ads-icon-badge { background: color-mix(in srgb, var(--opanel-success) 13%, transparent); color: var(--opanel-success); }
 
 .ads-trend-card {
   margin-bottom: 18px;

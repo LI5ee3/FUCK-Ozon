@@ -75,14 +75,11 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: var(--opanel-radius-sm);
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
 }
 
 .rules-summary-card > .n-card__content > strong {
   display: block;
   margin-top: 10px;
-  color: var(--opanel-text);
   font-size: 28px;
   font-weight: 750;
   letter-spacing: -0.025em;
@@ -105,13 +102,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.rules-tone-azure { background: color-mix(in srgb, var(--opanel-primary) 9%, var(--opanel-panel-solid)) !important; }
-.rules-tone-mint { background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid)) !important; }
-.rules-tone-peach { background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid)) !important; }
-.rules-tone-lavender { background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)) !important; }
-.rules-tone-mint .rules-summary-icon { background: color-mix(in srgb, var(--opanel-success) 13%, transparent); color: var(--opanel-success); }
-.rules-tone-peach .rules-summary-icon { background: color-mix(in srgb, var(--opanel-danger) 13%, transparent); color: var(--opanel-danger); }
 
 .rules-panel {
   overflow: hidden;

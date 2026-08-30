@@ -31,14 +31,15 @@ export const macaronTokens = {
     warning: "#FF9F0A",
     danger: "#FF453A",
   },
-  macaron: {
-    azure: "#EBF3FF",
-    peach: "#FFEBEA",
-    mint: "#E6F7F0",
-    lavender: "#F0EDFF",
-    butter: "#FFF5E5",
-    pistachio: "#EEF7E8",
-    berry: "#FCEEF6",
+  // Macaron tone shells with high-contrast ganache ink; consumed via the
+  // --opanel-tone-* variables in styles/tokens.css and the .tone-* classes
+  // in styles/components.css. Keep in sync with tokens.css.
+  tones: {
+    azure: { light: { bg: "#EBF3FF", text: "#0066CC" }, dark: { bg: "#172A46", text: "#6CAFFF" } },
+    lavender: { light: { bg: "#F0EDFF", text: "#5944B3" }, dark: { bg: "#312847", text: "#BBA8FF" } },
+    mint: { light: { bg: "#E6F7F0", text: "#127546" }, dark: { bg: "#16382C", text: "#7EE0B3" } },
+    peach: { light: { bg: "#FFEBEA", text: "#C42B24" }, dark: { bg: "#3D2226", text: "#FF859F" } },
+    butter: { light: { bg: "#FFF5E5", text: "#B86614" }, dark: { bg: "#3D2B19", text: "#FFAE61" } },
   },
   radius: {
     pill: "9999px",

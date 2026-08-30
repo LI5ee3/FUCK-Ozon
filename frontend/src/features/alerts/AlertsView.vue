@@ -48,7 +48,7 @@ type AlertFilters = {
   search: string;
   page: number;
 };
-type SummaryTone = "warning" | "danger" | "peach" | "lavender" | "safe";
+type SummaryTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type SummaryCard = { icon: IconName; label: string; value: string; note: string; tone: SummaryTone };
 
 const PAGE_SIZE = 50;
@@ -168,28 +168,28 @@ const summaryCards = computed<SummaryCard[]>(() => {
       icon: "alertTriangle",
       label: "活动预警",
       value: formatInteger(data.active),
-      tone: data.active ? "warning" : "safe",
+      tone: data.active ? "butter" : "mint",
       note: "当前尚未自动恢复的异常",
     },
     {
       icon: "shieldAlert",
       label: "严重 / 高风险",
       value: formatInteger(data.critical + data.high),
-      tone: data.critical || data.high ? "danger" : "safe",
+      tone: data.critical || data.high ? "peach" : "mint",
       note: `Critical ${formatInteger(data.critical)} · High ${formatInteger(data.high)}`,
     },
     {
       icon: "activity",
       label: "广告异常",
       value: formatInteger(data.advertising),
-      tone: data.advertising ? "peach" : "safe",
+      tone: data.advertising ? "peach" : "mint",
       note: "花费、DRR、点击与订单规则",
     },
     {
       icon: "stock",
       label: "库存 / 销售异常",
       value: formatInteger(data.inventory + data.sales),
-      tone: data.inventory || data.sales ? "lavender" : "safe",
+      tone: data.inventory || data.sales ? "lavender" : "mint",
       note: `库存 ${formatInteger(data.inventory)} · 销售 ${formatInteger(data.sales)}`,
     },
   ];

@@ -18,7 +18,7 @@ import { queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/u
 
 type DatePreset = StandardDatePreset;
 type AdsFilters = { shopId: ShopSelection; from: string; to: string };
-type AdsKpi = { icon: IconName; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "blue" };
+type AdsKpi = { icon: IconName; label: string; value: string; note?: string; tone: "azure" | "lavender" | "mint" | "peach" | "butter" };
 
 const route = useRoute();
 const router = useRouter();
@@ -58,7 +58,7 @@ const kpis = computed<AdsKpi[]>(() => {
     { icon: "shoppingBag", label: "广告销售额", value: formatAdsMoney(summary.revenue_rub), tone: "azure" },
     { icon: "orders", label: "广告订单", value: formatInteger(summary.orders), tone: "mint" },
     { icon: "barChart", label: "曝光", value: formatInteger(summary.impressions), tone: "lavender" },
-    { icon: "activity", label: "点击", value: formatInteger(summary.clicks), tone: "blue" },
+    { icon: "activity", label: "点击", value: formatInteger(summary.clicks), tone: "butter" },
     { icon: "percent", label: "CTR", value: formatAdsRate(summary.ctr), tone: "lavender" },
     { icon: "coins", label: "平均 CPC", value: formatAdsMoney(summary.avg_cpc_rub), tone: "mint" },
     { icon: "percent", label: "广告成本率（DRR）", value: formatAdsRate(summary.drr), note: "广告花费 ÷ 广告销售额", tone: "peach" },
@@ -228,13 +228,13 @@ onBeforeUnmount(() => {
         :key="kpi.label"
         :bordered="false"
         class="ads-kpi-card"
-        :class="`ads-tone-${kpi.tone}`"
+        :class="kpi.tone"
       >
         <div class="ads-kpi-head">
           <span>{{ kpi.label }}</span>
-          <span class="ads-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+          <span class="ads-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
         </div>
-        <strong class="ads-kpi-value">{{ kpi.value }}</strong>
+        <strong class="ads-kpi-value tone-value">{{ kpi.value }}</strong>
         <small v-if="kpi.note">{{ kpi.note }}</small>
       </NCard>
     </div>

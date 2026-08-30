@@ -157,7 +157,7 @@ const kpis = computed<Array<{ label: string; value: string; note: string; icon: 
     { label: "有效订单数", value: formatInteger(data.totals.orders), note: "不同订单号", icon: "orders", tone: "peach" },
     { label: "有效货件数", value: formatInteger(data.totals.pieces), note: "商品数量合计", icon: "package", tone: "mint" },
     { label: "发货后取消订单", value: formatInteger(data.totals.cancelled_orders), note: "产生物流成本后取消", icon: "alertTriangle", tone: "lavender" },
-    { label: "发货后取消率", value: formatPercent(data.totals.cancel_rate), note: "按有效货件数折算", icon: "percent", tone: "blue" },
+    { label: "发货后取消率", value: formatPercent(data.totals.cancel_rate), note: "按有效货件数折算", icon: "percent", tone: "butter" },
   ];
 });
 
@@ -316,13 +316,13 @@ onBeforeUnmount(() => {
           :key="kpi.label"
           :bordered="false"
           class="dashboard-kpi-card"
-          :class="`dashboard-tone-${kpi.tone}`"
+          :class="kpi.tone"
         >
           <div class="dashboard-kpi-head">
             <span>{{ kpi.label }}</span>
-            <span class="dashboard-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+            <span class="dashboard-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
           </div>
-          <NStatistic :value="kpi.value" class="dashboard-kpi-value" />
+          <NStatistic :value="kpi.value" class="dashboard-kpi-value tone-value" />
           <small>{{ kpi.note }}</small>
         </NCard>
       </div>

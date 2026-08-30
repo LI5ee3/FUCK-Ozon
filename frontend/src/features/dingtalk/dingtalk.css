@@ -96,15 +96,12 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: var(--opanel-radius-sm);
-  background: var(--opanel-primary-soft);
-  color: var(--opanel-primary);
 }
 
 .dingtalk-summary-card > .n-card__content > strong {
   display: block;
   margin-top: 10px;
   overflow: hidden;
-  color: var(--opanel-text);
   font-size: 22px;
   font-weight: 750;
   letter-spacing: -0.025em;
@@ -123,15 +120,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.dingtalk-tone-azure { background: color-mix(in srgb, var(--opanel-primary) 9%, var(--opanel-panel-solid)) !important; }
-.dingtalk-tone-peach { background: color-mix(in srgb, var(--opanel-danger) 8%, var(--opanel-panel-solid)) !important; }
-.dingtalk-tone-mint { background: color-mix(in srgb, var(--opanel-success) 8%, var(--opanel-panel-solid)) !important; }
-.dingtalk-tone-lavender { background: color-mix(in srgb, var(--opanel-primary) 7%, var(--opanel-panel-solid)) !important; }
-.dingtalk-tone-warning { background: color-mix(in srgb, var(--opanel-warning) 9%, var(--opanel-panel-solid)) !important; }
-.dingtalk-tone-peach .dingtalk-summary-icon { color: var(--opanel-danger); background: color-mix(in srgb, var(--opanel-danger) 13%, transparent); }
-.dingtalk-tone-mint .dingtalk-summary-icon { color: var(--opanel-success); background: color-mix(in srgb, var(--opanel-success) 13%, transparent); }
-.dingtalk-tone-warning .dingtalk-summary-icon { color: var(--opanel-warning); background: color-mix(in srgb, var(--opanel-warning) 14%, transparent); }
 
 .dingtalk-dual-grid {
   display: grid;

@@ -1,1 +1,25 @@
 .is-danger { color: var(--opanel-danger) !important; }
+
+/* Macaron tone system — shell/ink pairs live in styles/tokens.css (source: theme/tokens.ts).
+   A tone card gets `class="tone-azure|lavender|mint|peach|butter"`; its value uses
+   `tone-value` and its icon badge `tone-badge`, both consuming the tone ink. */
+.tone-azure { --tone-bg: var(--opanel-tone-azure-bg); --tone-ink: var(--opanel-tone-azure-text); }
+.tone-lavender { --tone-bg: var(--opanel-tone-lavender-bg); --tone-ink: var(--opanel-tone-lavender-text); }
+.tone-mint { --tone-bg: var(--opanel-tone-mint-bg); --tone-ink: var(--opanel-tone-mint-text); }
+.tone-peach { --tone-bg: var(--opanel-tone-peach-bg); --tone-ink: var(--opanel-tone-peach-text); }
+.tone-butter { --tone-bg: var(--opanel-tone-butter-bg); --tone-ink: var(--opanel-tone-butter-text); }
+.tone-azure,
+.tone-lavender,
+.tone-mint,
+.tone-peach,
+.tone-butter {
+  background: var(--tone-bg) !important;
+}
+.tone-value,
+.tone-value .n-statistic-value {
+  color: var(--tone-ink, var(--opanel-text));
+}
+.tone-badge {
+  color: var(--tone-ink, var(--opanel-primary));
+  background: color-mix(in srgb, var(--tone-ink, var(--opanel-primary)) 13%, transparent);
+}

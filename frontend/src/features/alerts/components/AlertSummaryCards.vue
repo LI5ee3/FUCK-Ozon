@@ -8,7 +8,7 @@ type SummaryCard = {
   label: string;
   value: string;
   note: string;
-  tone: "warning" | "danger" | "peach" | "lavender" | "safe";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 defineProps<{
@@ -19,9 +19,9 @@ defineProps<{
 
 <template>
   <div v-if="items.length" class="alerts-summary">
-    <NCard v-for="card in items" :key="card.label" :bordered="false" class="alerts-summary-card" :class="`alerts-tone-${card.tone}`">
-      <div class="alerts-summary-head"><span>{{ card.label }}</span><span class="alerts-summary-icon"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span></div>
-      <strong>{{ card.value }}</strong>
+    <NCard v-for="card in items" :key="card.label" :bordered="false" class="alerts-summary-card" :class="card.tone">
+      <div class="alerts-summary-head"><span>{{ card.label }}</span><span class="alerts-summary-icon tone-badge"><morph-icon :icon="card.icon" size="18" stroke-width="1.8" /></span></div>
+      <strong class="tone-value">{{ card.value }}</strong>
       <small>{{ card.note }}</small>
     </NCard>
   </div>

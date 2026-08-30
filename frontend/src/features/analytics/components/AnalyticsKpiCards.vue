@@ -9,7 +9,7 @@ type AnalyticsKpi = {
   value?: string;
   lines?: string[];
   note?: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 defineProps<{
@@ -24,16 +24,16 @@ defineProps<{
       :key="kpi.label"
       :bordered="false"
       class="analytics-kpi-card"
-      :class="`analytics-tone-${kpi.tone}`"
+      :class="kpi.tone"
     >
       <div class="analytics-kpi-head">
         <span>{{ kpi.label }}</span>
-        <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+        <span class="analytics-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
       </div>
-      <strong v-if="kpi.lines" class="analytics-kpi-money">
+      <strong v-if="kpi.lines" class="analytics-kpi-money tone-value">
         <span v-for="(line, index) in kpi.lines" :key="`${kpi.label}-${index}`">{{ line }}</span>
       </strong>
-      <strong v-else class="analytics-kpi-value">{{ kpi.value }}</strong>
+      <strong v-else class="analytics-kpi-value tone-value">{{ kpi.value }}</strong>
       <small v-if="kpi.note">{{ kpi.note }}</small>
     </NCard>
   </div>

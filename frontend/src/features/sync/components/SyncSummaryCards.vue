@@ -19,9 +19,9 @@ defineProps<{
 <template>
   <div class="sync-summary-grid">
     <NCard v-for="card in items" :key="card.label" :bordered="false" class="sync-summary-card" :class="card.tone">
-      <div class="sync-summary-icon"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></div>
+      <div class="sync-summary-icon tone-badge"><morph-icon :icon="card.icon" size="17" stroke-width="1.8" /></div>
       <span>{{ card.label }}</span>
-      <strong>{{ card.value }}</strong>
+      <strong class="tone-value">{{ card.value }}</strong>
       <small>{{ card.note }}</small>
     </NCard>
   </div>

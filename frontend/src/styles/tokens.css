@@ -18,6 +18,17 @@
   --opanel-ease-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --opanel-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
   --opanel-shadow: 0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  /* Macaron tone shells (bg) with high-contrast ganache ink (text); source: theme/tokens.ts */
+  --opanel-tone-azure-bg: #EBF3FF;
+  --opanel-tone-azure-text: #0066CC;
+  --opanel-tone-lavender-bg: #F0EDFF;
+  --opanel-tone-lavender-text: #5944B3;
+  --opanel-tone-mint-bg: #E6F7F0;
+  --opanel-tone-mint-text: #127546;
+  --opanel-tone-peach-bg: #FFEBEA;
+  --opanel-tone-peach-text: #C42B24;
+  --opanel-tone-butter-bg: #FFF5E5;
+  --opanel-tone-butter-text: #B86614;
   color-scheme: light;
 }
 
@@ -37,5 +48,15 @@
   --opanel-warning: #FF9F0A;
   --opanel-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --opanel-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --opanel-tone-azure-bg: #172A46;
+  --opanel-tone-azure-text: #6CAFFF;
+  --opanel-tone-lavender-bg: #312847;
+  --opanel-tone-lavender-text: #BBA8FF;
+  --opanel-tone-mint-bg: #16382C;
+  --opanel-tone-mint-text: #7EE0B3;
+  --opanel-tone-peach-bg: #3D2226;
+  --opanel-tone-peach-text: #FF859F;
+  --opanel-tone-butter-bg: #3D2B19;
+  --opanel-tone-butter-text: #FFAE61;
   color-scheme: dark;
 }

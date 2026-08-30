@@ -53,7 +53,7 @@ type ReturnsKpi = {
   value: string;
   badge: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 const PAGE_SIZE = 50;
@@ -131,7 +131,7 @@ const cancelKpis = computed<ReturnsKpi[]>(() => {
       value: `${formatInteger(shop.records)} 条 / ${formatInteger(shop.quantity)} 件`,
       badge: "分店铺",
       note: `${shop.shop_name} 的取消单量与商品件数`,
-      tone: "blue" as const,
+      tone: "butter" as const,
     })),
   ];
 });
@@ -153,7 +153,7 @@ const rfbsKpis = computed<ReturnsKpi[]>(() => {
       value: `${formatInteger(shop.records)} 条申请`,
       badge: "分店铺",
       note: `${shop.shop_name} 的退货申请记录`,
-      tone: "blue" as const,
+      tone: "butter" as const,
     })),
   ];
 });

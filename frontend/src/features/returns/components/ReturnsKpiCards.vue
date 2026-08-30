@@ -9,7 +9,7 @@ type ReturnsKpi = {
   value: string;
   badge: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "blue";
+  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
 
 defineProps<{
@@ -24,13 +24,13 @@ defineProps<{
       :key="kpi.label"
       :bordered="false"
       class="analytics-kpi-card returns-kpi-card"
-      :class="'analytics-tone-' + kpi.tone"
+      :class="kpi.tone"
     >
       <div class="analytics-kpi-head">
         <span>{{ kpi.label }}<NTag size="small" round :bordered="false" type="default">{{ kpi.badge }}</NTag></span>
-        <span class="analytics-icon-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
+        <span class="analytics-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
       </div>
-      <strong class="analytics-kpi-value">{{ kpi.value }}</strong>
+      <strong class="analytics-kpi-value tone-value">{{ kpi.value }}</strong>
       <small>{{ kpi.note }}</small>
     </NCard>
   </div>
