@@ -14,6 +14,7 @@ import {
   NDatePicker,
   NInput,
   NPagination,
+  NSkeleton,
   NTag,
   useMessage,
 } from "naive-ui";
@@ -40,14 +41,14 @@ type TimelinessFilters = {
   from: string;
   to: string;
 };
-type TagType = "default" | "info" | "success" | "warning" | "error";
+type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 type TimelinessKpi = {
   icon: IconName;
   label: string;
   value: string;
   badge?: string;
   note: string;
-  tone: "azure" | "lavender" | "mint" | "peach" | "butter";
+  tone: MacaronTone;
 };
 
 const PAGE_SIZE = 30;
@@ -84,8 +85,11 @@ const pageCount = computed(() => Math.max(1, Math.ceil((data.value?.total ?? 0) 
 const summaryKpis = computed<TimelinessKpi[]>(() => {
   const summary = data.value?.summary;
   if (!summary) return [];
-  const shipTone = summary.ship_samples && summary.p50_ship_hours != null
-    ? summary.p50_ship_hours <= 24 ? "mint" : summary.p50_ship_hours <= 48 ? "lavender" : "peach"
+  // Macaron tone roles (DESIGN.md §colors.tones): azure = primary volume,
+  // mint = fulfillment health, butter = warning middle band, peach = danger,
+  // lavender = the timeliness domain tone owned by the in-transit card.
+  const shipTone: MacaronTone = summary.ship_samples && summary.p50_ship_hours != null
+    ? summary.p50_ship_hours <= 24 ? "mint" : summary.p50_ship_hours <= 48 ? "butter" : "peach"
     : "peach";
   return [
     {
@@ -94,7 +98,7 @@ const summaryKpis = computed<TimelinessKpi[]>(() => {
       value: `${formatInteger(summary.orders)} 单`,
       badge: "全量统计",
       note: "当前店铺与筛选时间范围内有效订单",
-      tone: "butter",
+      tone: "azure",
     },
     {
       icon: "box",
@@ -290,8 +294,8 @@ function renderCompletenessChip(label: string, value: number, warning: boolean):
     bordered: false,
     round: true,
     size: "small",
-    type: warning ? "warning" : "default",
-    class: `timeliness-complete-chip${warning ? " is-warning" : ""}`,
+    type: "default",
+    class: `timeliness-complete-chip${warning ? " timeliness-tone-tag--butter" : ""}`,
   }, {
     default: () => [h("span", { class: "timeliness-sub-label" }, label), h("b", formatPercent(value))],
   });
@@ -312,8 +316,10 @@ function renderCompleteness(row: TimelinessGroup): VNodeChild {
   ]);
 }
 
-function shipTagType(value: number | null): TagType {
-  return value != null && value <= 24 ? "success" : value != null && value <= 48 ? "warning" : "error";
+// Tone shell for perf tags (DESIGN.md macaron roles): mint = fast/healthy,
+// butter = warning middle band, peach = slow/anomalous, azure = normal in-flight.
+function shipTone(value: number | null): MacaronTone {
+  return value != null && value <= 24 ? "mint" : value != null && value <= 48 ? "butter" : "peach";
 }
 
 function renderStatCell(
@@ -334,8 +340,8 @@ function renderStatCell(
     bordered: false,
     round: true,
     size: "small",
-    type: type === "ship" ? shipTagType(p50) : "info",
-    class: "timeliness-p50-tag",
+    type: "default",
+    class: `timeliness-p50-tag timeliness-tone-tag--${type === "ship" ? shipTone(p50) : "azure"}`,
   }, {
     default: () => [
       h(MorphIcon, { icon: "clock", size: "12", strokeWidth: "2.2" }),
@@ -344,7 +350,7 @@ function renderStatCell(
     ],
   });
   const sampleTag = insufficient
-    ? h(NTag, { bordered: false, round: true, size: "small", type: "warning", class: "timeliness-sample-tag" }, {
+    ? h(NTag, { bordered: false, round: true, size: "small", type: "default", class: "timeliness-sample-tag timeliness-tone-tag--butter" }, {
         default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "样本不足"],
       })
     : h("span", { class: "timeliness-sample-text" }, `样本 ${formatInteger(samples)}`);
@@ -364,7 +370,7 @@ function renderDetailTime(row: TimelinessItem, type: "ship" | "delivery"): VNode
   if (anomaly) {
     return h("div", { class: "timeliness-time-cell" }, [
       h("strong", { class: "timeliness-time-value" }, value ? formatBeijingDateTime(value) : "—"),
-      h(NTag, { bordered: false, round: true, size: "small", type: "error", class: "timeliness-time-tag" }, {
+      h(NTag, { bordered: false, round: true, size: "small", type: "default", class: "timeliness-time-tag timeliness-tone-tag--peach" }, {
         default: () => [h(MorphIcon, { icon: "alertTriangle", size: "11", strokeWidth: "2" }), "数据异常"],
       }),
     ]);
@@ -373,11 +379,13 @@ function renderDetailTime(row: TimelinessItem, type: "ship" | "delivery"): VNode
     return h("div", { class: "timeliness-time-cell" }, h("span", { class: "timeliness-empty-time" },
       type === "ship" ? "待发货 / 暂无出库记录" : "运输中 / 暂无签收记录"));
   }
-  const tagType = type === "ship" ? shipTagType(duration) : duration != null && duration <= 120 ? "info" : "warning";
+  const tone: MacaronTone = type === "ship"
+    ? shipTone(duration)
+    : duration != null && duration <= 120 ? "azure" : "butter";
   const icon = type === "ship" ? duration != null && duration <= 24 ? "zap" : "clock" : duration != null && duration <= 120 ? "zap" : "clock";
   return h("div", { class: "timeliness-time-cell" }, [
     h("strong", { class: "timeliness-time-value" }, formatBeijingDateTime(value)),
-    h(NTag, { bordered: false, round: true, size: "small", type: tagType, class: "timeliness-time-tag" }, {
+    h(NTag, { bordered: false, round: true, size: "small", type: "default", class: `timeliness-time-tag timeliness-tone-tag--${tone}` }, {
       default: () => [h(MorphIcon, { icon, size: "11", strokeWidth: "2" }), `耗时 ${formatHours(duration)}`],
     }),
   ]);
@@ -395,19 +403,22 @@ function renderOrderNumber(row: TimelinessItem): VNodeChild {
   ]);
 }
 
+// Fixed-layout width system (DESIGN.md §3): explicit widths per column whose
+// sum equals the table's scroll-x, so long shop/order strings clip with
+// ellipsis instead of stretching columns and pushing later ones off-screen.
 const groupColumns: DataTableColumns<TimelinessGroup> = [
-  { key: "identity", title: "店铺与履约渠道", minWidth: 160, render: renderGroupIdentity },
-  { key: "completeness", title: "订单量与完整率", minWidth: 230, render: renderCompleteness },
+  { key: "identity", title: "店铺与履约渠道", width: 200, render: renderGroupIdentity },
+  { key: "completeness", title: "订单量与完整率", width: 240, render: renderCompleteness },
   {
     key: "ship",
     title: "发货出库时效（创建 → 发货）",
-    minWidth: 280,
+    width: 300,
     render: (row) => renderStatCell(row.ship_samples, row.ship_sample_insufficient, row.p50_ship_hours, row.avg_ship_hours, row.p90_ship_hours, "ship"),
   },
   {
     key: "delivery",
     title: "在途配送时效（发货 → 签收）",
-    minWidth: 280,
+    width: 300,
     render: (row) => renderStatCell(row.delivery_samples, row.delivery_sample_insufficient, row.p50_delivery_hours, row.avg_delivery_hours, row.p90_delivery_hours, "delivery"),
   },
 ];
@@ -422,10 +433,10 @@ const detailColumns: DataTableColumns<TimelinessItem> = [
       renderChannelTag(row.channel),
     ]),
   },
-  { key: "posting_number", title: "订单号", minWidth: 200, render: renderOrderNumber },
-  { key: "created_at", title: "订购时间", width: 180, render: (row) => h("span", { class: "timeliness-cell-time" }, formatBeijingDateTime(row.created_at)) },
-  { key: "ship", title: "实际发货／出库耗时", minWidth: 240, render: (row) => renderDetailTime(row, "ship") },
-  { key: "delivery", title: "实际签收／在途耗时", minWidth: 240, render: (row) => renderDetailTime(row, "delivery") },
+  { key: "posting_number", title: "订单号", width: 200, render: renderOrderNumber },
+  { key: "created_at", title: "订购时间", width: 170, render: (row) => h("span", { class: "timeliness-cell-time" }, formatBeijingDateTime(row.created_at)) },
+  { key: "ship", title: "实际发货／出库耗时", width: 240, render: (row) => renderDetailTime(row, "ship") },
+  { key: "delivery", title: "实际签收／在途耗时", width: 240, render: (row) => renderDetailTime(row, "delivery") },
 ];
 
 watch(() => route.fullPath, () => {
@@ -522,6 +533,13 @@ onBeforeUnmount(() => {
         <small>{{ kpi.note }}</small>
       </NCard>
     </div>
+    <div v-else-if="loading" class="analytics-kpi-grid timeliness-kpi-grid" aria-hidden="true">
+      <NCard v-for="i in 4" :key="i" :bordered="false" class="analytics-kpi-card timeliness-kpi-card">
+        <NSkeleton text width="55%" />
+        <NSkeleton text width="72%" class="timeliness-kpi-skeleton-value" />
+        <NSkeleton text width="42%" />
+      </NCard>
+    </div>
 
     <NCard :bordered="false" class="analytics-table-card timeliness-table-card timeliness-matrix-card">
       <template #header>
@@ -540,7 +558,8 @@ onBeforeUnmount(() => {
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="950"
+        :scroll-x="1040"
+        table-layout="fixed"
       >
         <template #empty><EmptyState :title="error ? '时效统计加载失败' : '当前范围内暂无有效订单'" icon="clock" /></template>
       </NDataTable>
@@ -581,9 +600,10 @@ onBeforeUnmount(() => {
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="980"
+        :scroll-x="1000"
+        table-layout="fixed"
       >
-        <template #empty><EmptyState :title="error ? '订单时效加载失败' : '没有匹配的订单时效明细'" icon="clock" /></template>
+        <template #empty><EmptyState :title="error ? '订单时效加载失败' : '没有匹配的订单时效明细'" icon="truck" /></template>
       </NDataTable>
       <div class="analytics-pager timeliness-pager">
         <span>第 {{ filters.page }} / {{ pageCount }} 页，共 {{ formatInteger(data?.total) }} 条</span>

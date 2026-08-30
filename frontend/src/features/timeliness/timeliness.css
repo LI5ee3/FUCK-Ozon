@@ -23,6 +23,10 @@
   font-size: 10px;
 }
 
+.timeliness-kpi-skeleton-value {
+  margin: 14px 0 10px;
+}
+
 .timeliness-table-card {
   background: var(--opanel-panel-solid) !important;
 }
@@ -83,6 +87,14 @@
   color: var(--opanel-text);
 }
 
+.timeliness-shop-name,
+.timeliness-shop-badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .timeliness-shop-name {
   font-size: 13.5px;
   font-weight: 650;
@@ -98,23 +110,19 @@
   font-weight: 650;
 }
 
-.timeliness-channel-tag--fbp {
-  background: var(--opanel-primary-soft) !important;
-  border-color: color-mix(in srgb, var(--opanel-primary) 20%, transparent) !important;
-  color: var(--opanel-primary) !important;
-}
+/* Channel and perf tags consume the shared --opanel-tone-* tokens
+   (styles/tokens.css, theme-aware) — FBP→azure, realFBS→mint, WHD→butter;
+   mint = fast/healthy, butter = warning band, peach = slow/anomalous,
+   azure = normal in-flight, same mapping as the orders view. */
+.timeliness-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.timeliness-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.timeliness-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
-.timeliness-channel-tag--fbs {
-  background: color-mix(in srgb, var(--opanel-success) 12%, transparent) !important;
-  border-color: color-mix(in srgb, var(--opanel-success) 24%, transparent) !important;
-  color: var(--opanel-success) !important;
-}
-
-.timeliness-channel-tag--whd {
-  background: color-mix(in srgb, var(--opanel-warning) 14%, transparent) !important;
-  border-color: color-mix(in srgb, var(--opanel-warning) 26%, transparent) !important;
-  color: var(--opanel-warning) !important;
-}
+.timeliness-tone-tag--azure { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.timeliness-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.timeliness-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+.timeliness-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+.timeliness-tone-tag--lavender { background: var(--opanel-tone-lavender-bg) !important; color: var(--opanel-tone-lavender-text) !important; }
 
 .timeliness-completeness-cell {
   gap: 6px;
@@ -151,18 +159,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.timeliness-complete-chip.is-warning {
-  color: var(--opanel-warning) !important;
+.timeliness-tone-tag--butter .timeliness-sub-label,
+.timeliness-tone-tag--butter b {
+  color: var(--opanel-tone-butter-text);
 }
 
 .timeliness-sub-label {
   color: var(--opanel-muted);
   font-size: 10px;
-}
-
-.timeliness-complete-chip.is-warning .timeliness-sub-label,
-.timeliness-complete-chip.is-warning b {
-  color: var(--opanel-warning);
 }
 
 .timeliness-stat-wrap {
