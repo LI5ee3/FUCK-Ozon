@@ -159,3 +159,10 @@ All summary cards are Naive UI `NCard` (`:bordered="false"` plus a 1px `--opanel
   - **5-Column Grid (`repeat(5, minmax(0, 1fr))`)**: Dashboard KPIs (`.dashboard-kpi-grid`).
   - **4-Column Grid (`repeat(4, minmax(0, 1fr))`)**: Analytics/Risk/Returns/Timeliness KPIs (`.analytics-kpi-grid`).
   - Both collapse responsively on narrow viewports (dashboard → 2 → 1, analytics → 3 → fewer).
+
+### 6. Hairline-First Depth, Focus & Chrome
+- **Hairlines over shadows**: surfaces are separated by 1px `--opanel-line` borders; shadows exist only as the whisper-soft `--opanel-shadow-sm` on cards. No decorative gradients anywhere.
+- **Floating chrome uses backdrop blur**: sticky headers, sidebar, and overlay surfaces apply `backdrop-filter: blur(24px) saturate(180%)` over the translucent panel color — blur is functional (content floats under chrome), not decorative.
+- **Focus ring**: keyboard focus (`:focus-visible` on buttons, links, `role="button"/"tab"`) gets `outline: 2px solid var(--opanel-primary-focus)` with `outline-offset: 2px`; text inputs keep Naive UI's own focus border.
+- **Scrollbars**: 6px rounded overlay thumbs tinted from `--opanel-muted` (45%, hover 70%), transparent tracks (`styles/base.css`).
+- **Global transitions**: background-color/border-color/color/box-shadow/transform transition over `0.16s var(--opanel-ease-fluid)` on buttons, links, cards, tags, inputs, and table cells — state changes animate, never snap. All motion collapses under `prefers-reduced-motion: reduce`.

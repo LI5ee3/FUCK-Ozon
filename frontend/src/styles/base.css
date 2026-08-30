@@ -22,6 +22,55 @@ input {
   font: inherit;
 }
 
+/* Keyboard focus ring: Action Blue, offset from the element (Apple HIG spec).
+   Scoped to pressable elements; text inputs keep Naive UI's own focus border. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible {
+  outline: 2px solid var(--opanel-primary-focus);
+  outline-offset: 2px;
+}
+
+/* Overlay-style scrollbars for panels and modals. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--opanel-muted) 45%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--opanel-muted) 45%, transparent);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--opanel-muted) 70%, transparent);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Interactive surfaces transition state changes instead of snapping. */
+.n-button,
+button,
+a,
+.n-card,
+.n-tag,
+.n-input,
+.n-base-selection,
+.n-data-table-td {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: 0.16s;
+  transition-timing-function: var(--opanel-ease-fluid);
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .morph-icon {
   display: inline-flex;
   align-items: center;
