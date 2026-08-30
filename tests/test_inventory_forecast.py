@@ -6,9 +6,10 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from app import db
+from app.inventory import (_confirmed_stockout_days, _forecast_risk, _forecast_values,
+                           _stock_history_index)
 from app.ozon.client import BEIJING
-from app.routers.inventory import (_confirmed_stockout_days, _forecast_risk,
-                                    _forecast_values, _stock_history_index, inventory_forecast, stock)
+from app.routers.inventory import inventory_forecast, stock
 from tests.support import DatabaseTestCase, add_item, add_order, add_stock_snapshot
 
 
@@ -248,7 +249,7 @@ class InventoryForecastTest(DatabaseTestCase):
 
     def test_inventory_policy_remains_backend_owned(self):
         root = Path(__file__).parents[1]
-        backend = (root / "app/routers/inventory.py").read_text()
+        backend = (root / "app/inventory.py").read_text()
         inventory = (root / "frontend/src/features/inventory/InventoryView.vue").read_text()
         self.assertIn("FORECAST_LEAD_TIME_DAYS = 25", backend)
         self.assertIn("FORECAST_TARGET_COVER_DAYS = 60", backend)

@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from ..db import connect
 from ..dingtalk import configured as dingtalk_configured, send_text
+from ..inventory import get_stock
 from ..products import load_product_rules, resolve_product
 from .config import RULE_KEYS, RULE_LABELS, RULE_SEVERITIES, _number, get_alert_rules
 from .freshness import BEIJING, MOSCOW, _fresh_ad_data, _fresh_inventory, _fresh_orders, _now_utc
@@ -203,11 +204,10 @@ def _inventory_risk(db, shop_id, config, now):
     if not fresh:
         return [], reason, set()
     try:
-        from ..routers.inventory import stock
         rows, page, size = [], 1, 100
-        # ponytail: page through the existing forecast endpoint; extract its SQL only if this becomes measurable.
+        # ponytail: page through the shared business query; extract its SQL only if this becomes measurable.
         while True:
-            result = stock(shop_id=shop_id, channel="FBP", page=page, size=size)
+            result = get_stock(shop_id=shop_id, channel="FBP", page=page, size=size)
             rows.extend(result.get("items") or [])
             if page * size >= int(result.get("total") or 0):
                 break
