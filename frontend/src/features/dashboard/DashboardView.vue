@@ -9,7 +9,6 @@ import {
   NCard,
   NDatePicker,
   NSkeleton,
-  NStatistic,
   NTag,
   useMessage,
 } from "naive-ui";
@@ -154,9 +153,9 @@ const kpis = computed<Array<{ label: string; value: string; note: string; icon: 
   const data = summary.value;
   return [
     { label: "成交金额 (GMV)", value: formatGmvAmount(data.gmv), note: data.gmv.missing_rate_orders ? `可折算GMV · 缺汇率 ${formatInteger(data.gmv.missing_rate_orders)} 单` : "有效订单总成交额", icon: "shoppingBag", tone: "azure" },
-    { label: "有效订单数", value: formatInteger(data.totals.orders), note: "不同订单号", icon: "orders", tone: "peach" },
+    { label: "有效订单数", value: formatInteger(data.totals.orders), note: "不同订单号", icon: "orders", tone: "lavender" },
     { label: "有效货件数", value: formatInteger(data.totals.pieces), note: "商品数量合计", icon: "package", tone: "mint" },
-    { label: "发货后取消订单", value: formatInteger(data.totals.cancelled_orders), note: "产生物流成本后取消", icon: "alertTriangle", tone: "lavender" },
+    { label: "发货后取消订单", value: formatInteger(data.totals.cancelled_orders), note: "产生物流成本后取消", icon: "alertTriangle", tone: "peach" },
     { label: "发货后取消率", value: formatPercent(data.totals.cancel_rate), note: "按有效货件数折算", icon: "percent", tone: "butter" },
   ];
 });
@@ -327,7 +326,7 @@ onBeforeUnmount(() => {
             <span>{{ kpi.label }}</span>
             <span class="dashboard-icon-badge tone-badge"><morph-icon :icon="kpi.icon" size="18" stroke-width="1.8" /></span>
           </div>
-          <NStatistic :value="kpi.value" class="dashboard-kpi-value tone-value" />
+          <strong class="dashboard-kpi-value tone-value">{{ kpi.value }}</strong>
           <small>{{ kpi.note }}</small>
         </NCard>
       </div>
@@ -338,7 +337,7 @@ onBeforeUnmount(() => {
             <div class="dashboard-panel-heading">
               <div>
                 <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />订单量趋势</h2>
-                <span>柱高表示有效订单数；按北京时间归组</span>
+                <span>折线表示有效订单数；按北京时间归组</span>
               </div>
               <div class="dashboard-granularity" role="group" aria-label="趋势粒度">
                 <NButton

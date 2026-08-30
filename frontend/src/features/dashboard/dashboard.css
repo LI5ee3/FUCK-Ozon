@@ -89,6 +89,7 @@
 }
 
 .dashboard-kpi-card .n-card__content {
+  min-height: 130px;
   padding: 18px 20px;
 }
 
@@ -135,14 +136,13 @@
 }
 
 .dashboard-kpi-value {
+  display: block;
   margin-top: 10px;
-}
-
-.dashboard-kpi-value .n-statistic-value {
   font-size: 28px;
   font-weight: 750;
   letter-spacing: -0.025em;
   line-height: 1.15;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-grid-two {
@@ -245,6 +245,7 @@
   font-weight: 750;
   letter-spacing: -0.015em;
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-insight-value small,
@@ -301,13 +302,15 @@
   color: var(--opanel-text);
 }
 
+/* Channel accents consume the macaron tone tokens directly (single source in
+   styles/tokens.css, theme-aware) — FBP→azure, realFBS→mint, WHD→butter. */
 .dashboard-channel-tag {
   font-weight: 650;
 }
 
-.dashboard-channel-tag--fbp { background: color-mix(in srgb, var(--opanel-primary) 12%, transparent) !important; color: var(--opanel-primary) !important; }
-.dashboard-channel-tag--fbs { background: color-mix(in srgb, var(--opanel-success) 12%, transparent) !important; color: var(--opanel-success) !important; }
-.dashboard-channel-tag--whd { background: color-mix(in srgb, var(--opanel-warning) 14%, transparent) !important; color: var(--opanel-warning) !important; }
+.dashboard-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
+.dashboard-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.dashboard-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
 .dashboard-channel-track,
 .dashboard-product-track {
@@ -324,9 +327,9 @@
   border-radius: 9999px;
 }
 
-.dashboard-channel-fill--fbp { background: var(--opanel-primary); }
-.dashboard-channel-fill--fbs { background: var(--opanel-success); }
-.dashboard-channel-fill--whd { background: var(--opanel-warning); }
+.dashboard-channel-fill--fbp { background: var(--opanel-tone-azure-text); }
+.dashboard-channel-fill--fbs { background: var(--opanel-tone-mint-text); }
+.dashboard-channel-fill--whd { background: var(--opanel-tone-butter-text); }
 .dashboard-product-track span { background: var(--opanel-primary); }
 
 .dashboard-channel-metrics,
@@ -359,6 +362,7 @@
   color: var(--opanel-text);
   font-size: 14px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -407,9 +411,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.dashboard-rank--1 { background: color-mix(in srgb, var(--opanel-warning) 25%, transparent); color: var(--opanel-warning); }
-.dashboard-rank--2 { background: color-mix(in srgb, var(--opanel-muted) 18%, transparent); }
-.dashboard-rank--3 { background: color-mix(in srgb, var(--opanel-danger) 16%, transparent); color: var(--opanel-danger); }
+.dashboard-rank--1 { background: var(--opanel-tone-butter-bg); border-color: transparent; color: var(--opanel-tone-butter-text); }
+.dashboard-rank--2 { background: var(--opanel-tone-lavender-bg); border-color: transparent; color: var(--opanel-tone-lavender-text); }
+.dashboard-rank--3 { background: var(--opanel-tone-peach-bg); border-color: transparent; color: var(--opanel-tone-peach-text); }
 
 .dashboard-product-info {
   min-width: 0;
@@ -501,9 +505,9 @@
 .dashboard-chart-tooltip-row b { color: var(--opanel-text); }
 .dashboard-chart-tooltip-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-chart-tooltip-dot { width: 7px; height: 7px; border-radius: 50%; }
-.dashboard-chart-tooltip-dot--fbp { background: var(--opanel-primary); }
-.dashboard-chart-tooltip-dot--fbs { background: var(--opanel-success); }
-.dashboard-chart-tooltip-dot--whd { background: var(--opanel-warning); }
+.dashboard-chart-tooltip-dot--fbp { background: var(--opanel-tone-azure-text); }
+.dashboard-chart-tooltip-dot--fbs { background: var(--opanel-tone-mint-text); }
+.dashboard-chart-tooltip-dot--whd { background: var(--opanel-tone-butter-text); }
 
 @media (max-width: 1100px) {
   .dashboard-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
