@@ -118,8 +118,8 @@ const trafficKpis = computed<AnalyticsKpi[]>(() => {
     { icon: "search", label: "曝光量", value: formatInteger(impressions), tone: "azure" },
     { icon: "package", label: "商品详情浏览量", value: formatInteger(productViews), tone: "lavender" },
     { icon: "activity", label: "独立访客", value: formatInteger(total("unique_visitors")), tone: "mint" },
-    { icon: "shoppingBag", label: "加购量", value: formatInteger(cartAdds), tone: "peach" },
-    { icon: "orders", label: "下单件数", value: formatInteger(orderedUnits), tone: "butter" },
+    { icon: "shoppingBag", label: "加购量", value: formatInteger(cartAdds), tone: "butter" },
+    { icon: "orders", label: "下单件数", value: formatInteger(orderedUnits), tone: "mint" },
     {
       icon: "wallet",
       label: "成交金额",
@@ -424,32 +424,35 @@ function renderRate(value: string): VNodeChild {
   return h("span", { class: "analytics-number" }, value);
 }
 
+// Fixed-layout width system (DESIGN.md §3): every column carries an explicit
+// width and the sum equals the table's scroll-x, so long product names clip
+// with ellipsis instead of pushing numeric columns out of the viewport.
 const trafficColumns: DataTableColumns<AnalyticsTrafficRow> = [
-  { key: "identity", title: "店铺／SKU", minWidth: 150, render: renderShopSku },
-  { key: "name", title: "商品", minWidth: 230, render: renderTrafficProduct },
-  { key: "impressions", title: "曝光量", width: 104, align: "right", render: (row) => renderNumber(row.impressions) },
-  { key: "product_views", title: "详情浏览", width: 104, align: "right", render: (row) => renderNumber(row.product_views) },
-  { key: "unique_visitors", title: "独立访客", width: 104, align: "right", render: (row) => renderNumber(row.unique_visitors) },
-  { key: "cart_adds", title: "加购量", width: 92, align: "right", render: (row) => renderNumber(row.cart_adds) },
-  { key: "ordered_units", title: "下单件数", width: 104, align: "right", render: (row) => renderNumber(row.ordered_units) },
-  { key: "revenue", title: "成交金额", width: 130, align: "right", render: (row) => renderAnalyticsMoney(row.revenue, row.currency) },
-  { key: "view_rate", title: "曝光→浏览", width: 108, align: "right", render: (row) => renderRate(formatFunnelRate(row.product_views, row.impressions)) },
-  { key: "cart_rate", title: "浏览→加购", width: 108, align: "right", render: (row) => renderRate(formatFunnelRate(row.cart_adds, row.product_views)) },
-  { key: "order_rate", title: "加购→下单", width: 108, align: "right", render: (row) => renderRate(formatFunnelRate(row.ordered_units, row.cart_adds)) },
+  { key: "identity", title: "店铺／SKU", width: 160, render: renderShopSku },
+  { key: "name", title: "商品", width: 260, render: renderTrafficProduct },
+  { key: "impressions", title: "曝光量", width: 100, align: "right", render: (row) => renderNumber(row.impressions) },
+  { key: "product_views", title: "详情浏览", width: 100, align: "right", render: (row) => renderNumber(row.product_views) },
+  { key: "unique_visitors", title: "独立访客", width: 100, align: "right", render: (row) => renderNumber(row.unique_visitors) },
+  { key: "cart_adds", title: "加购量", width: 90, align: "right", render: (row) => renderNumber(row.cart_adds) },
+  { key: "ordered_units", title: "下单件数", width: 100, align: "right", render: (row) => renderNumber(row.ordered_units) },
+  { key: "revenue", title: "成交金额", width: 150, align: "right", render: (row) => renderAnalyticsMoney(row.revenue, row.currency) },
+  { key: "view_rate", title: "曝光→浏览", width: 100, align: "right", render: (row) => renderRate(formatFunnelRate(row.product_views, row.impressions)) },
+  { key: "cart_rate", title: "浏览→加购", width: 100, align: "right", render: (row) => renderRate(formatFunnelRate(row.cart_adds, row.product_views)) },
+  { key: "order_rate", title: "加购→下单", width: 100, align: "right", render: (row) => renderRate(formatFunnelRate(row.ordered_units, row.cart_adds)) },
 ];
 
 const productQueryColumns: DataTableColumns<AnalyticsProductQueryRow> = [
-  { key: "identity", title: "店铺／SKU", minWidth: 150, render: renderShopSku },
-  { key: "product", title: "商品／货号", minWidth: 230, render: renderProductQueryProduct },
-  { key: "position", title: "平均排名", width: 104, align: "right", render: (row) => renderNumber(row.position, true) },
+  { key: "identity", title: "店铺／SKU", width: 160, render: renderShopSku },
+  { key: "product", title: "商品／货号", width: 300, render: renderProductQueryProduct },
+  { key: "position", title: "平均排名", width: 100, align: "right", render: (row) => renderNumber(row.position, true) },
   { key: "unique_search_users", title: "独立搜索人数", width: 120, align: "right", render: (row) => renderNumber(row.unique_search_users) },
   { key: "unique_view_users", title: "独立访问人数", width: 120, align: "right", render: (row) => renderNumber(row.unique_view_users) },
-  { key: "view_conversion", title: "点击转化率", width: 108, align: "right", render: (row) => renderRate(formatApiRate(row.view_conversion)) },
-  { key: "gmv", title: "GMV", width: 130, align: "right", render: (row) => renderAnalyticsMoney(row.gmv, row.currency) },
+  { key: "view_conversion", title: "点击转化率", width: 110, align: "right", render: (row) => renderRate(formatApiRate(row.view_conversion)) },
+  { key: "gmv", title: "GMV", width: 120, align: "right", render: (row) => renderAnalyticsMoney(row.gmv, row.currency) },
   {
     key: "details",
     title: "",
-    width: 108,
+    width: 110,
     align: "right",
     render: (row) => h(NButton, {
       size: "small",
@@ -461,13 +464,13 @@ const productQueryColumns: DataTableColumns<AnalyticsProductQueryRow> = [
 ];
 
 const detailColumns: DataTableColumns<AnalyticsProductQueryDetailRow> = [
-  { key: "query", title: "搜索关键词", minWidth: 240, render: (row) => h("span", { class: "analytics-product-name", title: row.query || "—" }, row.query || "—") },
-  { key: "position", title: "平均自然排名", width: 124, align: "right", render: (row) => renderNumber(row.position, true) },
+  { key: "query", title: "搜索关键词", width: 280, render: (row) => h("span", { class: "analytics-product-name", title: row.query || "—" }, row.query || "—") },
+  { key: "position", title: "平均自然排名", width: 120, align: "right", render: (row) => renderNumber(row.position, true) },
   { key: "unique_search_users", title: "独立搜索人数", width: 120, align: "right", render: (row) => renderNumber(row.unique_search_users) },
   { key: "unique_view_users", title: "独立访问人数", width: 120, align: "right", render: (row) => renderNumber(row.unique_view_users) },
-  { key: "view_conversion", title: "点击转化率", width: 108, align: "right", render: (row) => renderRate(formatApiRate(row.view_conversion)) },
-  { key: "order_count", title: "订单量", width: 96, align: "right", render: (row) => renderNumber(row.order_count) },
-  { key: "gmv", title: "GMV／币种", width: 134, align: "right", render: (row) => renderAnalyticsMoney(row.gmv, row.currency) },
+  { key: "view_conversion", title: "点击转化率", width: 110, align: "right", render: (row) => renderRate(formatApiRate(row.view_conversion)) },
+  { key: "order_count", title: "订单量", width: 90, align: "right", render: (row) => renderNumber(row.order_count) },
+  { key: "gmv", title: "GMV／币种", width: 140, align: "right", render: (row) => renderAnalyticsMoney(row.gmv, row.currency) },
 ];
 
 watch(() => route.fullPath, () => {
@@ -613,7 +616,8 @@ onBeforeUnmount(() => {
           :loading="trafficLoading"
           :pagination="false"
           :remote="true"
-          :scroll-x="1320"
+          :scroll-x="1360"
+          table-layout="fixed"
         >
           <template #empty><EmptyState :title="trafficError ? '流量转化数据加载失败' : '该条件下暂无流量数据'" icon="search" /></template>
         </NDataTable>
@@ -652,7 +656,8 @@ onBeforeUnmount(() => {
           :loading="productQueriesLoading"
           :pagination="false"
           :remote="true"
-          :scroll-x="1080"
+          :scroll-x="1140"
+          table-layout="fixed"
         >
           <template #empty><EmptyState :title="productQueriesError ? '商品搜索表现加载失败' : '该条件下暂无搜索表现数据'" icon="search" /></template>
         </NDataTable>
@@ -688,7 +693,8 @@ onBeforeUnmount(() => {
           :loading="detailLoading"
           :pagination="false"
           :remote="true"
-          :scroll-x="900"
+          :scroll-x="980"
+          table-layout="fixed"
         >
           <template #empty><EmptyState :title="detailError ? '搜索关键词加载失败' : '该 SKU 暂无关键词明细'" icon="search" /></template>
         </NDataTable>

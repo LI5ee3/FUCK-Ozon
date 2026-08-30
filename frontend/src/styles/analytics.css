@@ -142,6 +142,11 @@
   font-weight: 550;
 }
 
+.analytics-kpi-head > span:first-child {
+  min-width: 0;
+  text-wrap: balance;
+}
+
 .analytics-icon-badge {
   display: grid;
   width: 32px;
@@ -275,6 +280,8 @@
 }
 
 .analytics-product-name {
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -289,6 +296,7 @@
 .analytics-number {
   display: inline-block;
   min-width: 1ch;
+  white-space: nowrap;
 }
 
 .analytics-pager {
