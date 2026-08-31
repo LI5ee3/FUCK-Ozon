@@ -67,8 +67,14 @@ const historicalOfferRow: ProductCostRow = {
   ...usdRow,
   product_identity: "OFFER-HISTORICAL",
   display_name: "历史货号商品",
-  offer_ids: ["OLD-OFFER", "NEW-OFFER"],
-  listings: [{ shop_id: 1, sku: "1936515190", offer_id: null, offer_ids: ["OLD-OFFER", "NEW-OFFER"] }],
+  ozon_skus: ["1936515190", "1936515192"],
+  offer_ids: ["OLD-OFFER", "NEW-OFFER", "SECOND-OLD-OFFER"],
+  listings: [
+    { shop_id: 1, sku: "1936515190", offer_id: null, offer_ids: ["OLD-OFFER", "NEW-OFFER"] },
+    { shop_id: 1, sku: "1936515192", offer_id: "SECOND-OLD-OFFER", offer_ids: ["SECOND-OLD-OFFER"] },
+  ],
+  sku: "1936515190",
+  offer_id: "OLD-OFFER",
 };
 const products = [usdRow, cnyRow, unconfiguredRow, conflictRow, multiRow, historicalOfferRow];
 
@@ -251,8 +257,8 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("当前店铺存在多个 Ozon SKU，请选择平台商品");
     const platformOptions = selectInput(wrapper, "平台商品 Ozon SKU").props("options") as Array<{ label: string }>;
     expect(platformOptions.map((option) => option.label)).toEqual([
-      "1936515180 · WGMFR265C46M1",
-      "1936515181 · WGMFR265C46M2",
+      "1936515180 · 历史货号：WGMFR265C46M1",
+      "1936515181 · 历史货号：WGMFR265C46M2",
     ]);
     expect(commissionApi.getProductCommission).not.toHaveBeenCalled();
 
@@ -260,7 +266,7 @@ describe("ProfitView forecast-cost integration", () => {
     await nextTick();
     await flushPromises();
     expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515181");
-    expect(wrapper.text()).toContain("1936515181 · WGMFR265C46M2");
+    expect(wrapper.text()).toContain("1936515181 · 历史货号：WGMFR265C46M2");
   });
 
   it("switches listing and commission when the shop changes, then hits the session cache when switching back", async () => {
@@ -277,25 +283,47 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.findAllComponents(SelectStub).some((component) => component.attributes("aria-label") === "平台商品 Ozon SKU")).toBe(false);
     expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("平台商品：3017433550 · CURRENT-OFFER");
+    expect(wrapper.text()).toContain("平台商品：3017433550 · 当前货号：CURRENT-OFFER");
 
     await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 1);
     await nextTick();
     await flushPromises();
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
     expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
-    expect(wrapper.text()).toContain("平台商品：1936515175 · CURRENT-OFFER");
+    expect(wrapper.text()).toContain("平台商品：1936515175 · 当前货号：CURRENT-OFFER");
   });
 
-  it("treats historical offer IDs for one shop and SKU as one listing, then displays the current Ozon offer", async () => {
+  it("labels historical offers explicitly, avoids a false conflict, and shows the current Ozon offer only after loading", async () => {
+    let resolveCommission: ((value: unknown) => void) | undefined;
+    commissionApi.getProductCommission.mockImplementationOnce(() => new Promise((resolve) => { resolveCommission = resolve; }));
     const wrapper = await mountProfit();
     await search(wrapper, "历史货号商品");
     await productSelect(wrapper).vm.$emit("update:value", "OFFER-HISTORICAL");
     await nextTick();
-    await flushPromises();
     expect(wrapper.text()).not.toContain("同一 Ozon SKU 对应多个 offer_id");
+    const platformOptions = selectInput(wrapper, "平台商品 Ozon SKU").props("options") as Array<{ label: string }>;
+    expect(platformOptions.map((option) => option.label)).toEqual([
+      "1936515190 · 历史货号 2 个",
+      "1936515192 · 历史货号：SECOND-OLD-OFFER",
+    ]);
+    expect(wrapper.text()).toContain("历史货号：OLD-OFFER +2");
+    await selectInput(wrapper, "平台商品 Ozon SKU").vm.$emit("update:value", "1936515190");
+    await nextTick();
     expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515190");
-    expect(wrapper.text()).toContain("平台商品：1936515190 · CURRENT-OFFER");
+    expect(wrapper.text()).toContain("平台商品：1936515190 · 正在获取 Ozon 当前佣金…");
+    expect(wrapper.text()).not.toContain("当前货号：");
+    expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
+    expect(wrapper.text()).not.toContain("平台佣金：FBP 15% · realFBS 12%");
+    expect(wrapper.text()).not.toContain("2026-08-31 16:00");
+
+    resolveCommission?.({
+      shop_id: 1, sku: "1936515190", offer_id: "CURRENT-OFFER", product_id: 123,
+      sales_percent_fbp: 15, sales_percent_rfbs: 12, fetched_at: "2026-08-31T08:00:00Z",
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain("平台商品：1936515190 · 当前货号：CURRENT-OFFER");
+    expect(wrapper.text()).toContain("平台佣金：FBP 15% · realFBS 12%");
+    expect(wrapper.text()).toContain("来源：Ozon API · 本次查询2026-08-31 16:00");
   });
 
   it("allows a selected product without a current-shop listing and does not request another shop's commission", async () => {
@@ -330,6 +358,9 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("数据不可用");
     expect(wrapper.text()).toContain("无法计算完整预计利润");
     expect(wrapper.text()).not.toContain("¥0.00");
+    expect(wrapper.text()).not.toContain("当前货号：");
+    expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
+    expect(wrapper.text()).not.toContain("平台佣金：FBP —");
     expect(numberInput(wrapper, "平台售价").props("value")).toBe(100);
   });
 
@@ -351,6 +382,88 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("数据不可用");
   });
 
+  it("accepts a positive numeric-string product_id", async () => {
+    commissionApi.getProductCommission.mockResolvedValueOnce({
+      shop_id: 1,
+      sku: "1936515175",
+      offer_id: "CURRENT-OFFER",
+      product_id: "000123",
+      sales_percent_fbp: 15,
+      sales_percent_rfbs: 12,
+      fetched_at: "2026-08-31T08:00:00Z",
+    });
+    const wrapper = await mountProfit();
+    await search(wrapper, "美元商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+    await nextTick();
+    await flushPromises();
+    expect(wrapper.text()).toContain("当前货号：CURRENT-OFFER");
+    expect(wrapper.text()).not.toContain("Ozon佣金响应格式无效");
+  });
+
+  it("rejects invalid product_id values", async () => {
+    const invalidProductIds: unknown[] = [
+      null, undefined, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY,
+      true, false, "", "   ", "abc", "12abc",
+    ];
+    for (const productId of invalidProductIds) {
+      commissionApi.getProductCommission.mockResolvedValueOnce({
+        shop_id: 1,
+        sku: "1936515175",
+        offer_id: "CURRENT-OFFER",
+        product_id: productId,
+        sales_percent_fbp: 15,
+        sales_percent_rfbs: 12,
+        fetched_at: "2026-08-31T08:00:00Z",
+      });
+      const wrapper = await mountProfit();
+      await search(wrapper, "美元商品");
+      await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+      await nextTick();
+      await flushPromises();
+      expect(wrapper.text(), `product_id=${String(productId)}`).toContain("Ozon佣金响应格式无效");
+      expect(wrapper.text()).toContain("数据不可用");
+      expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
+    }
+  });
+
+  it("does not cache an invalid product_id response", async () => {
+    commissionApi.getProductCommission
+      .mockResolvedValueOnce({
+        shop_id: 1,
+        sku: "1936515175",
+        offer_id: "CURRENT-OFFER",
+        product_id: null,
+        sales_percent_fbp: 15,
+        sales_percent_rfbs: 12,
+        fetched_at: "2026-08-31T08:00:00Z",
+      })
+      .mockResolvedValueOnce({
+        shop_id: 1,
+        sku: "1936515175",
+        offer_id: "CURRENT-OFFER",
+        product_id: 123,
+        sales_percent_fbp: 15,
+        sales_percent_rfbs: 12,
+        fetched_at: "2026-08-31T08:00:00Z",
+      });
+    const wrapper = await mountProfit();
+    await search(wrapper, "美元商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+    await nextTick();
+    await flushPromises();
+    expect(wrapper.text()).toContain("Ozon佣金响应格式无效");
+
+    await productSelect(wrapper).vm.$emit("clear");
+    await nextTick();
+    await search(wrapper, "美元商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+    await nextTick();
+    await flushPromises();
+    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain("当前货号：CURRENT-OFFER");
+  });
+
   it("ignores a late response for a previous product", async () => {
     let resolveUsd: ((value: unknown) => void) | undefined;
     let resolveCny: ((value: unknown) => void) | undefined;
@@ -367,14 +480,14 @@ describe("ProfitView forecast-cost integration", () => {
       sales_percent_fbp: 9, sales_percent_rfbs: 8, fetched_at: "2026-08-31T08:00:00Z",
     });
     await flushPromises();
-    expect(wrapper.text()).toContain("平台商品：1936515176 · WGMFR265C46GR");
+    expect(wrapper.text()).toContain("平台商品：1936515176 · 当前货号：WGMFR265C46GR");
     expect(wrapper.text()).toContain("平台佣金：FBP 9% · realFBS 8%");
     resolveUsd?.({
       shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL", product_id: 123,
       sales_percent_fbp: 15, sales_percent_rfbs: 12, fetched_at: "2026-08-31T08:00:00Z",
     });
     await flushPromises();
-    expect(wrapper.text()).toContain("平台商品：1936515176 · WGMFR265C46GR");
+    expect(wrapper.text()).toContain("平台商品：1936515176 · 当前货号：WGMFR265C46GR");
     expect(wrapper.text()).toContain("平台佣金：FBP 9% · realFBS 8%");
   });
 

@@ -6,9 +6,8 @@ function validPercent(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100);
 }
 
-function validProductId(value: unknown): value is number | string | null {
-  return value === null
-    || (typeof value === "number" && Number.isSafeInteger(value) && value > 0)
+function validProductId(value: unknown): value is number | string {
+  return (typeof value === "number" && Number.isSafeInteger(value) && value > 0)
     || (typeof value === "string" && /^[0-9]+$/.test(value.trim()) && /[1-9]/.test(value));
 }
 

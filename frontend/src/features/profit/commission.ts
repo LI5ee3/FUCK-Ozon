@@ -4,7 +4,7 @@ export interface ProductCommission {
   shop_id: number;
   sku: string;
   offer_id: string;
-  product_id: number | string | null;
+  product_id: number | string;
   sales_percent_fbp: number | null;
   sales_percent_rfbs: number | null;
   fetched_at: string;

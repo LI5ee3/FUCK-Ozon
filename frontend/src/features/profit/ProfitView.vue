@@ -79,7 +79,7 @@ function renderProductLabel(option: { label?: unknown; row?: unknown }): VNodeCh
   const suffix = row.conflict ? " · 规则冲突" : row.configured ? "" : " · 未配置成本";
   return h("div", { class: "profit-product-option" }, [
     h("strong", row.display_name),
-    h("small", `${compactIdentifiers(offers)} · ${compactIdentifiers(skus)}${suffix}`),
+    h("small", `历史货号：${compactIdentifiers(offers)} · Ozon SKU：${compactIdentifiers(skus)}${suffix}`),
   ]);
 }
 
@@ -243,7 +243,7 @@ const platformSkus = computed(() => [...new Set(shopListings.value.map((listing)
 const platformSkuOptions = computed<PlatformSkuOption[]>(() => platformSkus.value.map((sku) => {
   const listing = shopListings.value.find((item) => item.sku === sku);
   const offerLabel = listing?.offer_ids.length === 1
-    ? listing.offer_ids[0]
+    ? `历史货号：${listing.offer_ids[0]}`
     : listing?.offer_ids.length
       ? `历史货号 ${listing.offer_ids.length} 个`
       : "";
@@ -474,16 +474,21 @@ function formatProfitPercent(value: number | null): string {
           <div v-if="selectedProduct && !selectedProduct.conflict" class="profit-product-info" role="status">
             <div>
               <strong>{{ selectedProduct.display_name }}</strong>
-              <span>货号：{{ compactIdentifiers(selectedProduct.offer_ids) }} · Ozon SKU：{{ compactIdentifiers(selectedProduct.ozon_skus) }}</span>
+              <span>历史货号：{{ compactIdentifiers(selectedProduct.offer_ids) }} · Ozon SKU：{{ compactIdentifiers(selectedProduct.ozon_skus) }}</span>
             </div>
             <div class="profit-product-meta">
               <small v-if="selectedForecastCost">
                 最后更新：{{ formatBeijingDateTime(selectedForecastCost.updated_at) }} · 尺寸：{{ formatProductSize(selectedForecastCost) }}<span v-if="selectedForecastCost.note"> · 备注：{{ selectedForecastCost.note }}</span>
               </small>
-              <small v-if="selectedPlatformListing">
-                平台商品：{{ selectedPlatformListing.sku }}<span v-if="productCommission"> · {{ productCommission.offer_id }}</span> · 平台佣金：FBP {{ formatCommissionPercent(productCommission?.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission?.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询<span v-if="productCommission">{{ formatBeijingDateTime(productCommission.fetched_at) }}</span>
+              <small v-if="selectedPlatformListing && commissionLoading">
+                平台商品：{{ selectedPlatformListing.sku }} · 正在获取 Ozon 当前佣金…
               </small>
-              <small v-else-if="commissionLoading">平台佣金：获取中…</small>
+              <small v-else-if="selectedPlatformListing && productCommission">
+                平台商品：{{ selectedPlatformListing.sku }} · 当前货号：{{ productCommission.offer_id }} · 平台佣金：FBP {{ formatCommissionPercent(productCommission.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询{{ formatBeijingDateTime(productCommission.fetched_at) }}
+              </small>
+              <small v-else-if="selectedPlatformListing">
+                平台商品：{{ selectedPlatformListing.sku }}
+              </small>
             </div>
           </div>
           <NAlert v-if="productSearchError" type="error" class="profit-product-alert">
