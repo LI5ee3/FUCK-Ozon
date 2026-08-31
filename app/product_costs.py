@@ -146,6 +146,8 @@ def forecast_cost_identities_for_rule_change(db, rules, members, group_id=0):
         resolved, conflict = _resolve_item(rules, sku, offer_id, item["product_name_raw"] or "", sku_group_ids)
         if conflict:
             raise ValueError(conflict)
+        if resolved["group_id"] is not None and resolved["group_id"] != group_id:
+            raise ValueError(f"商品 {sku} / {offer_id} 已通过商品规则归属于其他主货号，不能加入当前合并关系")
         identities.add(resolved["identity"])
     return identities
 

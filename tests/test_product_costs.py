@@ -213,6 +213,76 @@ class ProductForecastCostsTest(DatabaseTestCase):
             self.assertEqual([dict(row) for row in connection.execute(
                 "SELECT * FROM product_forecast_cost_history ORDER BY id")], history_before)
 
+    def test_merge_rejects_inferred_sku_owned_by_other_group_without_rekey(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-A", "SKU-X", "OFFER-A", "同一 SKU 历史货号")
+            self._add_product(connection, "P-B", "SKU-X", "OFFER-B", "同一 SKU 新货号")
+            self._add_product(connection, "P-C", "SKU-C", "OFFER-C", "独立商品")
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}],
+        })))
+        save_product_forecast_cost(self._payload(sku="SKU-X", offer_id="OFFER-A", purchase_cost=21))
+        with db.connect() as connection:
+            groups_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_groups ORDER BY id")]
+            config_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_config ORDER BY group_id")]
+            current_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_costs ORDER BY id")]
+            history_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(MockRequest({
+                "kind": "merge", "primary_offer_id": "OFFER-B", "primary_sku": "SKU-X",
+                "members": [{"key_type": "offer_id", "key_value": "OFFER-C"}],
+            })))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("SKU-X / OFFER-B", raised.exception.detail)
+        with db.connect() as connection:
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_groups ORDER BY id")], groups_before)
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_config ORDER BY group_id")], config_before)
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_costs ORDER BY id")], current_before)
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")], history_before)
+
+    def test_edit_merge_rejects_inferred_sku_owned_by_other_group(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-A", "SKU-X", "OFFER-A", "同一 SKU 历史货号")
+            self._add_product(connection, "P-B", "SKU-X", "OFFER-B", "同一 SKU 新货号")
+            self._add_product(connection, "P-C", "SKU-C", "OFFER-C", "独立商品")
+            self._add_product(connection, "P-D", "SKU-D", "OFFER-D", "另一个独立商品")
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}],
+        })))
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-C", "primary_sku": "SKU-C",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-D"}],
+        })))
+        group_b = product_rules()["groups"][-1]["id"]
+        with db.connect() as connection:
+            members_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value", (group_b,))]
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(MockRequest({
+                "kind": "merge", "id": group_b, "primary_offer_id": "OFFER-C", "primary_sku": "SKU-C",
+                "members": [{"key_type": "offer_id", "key_value": "OFFER-D"},
+                             {"key_type": "offer_id", "key_value": "OFFER-B"}],
+            })))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("SKU-X / OFFER-B", raised.exception.detail)
+        with db.connect() as connection:
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value", (group_b,))],
+                members_before)
+            self.assertEqual(product_rules()["groups"][-1]["id"], group_b)
+
     def test_primary_offer_change_rekeys_cost_and_noop_does_not_update_it(self):
         with db.transaction() as connection:
             self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
