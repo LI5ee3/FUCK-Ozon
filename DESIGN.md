@@ -256,8 +256,7 @@ Use surfaces in this order:
 
 1. **Canvas:** page background.
 2. **Primary panel:** use an 18px radius, a 1px oPanel hairline, and the
-   defined whisper-soft oPanel card shadow only when an outer panel is truly
-   needed.
+   oPanel whisper-soft card shadow only when an outer panel is truly needed.
 3. **Inset surface:** use an 8px radius, a subtle panel-hover difference, and
    no shadow. An optional hairline may clarify a real boundary.
 4. **Flat section:** use no border or shadow when whitespace and typography
