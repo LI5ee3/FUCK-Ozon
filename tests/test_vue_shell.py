@@ -17,6 +17,7 @@ ROUTES = (
     ("alerts", "/alerts"),
     ("complaints", "/complaints"),
     ("inventory", "/inventory"),
+    ("product-costs", "/product-costs"),
     ("profit", "/profit"),
     ("transfer", "/transfer"),
     ("sync", "/sync"),

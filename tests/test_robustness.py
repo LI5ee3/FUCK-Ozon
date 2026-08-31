@@ -46,7 +46,7 @@ def utc(value):
 class RobustnessTest(DatabaseTestCase):
     def test_json_object_endpoints_share_request_validation(self):
         modules = ('sync', 'alerts', 'dingtalk', 'shops', 'exchange', 'products',
-                   'ozon_notifications', 'complaints', 'performance')
+                   'product_costs', 'ozon_notifications', 'complaints', 'performance')
         tested = set()
         for name in modules:
             module = importlib.import_module('app.routers.' + name)
@@ -69,7 +69,7 @@ class RobustnessTest(DatabaseTestCase):
                         self.assertEqual(raised.exception.status_code, status)
                         if status == 413:
                             self.assertEqual(request.consumed, 1)
-        self.assertEqual(len(tested), 18)
+        self.assertEqual(len(tested), 19)
 
     def test_invalid_product_id_and_sync_date_are_400(self):
         for kind in ('merge', 'dissolve'):

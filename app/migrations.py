@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _create_webhook_events(db):
@@ -147,6 +147,48 @@ def _migrate_v6_to_v7(db):
     db.execute("PRAGMA user_version=7")
 
 
+def _create_product_forecast_costs(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS product_forecast_costs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_identity TEXT NOT NULL UNIQUE,
+      purchase_cost REAL NOT NULL,
+      purchase_currency TEXT NOT NULL CHECK(purchase_currency IN ('USD','CNY')),
+      weight_grams REAL,
+      length_cm REAL,
+      width_cm REAL,
+      height_cm REAL,
+      packing_cost_cny REAL,
+      other_cost_cny REAL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS product_forecast_cost_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_identity TEXT NOT NULL,
+      purchase_cost REAL NOT NULL,
+      purchase_currency TEXT NOT NULL CHECK(purchase_currency IN ('USD','CNY')),
+      weight_grams REAL,
+      length_cm REAL,
+      width_cm REAL,
+      height_cm REAL,
+      packing_cost_cny REAL,
+      other_cost_cny REAL,
+      note TEXT NOT NULL DEFAULT '',
+      change_note TEXT NOT NULL DEFAULT '',
+      recorded_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_forecast_cost_history_identity_time
+      ON product_forecast_cost_history(product_identity,recorded_at DESC,id DESC);
+    """)
+
+
+def _migrate_v7_to_v8(db):
+    _create_product_forecast_costs(db)
+    db.execute("PRAGMA user_version=8")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -171,6 +213,9 @@ def init_db():
             if version == 6:
                 _migrate_v6_to_v7(db)
                 version = 7
+            if version == 7:
+                _migrate_v7_to_v8(db)
+                version = 8
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -331,3 +376,4 @@ def init_db():
         """)
         _create_ad_statistics(db)
         _create_alert_tables(db)
+        _create_product_forecast_costs(db)

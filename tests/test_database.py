@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app import db
 from app.db import DEFAULT_DAILY_TEMPLATE
-from app.migrations import init_db
+from app.migrations import SCHEMA_VERSION, init_db
 from tests.support import DatabaseTestCase
 
 
@@ -35,7 +35,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             after = (connection.execute("PRAGMA user_version").fetchone()[0],
                       connection.execute("SELECT group_concat(sql,'\n') FROM sqlite_master").fetchone()[0])
         self.assertEqual(before, after)
-        self.assertEqual(after[0], 7)
+        self.assertEqual(after[0], SCHEMA_VERSION)
 
     def test_nonempty_old_database_is_rejected(self):
         old_path = Path(self.temp.name) / "old.db"
@@ -60,7 +60,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
         init_db()
         with db.connect() as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
             self.assertEqual(connection.execute(
                 "SELECT status_raw FROM orders WHERE posting_number='MIGRATION-1'").fetchone()[0], "运输中")
             self.assertIsNotNone(connection.execute(
@@ -84,4 +84,4 @@ class DatabaseSchemaTest(DatabaseTestCase):
             version = connection.execute("PRAGMA user_version").fetchone()[0]
         self.assertEqual([row["status"] for row in rows], ["failed", "running"])
         self.assertIn("数据库升级", rows[0]["error"])
-        self.assertEqual(version, 7)
+        self.assertEqual(version, SCHEMA_VERSION)
