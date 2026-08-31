@@ -85,18 +85,13 @@ def _client_ip(request):
         return peer
 
     headers = {str(key).lower(): value for key, value in request.headers.items()}
-    values = [headers.get("cf-connecting-ip"), headers.get("x-forwarded-for")]
-    for index, value in enumerate(values):
-        value = str(value or "").strip()
-        if not value:
-            continue
-        try:
-            addresses = value.split(",") if index == 1 else [value]
-            parsed = [ipaddress.ip_address(address.strip()) for address in addresses]
-            return str(parsed[0])
-        except ValueError:
-            continue
-    return peer
+    # Trust only the immediate loopback proxy's appended XFF address, never client prefixes.
+    # Loopback alone cannot prove CF-Connecting-IP was sanitized, so do not use it.
+    value = str(headers.get("x-forwarded-for") or "").rsplit(",", 1)[-1].strip()
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return peer
 
 
 @router.post("/api/login")

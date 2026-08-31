@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 
 import starlette
 
-from app import db, main
+from app import db, main, security
 from app.main import protect_api
 from app.routers import auth
 from app.routers.auth import LOGIN_MAX_BODY_BYTES, _client_ip, login, logout, session
@@ -123,16 +123,20 @@ class SecurityTest(DatabaseTestCase):
                 yield b'{"password": "wrong"}'
 
         requests = [
-            (Request({"CF-Connecting-IP": " 198.51.100.7 "}), "198.51.100.7"),
-            (Request({"CF-Connecting-IP": "198.51.100.8"}, "192.0.2.8"), "192.0.2.8"),
+            (Request({"X-Forwarded-For": "8.8.8.8"}, "198.51.100.20"), "198.51.100.20"),
+            (Request({"CF-Connecting-IP": "8.8.8.8"}, "198.51.100.20"), "198.51.100.20"),
             (Request({}, "192.0.2.9"), "192.0.2.9"),
-            (Request({"CF-Connecting-IP": "not-an-ip"}), "127.0.0.1"),
-            (Request({"X-Forwarded-For": "203.0.113.7"}), "203.0.113.7"),
-            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1, 10.0.0.2"}), "1.2.3.4"),
-            (Request({"X-Forwarded-For": "1.2.3.4"}, "192.0.2.8"), "192.0.2.8"),
-            (Request({"CF-Connecting-IP": "198.51.100.7", "X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "198.51.100.7"),
-            (Request({"X-Forwarded-For": "bad, 10.0.0.1"}), "127.0.0.1"),
-            (Request({"X-Forwarded-For": "1.2.3.4, bad"}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "203.0.113.10"}), "203.0.113.10"),
+            (Request({"X-Forwarded-For": "8.8.8.8, 203.0.113.10"}), "203.0.113.10"),
+            (Request({"X-Forwarded-For": "1.1.1.1, 8.8.8.8, 203.0.113.10"}), "203.0.113.10"),
+            (Request({"X-Forwarded-For": "garbage, 203.0.113.10"}), "203.0.113.10"),
+            (Request({"X-Forwarded-For": "1.2.3.4, garbage"}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "1.2.3.4, "}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "garbage"}), "127.0.0.1"),
+            (Request({"CF-Connecting-IP": "198.51.100.7"}), "127.0.0.1"),
+            (Request({"CF-Connecting-IP": "198.51.100.7", "X-Forwarded-For": "8.8.8.8, 203.0.113.10"}), "203.0.113.10"),
+            (Request({"X-Forwarded-For": "2001:0db8:0000::10"}, "::1"), "2001:db8::10"),
+            (Request({"X-Forwarded-For": "2001:db8::99, 2001:0db8:0000::10"}, "::1"), "2001:db8::10"),
         ]
         self.assertEqual([_client_ip(request) for request, _ in requests], [expected for _, expected in requests])
         with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \
@@ -145,7 +149,7 @@ class SecurityTest(DatabaseTestCase):
                 self.assertEqual(raised.exception.status_code, 401)
         self.assertEqual([call.args[0] for call in record.call_args_list], [expected for _, expected in requests])
 
-        first, second = (expected for _, expected in requests[:2])
+        first, second = "198.51.100.20", "203.0.113.10"
         clear_login_failures(first)
         clear_login_failures(second)
         for _ in range(5):
@@ -154,6 +158,22 @@ class SecurityTest(DatabaseTestCase):
         self.assertFalse(login_limited(second, 101))
         clear_login_failures(first)
         clear_login_failures(second)
+
+    def test_spoofed_forwarding_prefixes_share_the_real_client_rate_limit(self):
+        real_ip = "203.0.113.10"
+        salt, digest = password_hash("secret")
+        with patch.dict(security._failures, {}, clear=True), \
+                patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": salt, "ADMIN_PASSWORD_HASH": digest}):
+            for index, prefix in enumerate(("1.1.1.1", "8.8.8.8", "9.9.9.9", "garbage", "2001:db8::99", "4.4.4.4")):
+                request = body_request(b'{"password":"wrong"}', {
+                    "X-Forwarded-For": f"{prefix}, {real_ip}", "CF-Connecting-IP": prefix,
+                })
+                with self.subTest(prefix=prefix):
+                    with self.assertRaises(HTTPException) as raised:
+                        asyncio.run(login(request, Response()))
+                    self.assertEqual(raised.exception.status_code, 401 if index < 5 else 429)
+            self.assertEqual(set(security._failures), {real_ip})
+            self.assertEqual(len(security._failures[real_ip]), 5)
 
     def test_login_rejects_malformed_and_non_object_json(self):
         salt, digest = password_hash("secret")

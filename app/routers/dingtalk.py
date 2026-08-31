@@ -42,7 +42,7 @@ async def update_dingtalk_settings(request: Request):
         try:
             push_time = datetime.strptime(push_time, "%H:%M").strftime("%H:%M")
             weekdays = sorted({int(value) for value in body.get("weekdays", [])})
-        except (TypeError, ValueError) as error:
+        except (TypeError, ValueError, OverflowError) as error:
             raise HTTPException(400, "钉钉推送时间或星期无效") from error
         if any(value not in range(1, 8) for value in weekdays):
             raise HTTPException(400, "钉钉推送星期无效")

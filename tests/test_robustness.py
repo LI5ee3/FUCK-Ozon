@@ -83,6 +83,22 @@ class RobustnessTest(DatabaseTestCase):
                     asyncio.run(sync.sync('orders', BodyRequest([json.dumps({field: value}).encode()]), 1))
                 self.assertEqual(raised.exception.status_code, 400)
 
+    def test_router_integer_overflow_is_a_client_error(self):
+        cases = [
+            ('alerts', 'alerts_evaluate', b'{"shop_id":1e309}'),
+            ('ozon_notifications', 'ozon_notification_list', b'{"shop_id":1e309}'),
+            ('ozon_notifications', 'ozon_notification_enable', b'{"shop_id":1,"id":1e309,"enabled":true}'),
+            ('ozon_notifications', 'ozon_notification_delete', b'{"shop_id":1,"id":1e309}'),
+            ('dingtalk', 'update_dingtalk_settings',
+             b'{"daily_enabled":true,"push_time":"12:00","weekdays":[1e309]}'),
+        ]
+        for module, function, raw in cases:
+            with self.subTest(function=function):
+                endpoint = getattr(importlib.import_module('app.routers.' + module), function)
+                with self.assertRaises(HTTPException) as raised:
+                    asyncio.run(endpoint(BodyRequest([raw])))
+                self.assertEqual(raised.exception.status_code, 400)
+
     def test_snapshot_stock_channel_aliases(self):
         with db.transaction() as connection:
             for kind in ('fbs', 'rfbs', 'fbp', 'fbo'):

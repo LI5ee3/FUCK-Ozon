@@ -16,6 +16,15 @@ router = APIRouter()
 JSON_MAX_BODY_BYTES = 64 * 1024
 
 
+def _complaint_shop_id(value):
+    if value is not None and type(value) not in (int, str):
+        raise HTTPException(400, "店铺ID无效")
+    try:
+        return int(value or 0)
+    except ValueError as error:
+        raise HTTPException(400, "店铺ID无效") from error
+
+
 def _compensation_pair(body, amount_key, time_key):
     amount, compensated_at = body.get(amount_key), str(body.get(time_key) or "").strip()
     if (amount in (None, "")) != (not compensated_at):
@@ -38,7 +47,7 @@ def _compensation_pair(body, amount_key, time_key):
 @router.put("/api/exception-complaints/shipping")
 async def save_complaint(request: Request):
     body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "申诉")
-    shop_id = int(body.get("shop_id") or 0)
+    shop_id = _complaint_shop_id(body.get("shop_id"))
     number = str(body.get("complaint_number") or "").strip()
     posting = str(body.get("posting_number") or "").strip()
     complaint_at = str(body.get("complaint_at") or "").strip()
@@ -218,7 +227,7 @@ def received_disputes(shop_id: int = 0, q: str = "", status: str = "", page: int
 @router.put("/api/exception-complaints/received")
 async def save_received_dispute(request: Request):
     body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "申诉")
-    shop_id = int(body.get("shop_id") or 0)
+    shop_id = _complaint_shop_id(body.get("shop_id"))
     return_number = str(body.get("return_number") or "").strip()
     if shop_id not in (1, 2) or not return_number:
         raise HTTPException(400, "店铺和退货申请编号均为必填")

@@ -13,7 +13,7 @@ JSON_MAX_BODY_BYTES = 16 * 1024
 def _alert_shop_id(value=0):
     try:
         shop_id = int(value)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise HTTPException(400, "shop_id无效") from error
     if shop_id not in (0, 1, 2):
         raise HTTPException(400, "未知店铺")

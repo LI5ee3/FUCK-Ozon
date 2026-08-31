@@ -3,6 +3,7 @@ import json
 import unittest
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -58,6 +59,33 @@ class ComplaintsTest(DatabaseTestCase):
             "complaint_at": "2026-08-07T00:00:00Z", "channel": "Ozon",
             "resolved": resolved, "package_returned": None,
         })))
+
+    def test_write_endpoints_validate_shop_id_before_database_access(self):
+        payloads = (
+            (save_complaint, {"posting_number": "P-1", "complaint_number": "CASE-TYPE",
+                              "complaint_at": "2026-08-07T00:00:00Z", "channel": "Ozon"}),
+            (save_received_dispute, {"return_number": "RET-1"}),
+        )
+        for endpoint, payload in payloads:
+            for value in ("abc", [], {}, True, False, None, 1.5, 0, 3):
+                with self.subTest(endpoint=endpoint.__name__, value=value):
+                    with patch("app.routers.complaints.transaction") as transaction:
+                        with self.assertRaises(HTTPException) as raised:
+                            asyncio.run(endpoint(Request({**payload, "shop_id": value})))
+                        self.assertEqual(raised.exception.status_code, 400)
+                        transaction.assert_not_called()
+            with self.subTest(endpoint=endpoint.__name__, missing=True):
+                with patch("app.routers.complaints.transaction") as transaction:
+                    with self.assertRaises(HTTPException) as raised:
+                        asyncio.run(endpoint(Request(payload)))
+                    self.assertEqual(raised.exception.status_code, 400)
+                    transaction.assert_not_called()
+            for value in (1, "1", 2, "2"):
+                valid = {**payload, "shop_id": value}
+                if int(value) == 2:
+                    valid.update({"posting_number": "ANOM", "return_number": "RET-3"})
+                with self.subTest(endpoint=endpoint.__name__, valid=value):
+                    self.assertEqual(asyncio.run(endpoint(Request(valid))), {"ok": True})
 
     def test_complaint_number_can_link_orders_and_order_can_have_many_complaints(self):
         self.save_shipping("P-1", "CASE-1")

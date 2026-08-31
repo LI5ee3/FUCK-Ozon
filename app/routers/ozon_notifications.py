@@ -14,7 +14,7 @@ JSON_MAX_BODY_BYTES = 16 * 1024
 def _admin_shop(body):
     try:
         shop_id = int(body.get("shop_id"))
-    except (AttributeError, TypeError, ValueError) as error:
+    except (AttributeError, TypeError, ValueError, OverflowError) as error:
         raise HTTPException(400, "shop_id无效") from error
     if shop_id not in (1, 2):
         raise HTTPException(400, "未知店铺")
@@ -67,7 +67,7 @@ async def ozon_notification_enable(request: Request):
     shop_id = _admin_shop(body)
     try:
         notification_id = int(body.get("id"))
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise HTTPException(400, "通知ID无效") from error
     if "enabled" not in body and "enable" not in body:
         raise HTTPException(400, "缺少 enabled")
@@ -81,6 +81,6 @@ async def ozon_notification_delete(request: Request):
     shop_id = _admin_shop(body)
     try:
         notification_id = int(body.get("id"))
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise HTTPException(400, "通知ID无效") from error
     return await _ozon_management_call(notification_delete, shop_id, notification_id)
