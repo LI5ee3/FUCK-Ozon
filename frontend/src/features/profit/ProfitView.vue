@@ -484,7 +484,7 @@ function formatProfitPercent(value: number | null): string {
                 平台商品：{{ selectedPlatformListing.sku }} · 正在获取 Ozon 当前佣金…
               </small>
               <small v-else-if="selectedPlatformListing && productCommission">
-                平台商品：{{ selectedPlatformListing.sku }} · 当前货号：{{ productCommission.offer_id }} · 平台佣金：FBP {{ formatCommissionPercent(productCommission.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询{{ formatBeijingDateTime(productCommission.fetched_at) }}
+                平台商品：{{ selectedPlatformListing.sku }} · 当前货号：{{ productCommission.offer_id }} · 平台佣金：FBP {{ formatCommissionPercent(productCommission.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询：{{ formatBeijingDateTime(productCommission.fetched_at) }}
               </small>
               <small v-else-if="selectedPlatformListing">
                 平台商品：{{ selectedPlatformListing.sku }}

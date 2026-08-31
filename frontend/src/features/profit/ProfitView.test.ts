@@ -323,7 +323,7 @@ describe("ProfitView forecast-cost integration", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("平台商品：1936515190 · 当前货号：CURRENT-OFFER");
     expect(wrapper.text()).toContain("平台佣金：FBP 15% · realFBS 12%");
-    expect(wrapper.text()).toContain("来源：Ozon API · 本次查询2026-08-31 16:00");
+    expect(wrapper.text()).toContain("来源：Ozon API · 本次查询：2026-08-31 16:00");
   });
 
   it("allows a selected product without a current-shop listing and does not request another shop's commission", async () => {
