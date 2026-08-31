@@ -12,7 +12,7 @@ body,
 body {
   background: var(--opanel-bg);
   color: var(--opanel-text);
-  font: 14px/1.5 "SF Pro Text", -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif;
+  font: 14px/1.5 var(--opanel-font-family);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -42,7 +42,7 @@ a:focus-visible,
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: color-mix(in srgb, var(--opanel-muted) 45%, transparent);
 }
 *::-webkit-scrollbar-thumb:hover {

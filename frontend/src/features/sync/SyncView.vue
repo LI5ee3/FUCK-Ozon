@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./sync.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, type VNodeChild } from "vue";
@@ -608,19 +609,7 @@ onBeforeUnmount(() => {
             aria-label="手动同步日期范围"
             @update:formatted-value="handleManualRangeChange"
           />
-          <div class="sync-date-presets" aria-label="手动同步日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="manualActivePreset === preset.key ? 'primary' : 'default'"
-              :secondary="manualActivePreset !== preset.key"
-              @click="selectManualPreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="sync-date-presets" aria-label="手动同步日期快捷范围" :options="datePresets" :active-key="manualActivePreset" @select="selectManualPreset" />
         </div>
         <p class="sync-date-note"><morph-icon icon="clock" size="14" stroke-width="1.8" />手动订单、退货日期按 Europe/Moscow 计算；库存与广告接口按后端规则执行。</p>
         <NAlert v-if="selectedShopId === 0" type="warning" :bordered="false" class="sync-shop-alert">
@@ -669,19 +658,7 @@ onBeforeUnmount(() => {
             aria-label="汇率同步日期范围"
             @update:formatted-value="handleExchangeRangeChange"
           />
-          <div class="sync-date-presets" aria-label="汇率日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="exchangeActivePreset === preset.key ? 'primary' : 'default'"
-              :secondary="exchangeActivePreset !== preset.key"
-              @click="selectExchangePreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="sync-date-presets" aria-label="汇率日期快捷范围" :options="datePresets" :active-key="exchangeActivePreset" @select="selectExchangePreset" />
         </div>
         <NAlert v-if="exchangeError" type="error" :bordered="false" class="sync-error-alert">
           汇率状态加载失败：{{ exchangeError }}

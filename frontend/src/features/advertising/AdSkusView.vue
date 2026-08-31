@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "./advertising.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -10,7 +12,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NSelect,
   NSpin,
   useMessage,
@@ -329,19 +330,7 @@ onBeforeUnmount(() => {
           aria-label="SKU 广告分析日期范围"
           @update:formatted-value="handleDateRangeChange"
         />
-        <div class="ads-date-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in datePresets"
-            :key="preset.key"
-            size="small"
-            attr-type="button"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="ads-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="ads-toolbar-foot">
         <span>Performance API 自然日；金额单位 RUB</span>
@@ -365,16 +354,14 @@ onBeforeUnmount(() => {
           </div>
           <div class="ad-skus-filter-inline">
             <form class="ad-skus-search-form" @submit.prevent="submitSearch">
-              <NInput
+              <SearchField
                 v-model:value="queryDraft"
                 type="text"
                 class="ad-skus-search"
                 aria-label="搜索 SKU 或商品名称"
                 placeholder="搜索 SKU 或商品名称…"
                 @keydown.enter.prevent="submitSearch"
-              >
-                <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-              </NInput>
+              />
               <NButton type="primary" attr-type="submit" :loading="loading">查询</NButton>
               <NButton attr-type="button" @click="clearSearch">清除</NButton>
             </form>

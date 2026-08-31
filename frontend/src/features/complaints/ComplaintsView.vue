@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./complaints.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
@@ -14,7 +16,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NSelect,
   NTag,
   useMessage,
@@ -695,19 +696,7 @@ onBeforeUnmount(() => {
           aria-label="异常订单投诉日期范围"
           @update:formatted-value="handleDateRangeChange"
         />
-        <div class="analytics-date-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in datePresets"
-            :key="preset.key"
-            size="small"
-            attr-type="button"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="analytics-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="analytics-toolbar-foot">
         <span>发货未收货按订单创建时间、已收货纠纷按退货申请时间筛选；投诉截止日期由后端返回</span>
@@ -755,15 +744,13 @@ onBeforeUnmount(() => {
             <span>仅展示发货后取消或存在数据异常的候选订单</span>
           </div>
           <form class="complaints-filter" role="search" @submit.prevent="submitSearch">
-            <NInput
+            <SearchField
               v-model:value="searchDraft"
               type="text"
               aria-label="搜索发货未收货投诉"
               placeholder="搜索订单号、物流单号、SKU、货号或投诉编号…"
               @keydown.enter.prevent="submitSearch"
-            >
-              <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-            </NInput>
+            />
             <NSelect
               :value="filters.status"
               :options="shippingStatusOptions"
@@ -819,15 +806,13 @@ onBeforeUnmount(() => {
             <span>按店铺与退货申请编号独立保存人工处理信息</span>
           </div>
           <form class="complaints-filter" role="search" @submit.prevent="submitSearch">
-            <NInput
+            <SearchField
               v-model:value="searchDraft"
               type="text"
               aria-label="搜索已收货纠纷"
               placeholder="搜索SKU、货号、订单号或退货申请编号…"
               @keydown.enter.prevent="submitSearch"
-            >
-              <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-            </NInput>
+            />
             <NSelect
               :value="filters.status"
               :options="receivedStatusOptions"

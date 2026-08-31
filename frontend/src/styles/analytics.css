@@ -23,11 +23,7 @@
 
 .analytics-toolbar {
   margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-card);
-  background: var(--opanel-panel-solid);
-  box-shadow: var(--opanel-shadow-sm);
+  padding: 8px 0;
 }
 
 .analytics-filter-row {
@@ -236,8 +232,6 @@
 
 .analytics-table {
   overflow: hidden;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
 }
 
 .analytics-table .n-data-table-th {
@@ -312,21 +306,24 @@
   border-radius: var(--opanel-radius-input) !important;
 }
 
+/* Sidebar plus SKU/date/action columns require the earlier wrap; the KPI row follows this density change. */
 @media (max-width: 1260px) {
   .analytics-filter-row { grid-template-columns: minmax(220px, 1fr) minmax(380px, 2fr); }
   .analytics-filter-actions { grid-column: 1 / -1; }
   .analytics-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .analytics-filter-row { grid-template-columns: 1fr; }
   .analytics-filter-actions { grid-column: auto; }
+}
+
+@media (max-width: 800px) {
   .analytics-toolbar-foot { align-items: flex-start; flex-direction: column; }
   .analytics-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
-  .analytics-toolbar,
   .analytics-table-card .n-card__content { padding: 16px; }
   .analytics-table-card .n-card__header { padding: 16px 16px 0; }
   .analytics-date-control { align-items: stretch; flex-direction: column; }

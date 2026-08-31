@@ -24,7 +24,7 @@ colors:
   panel-solid-light: "#FFFFFF"
   panel-hover-light: "#FAFAFC"
   ink-light: "#1D1D1F"
-  ink-muted-light: "#7A7A7A"
+  ink-muted-light: "#6E6E73"
   line-light: "rgba(0, 0, 0, 0.08)"
 
   # Dark Theme Canvas & Surfaces
@@ -55,7 +55,7 @@ colors:
     lavender: { hue: "purple", light: { bg: "#F0EDFF", text: "#5944B3" }, dark: { bg: "#312847", text: "#BBA8FF" }, role: "Timeliness, pending, disputes & system config" }
     mint:     { hue: "green",  light: { bg: "#E6F7F0", text: "#127546" }, dark: { bg: "#16382C", text: "#7EE0B3" }, role: "Success, realFBS fulfillment & supply chain" }
     peach:    { hue: "red",    light: { bg: "#FFEBEA", text: "#C42B24" }, dark: { bg: "#3D2226", text: "#FF859F" }, role: "Danger, cancellations, risk & exceptions" }
-    butter:   { hue: "amber",  light: { bg: "#FFF5E5", text: "#B86614" }, dark: { bg: "#3D2B19", text: "#FFAE61" }, role: "Warning, WHD channel, ads & rates" }
+    butter:   { hue: "amber",  light: { bg: "#FFF5E5", text: "#A85A0D" }, dark: { bg: "#3D2B19", text: "#FFAE61" }, role: "Warning, WHD channel, ads & rates" }
 
 semantic-tones:
   channels:
@@ -357,6 +357,8 @@ Responsive behavior follows explicit semantic breakpoints rather than ad-hoc pix
 ---
 
 ### 15. Elevation, Layering & Single Source of Truth
+
+Shadow tokens preserve two elevations in both themes: `shadowSm` mirrors `--opanel-shadow-sm` for cards; `shadow` mirrors the existing `--opanel-shadow` for medium elevation.
 
 #### A. Logical Z-Index Layering
 To prevent collisions between custom styling and UI library portals:

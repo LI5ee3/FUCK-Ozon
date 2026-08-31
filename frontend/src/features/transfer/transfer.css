@@ -283,8 +283,7 @@
   border-top: 1px dashed var(--opanel-line);
 }
 
-.transfer-format-tag,
-.transfer-channel-tag {
+.transfer-format-tag {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--opanel-line);
@@ -390,16 +389,6 @@
 .transfer-history-shop strong {
   font-weight: 650;
 }
-
-.transfer-channel-tag {
-  padding: 2px 7px;
-  font-size: 10px;
-}
-
-/* Channel hue shells (DESIGN.md §colors.tones): FBP → azure, realFBS → mint, WHD → butter. */
-.transfer-channel-tag.is-FBP { background: var(--opanel-tone-azure-bg); color: var(--opanel-tone-azure-text); }
-.transfer-channel-tag.is-realFBS { background: var(--opanel-tone-mint-bg); color: var(--opanel-tone-mint-text); }
-.transfer-channel-tag.is-WHD { background: var(--opanel-tone-butter-bg); color: var(--opanel-tone-butter-text); }
 
 .transfer-history-table td small {
   color: var(--opanel-muted);

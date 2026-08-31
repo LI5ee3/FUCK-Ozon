@@ -5,11 +5,7 @@
 
 .orders-toolbar {
   margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-card);
-  background: var(--opanel-panel);
-  box-shadow: var(--opanel-shadow-sm);
+  padding: 8px 0;
 }
 
 .orders-filter-row {
@@ -238,20 +234,10 @@
 
 .orders-shop-badge {
   padding: 2px 7px;
-  border-radius: var(--opanel-radius-xs, 4px);
+  border-radius: var(--opanel-radius-xs);
   font-weight: 600;
   white-space: nowrap;
 }
-
-.orders-channel-tag {
-  font-weight: 650;
-}
-
-/* Channel tags consume the shared --opanel-tone-* tokens (styles/tokens.css,
-   theme-aware) — FBP→azure, realFBS→mint, WHD→butter, same as the dashboard. */
-.orders-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
-.orders-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
-.orders-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
 .orders-product-title,
 .orders-product-original {
@@ -276,7 +262,7 @@
   align-items: center;
   gap: 3px;
   padding: 1px 6px;
-  border-radius: var(--opanel-radius-xs, 4px);
+  border-radius: var(--opanel-radius-xs);
   white-space: nowrap;
 }
 
@@ -490,7 +476,7 @@
   display: inline-block;
   padding: 3px 9px;
   border: 1px solid var(--opanel-line);
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-panel-solid);
   color: var(--opanel-text);
   font-size: 12px;
@@ -561,6 +547,7 @@
   color: var(--opanel-tone-butter-text);
 }
 
+/* Search, channel, date range and submit share a row beside the sidebar; wrap before their minimum widths collide. */
 @media (max-width: 1260px) {
   .orders-kpi-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

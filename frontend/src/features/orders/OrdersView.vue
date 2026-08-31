@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "./orders.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -11,7 +14,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NPagination,
   NSelect,
   NSkeleton,
@@ -287,10 +289,6 @@ function statusIcon(order: Order): IconName {
   return "box";
 }
 
-function channelClass(channel: Channel): string {
-  return channel === "FBP" ? "orders-channel-tag--fbp" : channel === "realFBS" ? "orders-channel-tag--fbs" : "orders-channel-tag--whd";
-}
-
 function renderTag(label: string, type: TagType, className = "", icon: IconName | "" = ""): VNodeChild {
   return h(NTag, { bordered: false, round: true, size: "small", type, class: className }, {
     default: () => icon
@@ -323,7 +321,7 @@ function renderOrderCell(order: Order): VNodeChild {
     renderCopyButton(order.posting_number, "点击复制订单号", "orders-order-number"),
     h("div", { class: "orders-order-tags" }, [
       h("span", { class: "orders-shop-badge" }, order.shop_name),
-      renderTag(order.channel, "default", `orders-channel-tag ${channelClass(order.channel)}`),
+      h(ChannelTag, { channel: order.channel }),
       order.status_raw === "已取消" ? renderTag(order.shipped ? "发货后取消" : "发货前取消", "error") : null,
       order.data_anomaly ? renderTag("数据异常", "error") : null,
     ]),
@@ -372,6 +370,13 @@ function renderAmountCell(order: Order): VNodeChild {
     h("strong", { class: "orders-amount" }, formatMoney(order.amount_original, order.amount_currency ?? "")),
     h("span", { class: "orders-expand-hint" }, expandedRowKeys.value.includes(orderKey(order)) ? "收起详情" : "展开详情"),
   ]);
+}
+
+function renderExpandIcon({ expanded }: { expanded: boolean }): VNodeChild {
+  const label = expanded ? "收起订单详情" : "展开订单详情";
+  return h(NButton, { quaternary: true, circle: true, size: "tiny", "aria-label": label, title: label, "aria-expanded": expanded }, {
+    icon: () => h(MorphIcon, { icon: expanded ? "chevronDown" : "chevronRight", size: 14 }),
+  });
 }
 
 const columns = computed<DataTableColumns<Order>>(() => [
@@ -439,7 +444,7 @@ onBeforeUnmount(() => {
   <section class="orders-view">
     <form class="orders-toolbar" @submit.prevent="submitSearch">
       <div class="orders-filter-row">
-        <NInput
+        <SearchField
           v-model:value="searchDraft"
           type="text"
           class="orders-search"
@@ -466,19 +471,7 @@ onBeforeUnmount(() => {
             aria-label="订单日期范围"
             @update:formatted-value="handleDateRangeChange"
           />
-          <div class="orders-date-presets" aria-label="日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="activePreset === preset.key ? 'primary' : 'default'"
-              :secondary="activePreset !== preset.key"
-              @click="selectPreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="orders-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
         </div>
         <NButton type="primary" attr-type="submit" :loading="loading" class="orders-search-button">
           <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
@@ -540,6 +533,7 @@ onBeforeUnmount(() => {
       table-layout="fixed"
       :row-key="orderKey"
       :expanded-row-keys="expandedRowKeys"
+      :render-expand-icon="renderExpandIcon"
       @update:expanded-row-keys="updateExpandedRowKeys"
     >
       <template #empty>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./transfer.css";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
@@ -340,19 +342,7 @@ onBeforeUnmount(() => {
             aria-label="导出日期范围"
             @update:formatted-value="handleDateRangeChange"
           />
-          <div class="transfer-date-presets" aria-label="日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="activePreset === preset.key ? 'primary' : 'default'"
-              :secondary="activePreset !== preset.key"
-              @click="selectPreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="transfer-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
         </div>
         <div class="transfer-scope-banner">
           <div class="transfer-scope-info">
@@ -413,7 +403,7 @@ onBeforeUnmount(() => {
                   </div>
                 </td>
                 <td>
-                  <div class="transfer-history-shop"><strong>{{ row.shop_name }}</strong><span class="transfer-channel-tag" :class="`is-${row.kind}`">{{ row.kind }}</span></div>
+                  <div class="transfer-history-shop"><strong>{{ row.shop_name }}</strong><ChannelTag :channel="row.kind" /></div>
                 </td>
                 <td class="is-number"><strong>{{ formatInteger(row.row_count) }}</strong> <small>行</small></td>
                 <td class="is-number">{{ formatBeijingDateTime(row.imported_at) }}</td>

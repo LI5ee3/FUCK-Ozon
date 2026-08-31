@@ -31,6 +31,10 @@ const { isDark, toggle: toggleTheme } = useTheme();
 const pageTitle = computed(() => String(route.meta.title ?? "oPanel"));
 const pageIcon = computed(() => route.meta.icon ?? "dashboard");
 const collapsed = ref(false);
+let navigationMedia: MediaQueryList | undefined;
+function syncNavigation(event: MediaQueryListEvent): void {
+  collapsed.value = event.matches;
+}
 const loggingOut = ref(false);
 const logoSrc = "/assets/logo.svg";
 const userMenuOptions = [{ label: "退出", key: "logout" }];
@@ -51,7 +55,10 @@ function pulseNavIcon(path: string): void {
   }, 700);
 }
 
-onBeforeUnmount(() => clearTimeout(morphTimer));
+onBeforeUnmount(() => {
+  clearTimeout(morphTimer);
+  navigationMedia?.removeEventListener("change", syncNavigation);
+});
 
 function showLogoutDialog(): void {
   let dialogInstance: ReturnType<typeof dialog.warning> | undefined;
@@ -90,9 +97,9 @@ function handleUserMenu(key: string | number): void {
 }
 
 onMounted(async () => {
-  if (window.matchMedia("(max-width: 800px)").matches) {
-    collapsed.value = true;
-  }
+  navigationMedia = window.matchMedia("(max-width: 800px)");
+  collapsed.value = navigationMedia.matches;
+  navigationMedia.addEventListener("change", syncNavigation);
   loadingBar.start();
   try {
     await loadShops();
@@ -111,12 +118,12 @@ onMounted(async () => {
 <template>
   <NLayout has-sider class="opanel-shell">
     <NLayoutSider
+      id="opanel-navigation"
       bordered
       collapse-mode="width"
       v-model:collapsed="collapsed"
       :collapsed-width="0"
       :width="240"
-      show-trigger="bar"
       class="opanel-sider"
     >
       <div class="opanel-brand">
@@ -176,6 +183,17 @@ onMounted(async () => {
           </h1>
         </div>
         <div class="opanel-header-actions">
+          <NButton
+            quaternary
+            circle
+            :aria-label="collapsed ? '展开导航' : '收起导航'"
+            :title="collapsed ? '展开导航' : '收起导航'"
+            :aria-expanded="!collapsed"
+            aria-controls="opanel-navigation"
+            @click="collapsed = !collapsed"
+          >
+            <template #icon><morph-icon :icon="collapsed ? 'chevronRight' : 'chevronLeft'" size="17" stroke-width="1.8" /></template>
+          </NButton>
           <NSelect
             v-if="route.name !== 'profit'"
             :value="selectedShopId"
@@ -184,7 +202,7 @@ onMounted(async () => {
             aria-label="当前店铺"
             @update:value="selectShop"
           />
-          <NButton quaternary circle class="opanel-theme-button" aria-label="切换主题" @click="toggleTheme">
+          <NButton quaternary circle class="opanel-theme-button" aria-label="切换主题" title="切换主题" @click="toggleTheme">
             <template #icon>
               <morph-icon :icon="isDark ? 'moon' : 'sun'" size="17" stroke-width="1.8" />
             </template>

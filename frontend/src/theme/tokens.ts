@@ -5,7 +5,7 @@ export const macaronTokens = {
     panelSolid: "#FFFFFF",
     panelHover: "#FAFAFC",
     text: "#1D1D1F",
-    muted: "#7A7A7A",
+    muted: "#6E6E73",
     line: "rgba(0, 0, 0, 0.08)",
     primary: "#0066CC",
     primaryFocus: "#0071E3",
@@ -39,7 +39,7 @@ export const macaronTokens = {
     lavender: { light: { bg: "#F0EDFF", text: "#5944B3" }, dark: { bg: "#312847", text: "#BBA8FF" } },
     mint: { light: { bg: "#E6F7F0", text: "#127546" }, dark: { bg: "#16382C", text: "#7EE0B3" } },
     peach: { light: { bg: "#FFEBEA", text: "#C42B24" }, dark: { bg: "#3D2226", text: "#FF859F" } },
-    butter: { light: { bg: "#FFF5E5", text: "#B86614" }, dark: { bg: "#3D2B19", text: "#FFAE61" } },
+    butter: { light: { bg: "#FFF5E5", text: "#A85A0D" }, dark: { bg: "#3D2B19", text: "#FFAE61" } },
   },
   radius: {
     pill: "9999px",
@@ -48,6 +48,11 @@ export const macaronTokens = {
     sm: "8px",
     xs: "4px",
   },
+  shadowSm: {
+    light: "0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)",
+    dark: "0 1px 3px rgba(0, 0, 0, 0.3)",
+  },
+  // Medium elevation; CSS keeps the existing --opanel-shadow name.
   shadow: {
     light: "0 4px 16px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02)",
     dark: "0 6px 20px rgba(0, 0, 0, 0.45)",

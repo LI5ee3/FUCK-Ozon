@@ -213,7 +213,7 @@ async function mountAt(path: string): Promise<{ wrapper: VueWrapper; router: Rou
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = shallowMount(ComplaintsView, { global: { plugins: [router], stubs } });
+  const wrapper = shallowMount(ComplaintsView, { global: { plugins: [router], stubs: { ...stubs, SearchField: false } } });
   await flushPromises();
   return { wrapper, router };
 }

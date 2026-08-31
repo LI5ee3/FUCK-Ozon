@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SegmentedControl from "../../shared/components/SegmentedControl.vue";
+import SearchField from "../../shared/components/SearchField.vue";
 import "../../styles/analytics.css";
 import "./alerts.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
@@ -12,7 +14,6 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NInput,
   NInputNumber,
   NPagination,
   NSelect,
@@ -573,9 +574,7 @@ onBeforeUnmount(() => {
       </template>
 
       <form class="alerts-filter" role="search" @submit.prevent="submitSearch">
-        <NInput v-model:value="searchDraft" type="text" aria-label="搜索预警" placeholder="搜索 Campaign、SKU 或商品名称…" @keydown.enter.prevent="submitSearch">
-          <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-        </NInput>
+        <SearchField v-model:value="searchDraft" type="text" aria-label="搜索预警" placeholder="搜索 Campaign、SKU 或商品名称…" @keydown.enter.prevent="submitSearch" />
         <NSelect :value="filters.status" :options="statusOptions" aria-label="预警状态筛选" @update:value="changeStatus" />
         <NSelect :value="filters.severity" :options="severityOptions" aria-label="预警等级筛选" @update:value="changeSeverity" />
         <NSelect :value="filters.category" :options="categoryOptions" aria-label="预警类型筛选" @update:value="changeCategory" />
@@ -615,21 +614,7 @@ onBeforeUnmount(() => {
             <h2><morph-icon icon="sliders" size="18" stroke-width="1.8" />预警规则</h2>
             <span>两个店铺分别设置；保存后仅影响后续检查</span>
           </div>
-          <div class="alerts-rule-shop-tabs" role="tablist" aria-label="预警规则店铺">
-            <NButton
-              v-for="shop in ruleShops"
-              :key="shop"
-              size="small"
-              attr-type="button"
-              role="tab"
-              :aria-selected="ruleShopId === shop"
-              :type="ruleShopId === shop ? 'primary' : 'default'"
-              :secondary="ruleShopId !== shop"
-              @click="changeRuleShop(shop)"
-            >
-              Shop {{ shop }}
-            </NButton>
-          </div>
+          <SegmentedControl aria-label="预警规则店铺" :options="ruleShops.map(shop => ({ key: shop, label: `Shop ${shop}` }))" :model-value="ruleShopId" @update:model-value="changeRuleShop" />
         </div>
       </template>
 

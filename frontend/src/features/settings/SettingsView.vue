@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SegmentedControl from "../../shared/components/SegmentedControl.vue";
 import "../../styles/analytics.css";
 import "./settings.css";
 import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
@@ -8,8 +9,6 @@ import {
   NButton,
   NCard,
   NInput,
-  NRadioButton,
-  NRadioGroup,
   NSkeleton,
   NSpin,
   NTag,
@@ -285,17 +284,7 @@ onBeforeUnmount(() => {
         <div class="settings-body">
           <div class="settings-field-group">
             <span class="settings-label" id="theme-mode-label">外观模式</span>
-            <NRadioGroup
-              :value="mode"
-              name="theme-mode"
-              class="settings-theme-control"
-              aria-labelledby="theme-mode-label"
-              @update:value="changeTheme"
-            >
-              <NRadioButton v-for="option in themeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </NRadioButton>
-            </NRadioGroup>
+            <SegmentedControl :model-value="mode" :options="themeOptions.map(option => ({ key: option.value, label: option.label }))" class="settings-theme-control" aria-labelledby="theme-mode-label" @update:model-value="changeTheme" />
           </div>
         </div>
       </NCard>

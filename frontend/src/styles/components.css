@@ -51,7 +51,7 @@ a:active .morph-icon {
   width: 44px;
   height: 44px;
   margin-bottom: 6px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: color-mix(in srgb, var(--opanel-primary) 8%, transparent);
   color: var(--opanel-primary);
 }
@@ -70,3 +70,63 @@ a:active .morph-icon {
   margin-top: 10px;
 }
 
+/* Shared interaction shapes; feature code owns the selected value and queries. */
+.opanel-date-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.opanel-date-presets button,
+.opanel-segmented span {
+  display: block;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--opanel-radius-pill);
+  background: transparent;
+  color: var(--opanel-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.opanel-date-presets button:hover:not(:disabled):not([aria-pressed="true"]) {
+  background: var(--opanel-panel-hover);
+}
+.opanel-date-presets button[aria-pressed="true"],
+.opanel-segmented input:checked + span {
+  background: var(--opanel-primary-soft);
+  color: var(--opanel-primary);
+  font-weight: 650;
+}
+.opanel-segmented {
+  display: inline-flex;
+  max-width: 100%;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--opanel-radius-pill);
+  background: var(--opanel-panel-hover);
+}
+.opanel-segmented label > span { margin: 0; }
+.opanel-segmented label { position: relative; flex: 1; text-align: center; }
+.opanel-segmented input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.opanel-segmented input:focus-visible + span {
+  outline: 2px solid var(--opanel-primary-focus);
+  outline-offset: 2px;
+}
+.opanel-date-presets button:disabled,
+.opanel-segmented input:disabled + span { opacity: 0.45; cursor: not-allowed; }
+.opanel-channel-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: var(--opanel-radius-pill);
+  color: var(--tone-ink) !important;
+  font-size: 11.5px;
+  font-weight: 650;
+  line-height: 1.5;
+  white-space: nowrap;
+}

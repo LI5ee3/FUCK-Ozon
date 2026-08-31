@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import SearchField from "../../shared/components/SearchField.vue";
 import "../../styles/analytics.css";
 import "./inventory.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
@@ -9,7 +11,6 @@ import {
   NButton,
   NCard,
   NDataTable,
-  NInput,
   NPagination,
   NSelect,
   NSkeleton,
@@ -222,10 +223,6 @@ function channelStock(row: InventoryRow, channel: Channel): InventoryChannelStoc
   return row.channels.find((item) => item.channel === channel);
 }
 
-function channelClass(channel: Channel): string {
-  return channel === "FBP" ? "fbp" : channel === "realFBS" ? "fbs" : "whd";
-}
-
 function riskTone(risk: InventoryRiskCode): MacaronTone | "" {
   if (risk === "out_of_stock" || risk === "urgent_replenishment") return "peach";
   if (risk === "replenish" || risk === "overstock") return "butter";
@@ -350,7 +347,7 @@ function sortTitle(label: string, key: InventorySortKey, channel?: Channel): VNo
     "aria-pressed": active,
     onClick: () => toggleSort(key),
   }, [
-    h("span", { class: channel ? `inventory-channel-label inventory-channel-label--${channelClass(channel)}` : "" }, label),
+    channel ? h(ChannelTag, { channel }, { default: () => label }) : h("span", label),
     h(MorphIcon, { icon, size: "13", strokeWidth: "1.7" }),
   ]);
 }
@@ -422,15 +419,9 @@ onBeforeUnmount(() => {
       </template>
 
       <form class="inventory-filter" @submit.prevent="submitFilters">
-        <NInput v-model:value="filters.sku" placeholder="搜索 SKU…" aria-label="筛选SKU" @keydown.enter.prevent="submitFilters">
-          <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-        </NInput>
-        <NInput v-model:value="filters.offerId" placeholder="搜索货号…" aria-label="筛选货号" @keydown.enter.prevent="submitFilters">
-          <template #prefix><morph-icon icon="tag" size="15" stroke-width="1.8" /></template>
-        </NInput>
-        <NInput v-model:value="filters.productName" class="inventory-product-search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称" @keydown.enter.prevent="submitFilters">
-          <template #prefix><morph-icon icon="package" size="15" stroke-width="1.8" /></template>
-        </NInput>
+        <SearchField v-model:value="filters.sku" placeholder="搜索 SKU…" aria-label="筛选SKU" @keydown.enter.prevent="submitFilters" />
+        <SearchField v-model:value="filters.offerId" placeholder="搜索货号…" aria-label="筛选货号" @keydown.enter.prevent="submitFilters" />
+        <SearchField v-model:value="filters.productName" class="inventory-product-search" placeholder="搜索商品名称或中文短名称…" aria-label="筛选产品名称" @keydown.enter.prevent="submitFilters" />
         <label class="inventory-select-label"><span>库存参考口径</span><NSelect :value="filters.channel" :options="channelOptions" aria-label="库存参考口径" @update:value="updateChannel" /></label>
         <label class="inventory-select-label"><span>风险</span><NSelect :value="filters.risk" :options="riskOptions" aria-label="库存预测风险筛选" @update:value="updateRisk" /></label>
         <div class="inventory-filter-actions">

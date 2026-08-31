@@ -49,7 +49,7 @@
 
 .opanel-brand-pill {
   padding: 2px 7px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   color: var(--tone-ink);
   font-size: 10.5px;
   font-weight: 550;
@@ -155,17 +155,6 @@
   transform: none;
 }
 
-.opanel-sider .n-layout-toggle-bar .n-layout-toggle-bar__top,
-.opanel-sider .n-layout-toggle-bar .n-layout-toggle-bar__bottom {
-  background-color: var(--opanel-line);
-}
-
-.opanel-sider .n-layout-toggle-bar:hover .n-layout-toggle-bar__top,
-.opanel-sider .n-layout-toggle-bar:hover .n-layout-toggle-bar__bottom {
-  background-color: var(--opanel-muted);
-  transform: none;
-}
-
 .opanel-header {
   display: flex;
   align-items: center;
@@ -248,3 +237,4 @@
   .opanel-shop-select {
     flex: 1 1 180px;
   }
+}

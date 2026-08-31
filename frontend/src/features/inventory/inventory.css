@@ -53,18 +53,6 @@
 
 .inventory-sort-button:hover { color: var(--opanel-text); }
 
-/* Channel hue shells (DESIGN.md §colors.tones): FBP → azure, realFBS → mint, WHD → butter. */
-.inventory-channel-label {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: var(--opanel-radius-xs);
-}
-
-.inventory-channel-label--fbp { background: var(--opanel-tone-azure-bg); color: var(--opanel-tone-azure-text); }
-.inventory-channel-label--fbs { background: var(--opanel-tone-mint-bg); color: var(--opanel-tone-mint-text); }
-.inventory-channel-label--whd { background: var(--opanel-tone-butter-bg); color: var(--opanel-tone-butter-text); }
-
 .inventory-product-cell,
 .inventory-channel-cell,
 .inventory-metric-cell,
@@ -196,6 +184,7 @@
 .inventory-replenishment { color: var(--opanel-muted); font-size: 11.5px; white-space: nowrap; }
 .inventory-replenishment b { color: var(--opanel-primary); font-size: 12.5px; font-weight: 750; }
 
+/* Six filter columns plus the sidebar need this width; below it filters use two rows. */
 @media (max-width: 1360px) {
   .inventory-filter { grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(240px, 2fr) 180px; }
   .inventory-select-label { grid-column: span 1; }
@@ -203,7 +192,7 @@
   .inventory-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
   .inventory-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .inventory-product-search { grid-column: 1 / -1; }
   .inventory-filter-actions { grid-column: auto; }

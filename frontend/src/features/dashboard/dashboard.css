@@ -225,7 +225,6 @@
   flex-direction: column;
   gap: 4px;
   padding: 10px 14px;
-  border: 1px solid var(--opanel-line);
   border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
 }
@@ -278,8 +277,7 @@
 .dashboard-product-row {
   min-width: 0;
   padding: 12px 14px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
+  border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
 }
 
@@ -302,21 +300,11 @@
   color: var(--opanel-text);
 }
 
-/* Channel accents consume the macaron tone tokens directly (single source in
-   styles/tokens.css, theme-aware) — FBP→azure, realFBS→mint, WHD→butter. */
-.dashboard-channel-tag {
-  font-weight: 650;
-}
-
-.dashboard-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
-.dashboard-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
-.dashboard-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
-
 .dashboard-channel-track,
 .dashboard-product-track {
   height: 6px;
   overflow: hidden;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: color-mix(in srgb, var(--opanel-text) 8%, transparent);
 }
 
@@ -324,7 +312,7 @@
 .dashboard-product-track span {
   display: block;
   height: 100%;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
 }
 
 .dashboard-channel-fill--fbp { background: var(--opanel-tone-azure-text); }
@@ -461,7 +449,7 @@
 .dashboard-chart-tooltip-badge {
   margin-left: 5px;
   padding: 2px 5px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-primary-soft);
   color: var(--opanel-primary);
   font-size: 10px;
@@ -524,7 +512,6 @@
   .dashboard-panel .n-card__content { padding: 16px; }
   .dashboard-panel-heading { align-items: flex-start; flex-direction: column; }
   .dashboard-granularity { width: 100%; }
-  .dashboard-granularity .n-button { flex: 1; }
   .dashboard-insights { grid-template-columns: 1fr; }
   .dashboard-channel-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-product-row { align-items: flex-start; flex-direction: column; }

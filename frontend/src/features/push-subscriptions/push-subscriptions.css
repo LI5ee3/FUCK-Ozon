@@ -148,8 +148,7 @@
 }
 
 .push-form-card {
-  border: 1px solid var(--opanel-line) !important;
-  border-radius: var(--opanel-radius-card) !important;
+  border-radius: var(--opanel-radius-sm) !important;
   background: var(--opanel-panel-hover) !important;
   box-shadow: none;
 }

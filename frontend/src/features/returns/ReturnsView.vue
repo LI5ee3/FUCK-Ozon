@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./returns.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
@@ -13,7 +15,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NTag,
   useMessage,
 } from "naive-ui";
@@ -637,19 +638,7 @@ onBeforeUnmount(() => {
           aria-label="异常订单明细日期范围"
           @update:formatted-value="handleDateRangeChange"
         />
-        <div class="analytics-date-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in datePresets"
-            :key="preset.key"
-            size="small"
-            attr-type="button"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="analytics-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="analytics-toolbar-foot returns-toolbar-foot">
         <span>取消记录按发生时间、rFBS退货按申请时间筛选；统计口径由后端返回</span>
@@ -700,15 +689,13 @@ onBeforeUnmount(() => {
               <span>查看所有订单取消记录与明细信息</span>
             </div>
             <form class="returns-filter" role="search" @submit.prevent="submitSearch">
-              <NInput
+              <SearchField
                 v-model:value="searchDraft"
                 type="text"
                 aria-label="搜索取消明细"
                 placeholder="搜索SKU、货号或订单号…"
                 @keydown.enter.prevent="submitSearch"
-              >
-                <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-              </NInput>
+              />
               <NButton type="primary" attr-type="submit" :loading="cancelLoading">
                 <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
                 查询
@@ -771,15 +758,13 @@ onBeforeUnmount(() => {
               <span>仅显示有申请编号的 rFBS 退货申请</span>
             </div>
             <form class="returns-filter" role="search" @submit.prevent="submitSearch">
-              <NInput
+              <SearchField
                 v-model:value="searchDraft"
                 type="text"
                 aria-label="搜索退货明细"
                 placeholder="搜索SKU、货号、订单号或申请编号…"
                 @keydown.enter.prevent="submitSearch"
-              >
-                <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-              </NInput>
+              />
               <NButton type="primary" attr-type="submit" :loading="rfbsLoading">
                 <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
                 查询

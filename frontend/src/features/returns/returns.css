@@ -217,7 +217,7 @@ button.returns-meta-chip:hover {
   gap: 3px;
   width: fit-content;
   padding: 3px 9px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-tone-peach-bg);
   color: var(--opanel-tone-peach-text);
   font-size: 12px;
@@ -316,6 +316,7 @@ button.returns-meta-chip:hover {
   margin-top: 16px;
 }
 
+/* Detail heading plus search and two actions need a full row below this width. */
 @media (max-width: 900px) {
   .returns-panel-header {
     flex-direction: column;

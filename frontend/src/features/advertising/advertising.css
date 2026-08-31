@@ -20,11 +20,7 @@
   align-items: stretch;
   flex-direction: column;
   margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-card);
-  background: var(--opanel-panel-solid);
-  box-shadow: var(--opanel-shadow-sm);
+  padding: 8px 0;
 }
 
 .ads-date-control {
@@ -230,6 +226,8 @@
   margin-top: 4px;
 }
 
+.ads-chart-tooltip span { color: var(--opanel-muted); }
+
 .ads-chart-tooltip b {
   font-variant-numeric: tabular-nums;
 }
@@ -249,7 +247,6 @@
   flex-direction: column;
   gap: 4px;
   padding: 10px 14px;
-  border: 1px solid var(--opanel-line);
   border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
 }
@@ -293,8 +290,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
+  border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
 }
 
@@ -328,14 +324,14 @@
 .ads-shop-track {
   height: 6px;
   overflow: hidden;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: color-mix(in srgb, var(--opanel-text) 8%, transparent);
 }
 
 .ads-shop-track span {
   display: block;
   height: 100%;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-primary);
 }
 
@@ -383,7 +379,6 @@
 }
 
 @media (max-width: 640px) {
-  .ads-toolbar,
   .ads-trend-card .n-card__content { padding: 16px; }
   .ads-trend-card .n-card__header { padding: 16px 16px 0; }
   .ads-date-control { align-items: stretch; flex-direction: column; }
@@ -553,6 +548,7 @@
   gap: 8px;
 }
 
+/* Campaign heading plus state/sort controls need an earlier wrap than compact mode. */
 @media (max-width: 900px) {
   .ad-campaigns-view .ads-panel-heading {
     align-items: stretch;

@@ -96,8 +96,6 @@
 .rules-table {
   margin-top: 4px;
   overflow: hidden;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
 }
 
 .rules-table .n-data-table-th {
@@ -133,7 +131,7 @@
 .rules-copy-button:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--opanel-primary) 45%, transparent);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: var(--opanel-radius-xs);
 }
 
 .rules-copy-button strong,
@@ -156,7 +154,7 @@
   padding: 3px 10px;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-tone-mint-bg);
   color: var(--opanel-tone-mint-text);
   font-size: 12px;
@@ -218,15 +216,8 @@
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-card);
+  border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
-  transition: transform 0.16s var(--opanel-ease-fluid), box-shadow 0.16s var(--opanel-ease-fluid);
-}
-
-.rules-group-card:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--opanel-shadow-sm);
 }
 
 .rules-group-card.is-pending {
@@ -241,7 +232,7 @@
   padding: 3px 10px;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   background: var(--opanel-tone-azure-bg);
   color: var(--opanel-tone-azure-text);
   font-size: 12px;
@@ -324,7 +315,7 @@
   gap: 12px;
   padding: 8px 12px;
   border-radius: var(--opanel-radius-sm);
-  background: var(--opanel-panel-solid);
+  border-bottom: 1px solid var(--opanel-line);
   font-size: 12px;
 }
 

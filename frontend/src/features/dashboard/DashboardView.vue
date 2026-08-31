@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import SegmentedControl from "../../shared/components/SegmentedControl.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "./dashboard.css";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -9,7 +12,6 @@ import {
   NCard,
   NDatePicker,
   NSkeleton,
-  NTag,
   useMessage,
 } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
@@ -277,18 +279,7 @@ onBeforeUnmount(() => {
           aria-label="总览日期范围"
           @update:formatted-value="updateDateRange"
         />
-        <div class="dashboard-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in presets"
-            :key="preset.key"
-            size="small"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="dashboard-presets" aria-label="日期快捷范围" :options="presets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="dashboard-data-through">
         <span class="dashboard-data-dot" aria-hidden="true" />
@@ -340,18 +331,7 @@ onBeforeUnmount(() => {
                 <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />订单量趋势</h2>
                 <span>折线表示有效订单数；按北京时间归组</span>
               </div>
-              <div class="dashboard-granularity" role="group" aria-label="趋势粒度">
-                <NButton
-                  v-for="item in granularities"
-                  :key="item.key"
-                  size="small"
-                  :type="granularity === item.key ? 'primary' : 'default'"
-                  :secondary="granularity !== item.key"
-                  @click="selectGranularity(item.key)"
-                >
-                  {{ item.label }}
-                </NButton>
-              </div>
+              <SegmentedControl class="dashboard-granularity" aria-label="趋势粒度" :options="granularities" :model-value="granularity" @update:model-value="selectGranularity" />
             </div>
           </template>
           <OrderTrendChart v-if="trend.buckets.length" :data="trend" />
@@ -378,7 +358,7 @@ onBeforeUnmount(() => {
             <div v-for="channel in summary.channels" :key="channel.channel" class="dashboard-channel-card">
               <div class="dashboard-channel-top">
                 <div class="dashboard-channel-brand">
-                  <NTag round :bordered="false" :class="`dashboard-channel-tag dashboard-channel-tag--${channelClass(channel.channel)}`">{{ channel.channel }}</NTag>
+                  <ChannelTag :channel="channel.channel" />
                   <span>订单占比 <b>{{ channelShare(channel) }}%</b></span>
                 </div>
                 <div class="dashboard-channel-track"><span :class="`dashboard-channel-fill dashboard-channel-fill--${channelClass(channel.channel)}`" :style="{ width: `${channelShare(channel)}%` }" /></div>
@@ -410,7 +390,7 @@ onBeforeUnmount(() => {
           <div v-if="summary.timeliness.length" class="dashboard-timing-list">
             <div v-for="row in summary.timeliness" :key="row.channel" class="dashboard-timing-card">
               <div class="dashboard-timing-brand">
-                <NTag round :bordered="false" :class="`dashboard-channel-tag dashboard-channel-tag--${channelClass(row.channel)}`">{{ row.channel }}</NTag>
+                <ChannelTag :channel="row.channel" />
                 <span>出库样本 <b>{{ formatInteger(row.ship_samples) }}</b> 单 · 交付 <b>{{ formatInteger(row.delivery_samples) }}</b> 单</span>
               </div>
               <div class="dashboard-timing-metrics">

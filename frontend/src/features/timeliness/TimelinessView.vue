@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./timeliness.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
@@ -12,7 +15,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NPagination,
   NSkeleton,
   NTag,
@@ -270,18 +272,8 @@ async function copyValue(value: string): Promise<void> {
   }
 }
 
-function channelClass(channel: Channel): string {
-  return channel === "FBP" ? "timeliness-channel-tag--fbp" : channel === "realFBS" ? "timeliness-channel-tag--fbs" : "timeliness-channel-tag--whd";
-}
-
 function renderChannelTag(channel: Channel): VNodeChild {
-  return h(NTag, {
-    bordered: false,
-    round: true,
-    size: "small",
-    type: "default",
-    class: `timeliness-channel-tag ${channelClass(channel)}`,
-  }, { default: () => channel });
+  return h(ChannelTag, { channel });
 }
 
 function renderGroupIdentity(row: TimelinessGroup): VNodeChild {
@@ -486,19 +478,7 @@ onBeforeUnmount(() => {
           aria-label="发货与配送时效日期范围"
           @update:formatted-value="handleDateRangeChange"
         />
-        <div class="analytics-date-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in datePresets"
-            :key="preset.key"
-            size="small"
-            attr-type="button"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="analytics-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="analytics-toolbar-foot timeliness-toolbar-foot">
         <span>订单按创建时间、北京时间自然日筛选；统计口径由后端返回</span>
@@ -577,16 +557,14 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <form class="timeliness-detail-filter" role="search" @submit.prevent="submitSearch">
-            <NInput
+            <SearchField
               v-model:value="searchDraft"
               type="text"
               class="timeliness-search-input"
               aria-label="搜索时效订单号"
               placeholder="输入完整或部分订单号…"
               @keydown.enter.prevent="submitSearch"
-            >
-              <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-            </NInput>
+            />
             <NButton type="primary" attr-type="submit" :loading="loading">
               <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
               查询

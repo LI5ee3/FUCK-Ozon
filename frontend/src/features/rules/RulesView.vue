@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SearchField from "../../shared/components/SearchField.vue";
 import "../../styles/analytics.css";
 import "./rules.css";
 import { computed, h, onMounted, ref } from "vue";
@@ -406,9 +407,7 @@ onMounted(() => { void loadRules(); });
           </form>
 
           <form class="rules-search" role="search" @submit.prevent="submitSearch">
-            <NInput v-model:value="searchDraft" type="text" aria-label="搜索短名称规则" placeholder="搜索 SKU 或中文短名称…">
-              <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-            </NInput>
+            <SearchField v-model:value="searchDraft" type="text" aria-label="搜索短名称规则" placeholder="搜索 SKU 或中文短名称…" />
             <NButton type="primary" attr-type="submit" :loading="loading">
               <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
               查询
@@ -477,6 +476,7 @@ onMounted(() => { void loadRules(); });
                     circle
                     attr-type="button"
                     aria-label="删除成员"
+                    title="删除成员"
                     :disabled="savingMerge"
                     @click="removeMember(index)"
                   >

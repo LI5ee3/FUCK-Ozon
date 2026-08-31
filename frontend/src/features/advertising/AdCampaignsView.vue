@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "./advertising.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
@@ -372,19 +373,7 @@ onBeforeUnmount(() => {
           aria-label="广告活动日期范围"
           @update:formatted-value="handleDateRangeChange"
         />
-        <div class="ads-date-presets" aria-label="日期快捷范围">
-          <NButton
-            v-for="preset in datePresets"
-            :key="preset.key"
-            size="small"
-            attr-type="button"
-            :type="activePreset === preset.key ? 'primary' : 'default'"
-            :secondary="activePreset !== preset.key"
-            @click="selectPreset(preset.key)"
-          >
-            {{ preset.label }}
-          </NButton>
-        </div>
+        <DatePresetPills class="ads-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
       </div>
       <div class="ads-toolbar-foot">
         <span>Performance API 自然日；金额单位 RUB</span>

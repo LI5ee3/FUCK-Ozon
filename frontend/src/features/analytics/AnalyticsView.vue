@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import AnalyticsKpiCards from "./components/AnalyticsKpiCards.vue";
@@ -12,7 +14,6 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NPagination,
   useMessage,
 } from "naive-ui";
@@ -539,7 +540,7 @@ onBeforeUnmount(() => {
 
     <form class="analytics-toolbar" @submit.prevent="submitFilters">
       <div class="analytics-filter-row">
-        <NInput
+        <SearchField
           v-model:value="skuDraft"
           type="text"
           inputmode="numeric"
@@ -547,9 +548,7 @@ onBeforeUnmount(() => {
           aria-label="筛选 SKU"
           placeholder="输入 SKU（可选）…"
           @keydown.enter.prevent="submitFilters"
-        >
-          <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-        </NInput>
+        />
         <div class="analytics-date-control">
           <span>统计日期</span>
           <NDatePicker
@@ -562,19 +561,7 @@ onBeforeUnmount(() => {
             aria-label="流量与搜索分析日期范围"
             @update:formatted-value="handleDateRangeChange"
           />
-          <div class="analytics-date-presets" aria-label="日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="activePreset === preset.key ? 'primary' : 'default'"
-              :secondary="activePreset !== preset.key"
-              @click="selectPreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="analytics-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
         </div>
         <div class="analytics-filter-actions">
           <NButton type="primary" attr-type="submit" :loading="activeLoading">

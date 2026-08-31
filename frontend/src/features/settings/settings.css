@@ -54,11 +54,6 @@
   width: 100%;
 }
 
-.settings-theme-control .n-radio-button {
-  min-width: 0;
-  flex: 1 1 0;
-}
-
 .settings-api-heading {
   display: flex;
   align-items: flex-start;
@@ -88,7 +83,7 @@
 
 .settings-system-banner code {
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--opanel-radius-xs);
   background: var(--opanel-primary-soft);
   color: var(--opanel-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -131,8 +126,7 @@
 .settings-shop-card {
   min-width: 0;
   padding: 16px;
-  border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-input);
+  border-radius: var(--opanel-radius-sm);
   background: var(--opanel-panel-hover);
 }
 
@@ -179,7 +173,7 @@
 .settings-shop-tag {
   padding: 2px 7px;
   border: 1px solid var(--opanel-line);
-  border-radius: var(--opanel-radius-xs, 4px);
+  border-radius: var(--opanel-radius-xs);
   color: var(--opanel-muted);
   font-size: 10.5px;
   font-weight: 600;
@@ -333,15 +327,6 @@
   .settings-probe-facts,
   .settings-permissions {
     grid-template-columns: 1fr;
-  }
-
-  .settings-theme-control {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .settings-theme-control .n-radio-button {
-    flex: 0 0 auto;
   }
 
   .settings-shop-head {

@@ -105,18 +105,10 @@
   font-weight: 650;
 }
 
-.timeliness-channel-tag {
-  border: 1px solid transparent !important;
-  font-weight: 650;
-}
-
-/* Channel and perf tags consume the shared --opanel-tone-* tokens
-   (styles/tokens.css, theme-aware) — FBP→azure, realFBS→mint, WHD→butter;
+/* Performance tags consume the shared --opanel-tone-* tokens
+   (styles/tokens.css, theme-aware);
    mint = fast/healthy, butter = warning band, peach = slow/anomalous,
    azure = normal in-flight, same mapping as the orders view. */
-.timeliness-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
-.timeliness-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
-.timeliness-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
 .timeliness-tone-tag--azure { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
 .timeliness-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
@@ -269,9 +261,10 @@
 .timeliness-copy-value:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--opanel-primary) 45%, transparent);
   outline-offset: 3px;
-  border-radius: 4px;
+  border-radius: var(--opanel-radius-xs);
 }
 
+/* Detail heading plus order search and actions need separate rows below this width. */
 @media (max-width: 900px) {
   .timeliness-detail-header {
     flex-direction: column;

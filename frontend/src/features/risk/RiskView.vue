@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import SearchField from "../../shared/components/SearchField.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
 import "../../styles/analytics.css";
 import "./risk.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNode, type VNodeChild } from "vue";
@@ -13,9 +16,7 @@ import {
   NCard,
   NDataTable,
   NDatePicker,
-  NInput,
   NSpin,
-  NTag,
   useMessage,
 } from "naive-ui";
 import EmptyState from "../../shared/components/EmptyState.vue";
@@ -294,12 +295,10 @@ async function copyValue(value: string): Promise<void> {
   }
 }
 
-function channelClass(channel: Channel): string {
-  return channel === "FBP" ? "risk-channel-tag--fbp" : channel === "realFBS" ? "risk-channel-tag--fbs" : "risk-channel-tag--whd";
-}
-
 function renderChannelHeader(label: string, channel?: Channel): VNode {
-  return h("span", { class: "risk-channel-tag " + (channel ? channelClass(channel) : "risk-channel-tag--neutral") }, label);
+  return channel
+    ? h(ChannelTag, { channel }, { default: () => label })
+    : h("span", { class: "risk-channel-tag risk-channel-tag--neutral" }, label);
 }
 
 function renderRiskIdentity(row: RiskItem): VNodeChild {
@@ -465,17 +464,15 @@ onBeforeUnmount(() => {
   <section class="risk-view">
     <form class="analytics-toolbar risk-toolbar" @submit.prevent="submitSearch">
       <div class="risk-toolbar-row">
-        <NInput
+        <SearchField
           v-model:value="searchDraft"
           class="risk-search-input"
           type="text"
           aria-label="筛选SKU风险矩阵"
           placeholder="搜索SKU、货号或商品名称…"
-          @update:value="handleSearchInput"
+          @debounced-change="handleSearchInput"
           @keydown.enter.prevent="submitSearch"
-        >
-          <template #prefix><morph-icon icon="search" size="15" stroke-width="1.8" /></template>
-        </NInput>
+        />
         <div class="analytics-date-control risk-date-control">
           <span>统计日期</span>
           <NDatePicker
@@ -488,19 +485,7 @@ onBeforeUnmount(() => {
             aria-label="订单取消分析日期范围"
             @update:formatted-value="handleDateRangeChange"
           />
-          <div class="analytics-date-presets" aria-label="日期快捷范围">
-            <NButton
-              v-for="preset in datePresets"
-              :key="preset.key"
-              size="small"
-              attr-type="button"
-              :type="activePreset === preset.key ? 'primary' : 'default'"
-              :secondary="activePreset !== preset.key"
-              @click="selectPreset(preset.key)"
-            >
-              {{ preset.label }}
-            </NButton>
-          </div>
+          <DatePresetPills class="analytics-date-presets" aria-label="日期快捷范围" :options="datePresets" :active-key="activePreset" @select="selectPreset" />
         </div>
         <div class="risk-filter-actions">
           <NButton
@@ -602,7 +587,7 @@ onBeforeUnmount(() => {
             </button>
             <div class="risk-detail-meta">
               <span class="risk-shop-badge">{{ row.shop_name }}</span>
-              <NTag bordered round size="small" :class="'risk-channel-tag ' + channelClass(row.channel)">{{ row.channel }}</NTag>
+              <ChannelTag :channel="row.channel" />
               <span class="risk-detail-pieces">× <b>{{ formatInteger(row.pieces) }}</b> 件</span>
             </div>
           </article>

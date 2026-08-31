@@ -1,10 +1,11 @@
 :root {
+  --opanel-font-family: SF Pro Text, -apple-system, BlinkMacSystemFont, PingFang SC, Segoe UI, Roboto, sans-serif;
   --opanel-bg: #F5F5F7;
   --opanel-panel: rgba(255, 255, 255, 0.88);
   --opanel-panel-solid: #FFFFFF;
   --opanel-panel-hover: #FAFAFC;
   --opanel-text: #1D1D1F;
-  --opanel-muted: #7A7A7A;
+  --opanel-muted: #6E6E73;
   --opanel-line: rgba(0, 0, 0, 0.08);
   --opanel-primary: #0066CC;
   --opanel-primary-focus: #0071E3;
@@ -13,6 +14,8 @@
   --opanel-success: #34C759;
   --opanel-danger: #FF3B30;
   --opanel-warning: #FF9500;
+  --opanel-radius-pill: 9999px;
+  --opanel-radius-xs: 4px;
   --opanel-radius-card: 18px;
   --opanel-radius-input: 10px;
   --opanel-radius-sm: 8px;
@@ -29,7 +32,7 @@
   --opanel-tone-peach-bg: #FFEBEA;
   --opanel-tone-peach-text: #C42B24;
   --opanel-tone-butter-bg: #FFF5E5;
-  --opanel-tone-butter-text: #B86614;
+  --opanel-tone-butter-text: #A85A0D;
   color-scheme: light;
 }
 

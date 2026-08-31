@@ -56,7 +56,7 @@
   width: fit-content;
   padding: 3px 9px;
   border: 1px solid transparent;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   font-size: 11.5px;
   font-weight: 650;
   line-height: 1.3;
@@ -69,15 +69,9 @@
   color: var(--opanel-text);
 }
 
-/* Channel and rate tags consume the shared --opanel-tone-* tokens
-   (styles/tokens.css, theme-aware) — FBP→azure, realFBS→mint, WHD→butter,
-   same mapping as the orders view; mint = healthy, butter = warning band,
+/* Rate tags consume the shared --opanel-tone-* tokens
+   (styles/tokens.css, theme-aware); mint = healthy, butter = warning band,
    peach = cancellations/risk (DESIGN.md §colors.tones). */
-.risk-channel-tag--fbp { background: var(--opanel-tone-azure-bg) !important; color: var(--opanel-tone-azure-text) !important; }
-
-.risk-channel-tag--fbs { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
-
-.risk-channel-tag--whd { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
 
 .risk-product-cell,
 .risk-product-meta,
@@ -195,7 +189,7 @@
   gap: 5px;
   width: fit-content;
   padding: 3px 9px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 750;
@@ -310,7 +304,7 @@
 .risk-reason-orders,
 .risk-reason-pieces {
   padding: 3px 8px;
-  border-radius: 9999px;
+  border-radius: var(--opanel-radius-pill);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -438,6 +432,7 @@
   color: var(--opanel-text);
 }
 
+/* Matches the shared analytics SKU/date/action toolbar minimum widths. */
 @media (max-width: 1260px) {
   .risk-toolbar-row {
     grid-template-columns: minmax(220px, 1fr) minmax(380px, 2fr);
@@ -449,7 +444,7 @@
   }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 1100px) {
   .risk-toolbar-row {
     grid-template-columns: 1fr;
   }

@@ -6,6 +6,9 @@ type Palette = { [Key in keyof typeof macaronTokens.light]: string };
 function createThemeOverrides(colors: Palette): GlobalThemeOverrides {
   return {
     common: {
+      fontFamily: macaronTokens.fontFamily,
+      borderRadius: macaronTokens.radius.input,
+      borderRadiusSmall: macaronTokens.radius.input,
       primaryColor: colors.primary,
       primaryColorHover: colors.primaryFocus,
       primaryColorPressed: colors.primaryActive,
@@ -25,7 +28,16 @@ function createThemeOverrides(colors: Palette): GlobalThemeOverrides {
       borderColor: colors.line,
       dividerColor: colors.line,
     },
+    Input: { borderRadius: macaronTokens.radius.input },
+    InternalSelection: { borderRadius: macaronTokens.radius.input },
+    // Select uses InternalSelection; DatePicker and InputNumber use Input peers.
+    Select: { peers: { InternalSelection: { borderRadius: macaronTokens.radius.input } } },
+    DatePicker: { peers: { Input: { borderRadius: macaronTokens.radius.input } } },
+    Tag: { borderRadius: macaronTokens.radius.pill },
     Button: {
+      borderRadiusTiny: macaronTokens.radius.input,
+      borderRadiusSmall: macaronTokens.radius.input,
+      borderRadiusLarge: macaronTokens.radius.input,
       borderRadiusMedium: macaronTokens.radius.input,
     },
     Card: {
