@@ -11,9 +11,11 @@ const api = vi.hoisted(() => ({
   listProductCostHistory: vi.fn(),
 }));
 const commissionApi = vi.hoisted(() => ({ getProductCommission: vi.fn() }));
+const servicePenaltyApi = vi.hoisted(() => ({ getCurrentServicePenaltyExchangeRates: vi.fn() }));
 
 vi.mock("../product-costs/api", () => api);
 vi.mock("./commission", () => commissionApi);
+vi.mock("./servicePenalty", () => servicePenaltyApi);
 
 const usdCost = {
   id: 1,
@@ -163,6 +165,22 @@ describe("ProfitView forecast-cost integration", () => {
         fetched_at: "2026-08-31T08:00:00Z",
       });
     });
+    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockResolvedValue({
+      source: "ozon_xapi",
+      as_of: "2026-08-31T08:00:00Z",
+      rates: {
+        USD: {
+          service_penalty_exchange_rate: "80",
+          valid_from_utc: "2026-08-30T21:00:00Z",
+          valid_to_utc: "2026-08-31T21:00:00Z",
+        },
+        CNY: {
+          service_penalty_exchange_rate: "12",
+          valid_from_utc: "2026-08-30T21:00:00Z",
+          valid_to_utc: "2026-08-31T21:00:00Z",
+        },
+      },
+    });
   });
 
   afterEach(() => {
@@ -186,6 +204,7 @@ describe("ProfitView forecast-cost integration", () => {
     await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
     await nextTick();
     await flushPromises();
+    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
     expect(numberInput(wrapper, "采购成本").props("value")).toBe(60);
     expect(numberInput(wrapper, "重量克数").props("value")).toBe(200);
     expect(numberInput(wrapper, "包装成本 CNY").props("value")).toBe(2);
@@ -196,6 +215,7 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("1936515175");
     expect(wrapper.text()).toContain("10 × 5 × 3 cm");
     expect(wrapper.text()).toContain("美元成本备注");
+    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
 
     await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
     await nextTick();
@@ -218,6 +238,8 @@ describe("ProfitView forecast-cost integration", () => {
     expect(numberInput(wrapper, "包装成本 CNY").props("value")).toBe(0);
     expect(numberInput(wrapper, "其他成本 CNY").props("value")).toBe(0);
     expect(wrapper.text()).toContain("SKU 成本库");
+    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
+    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
     expect(api.listProductCostHistory).not.toHaveBeenCalled();
   });
 
@@ -231,6 +253,7 @@ describe("ProfitView forecast-cost integration", () => {
     await nextTick();
     expect(wrapper.text()).toContain("¥108.00");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
+    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
 
     await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
     await nextTick();
@@ -247,6 +270,57 @@ describe("ProfitView forecast-cost integration", () => {
     expect(numberInput(wrapper, "平台售价").props("value")).toBe(92);
     expect(wrapper.text()).toContain("¥79.49");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
+    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks profit when the current service/penalty rate is unavailable", async () => {
+    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockResolvedValueOnce({
+      source: "ozon_xapi",
+      as_of: "2026-08-31T08:00:00Z",
+      rates: { USD: null, CNY: null },
+    });
+    const wrapper = await mountProfit();
+    await search(wrapper, "美元商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+    await nextTick();
+    await flushPromises();
+    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
+    await nextTick();
+    expect(wrapper.text()).toContain("当前 Ozon 服务和罚款汇率不可用");
+    expect(wrapper.text()).toContain("开通Ozon物流平台的电子服务");
+    expect(wrapper.text()).toContain("数据不可用");
+    expect(wrapper.text()).not.toContain("末端运费");
+    expect(wrapper.text()).toContain("无法完成利润测算");
+  });
+
+  it("does not show a current rate while the service/penalty request is loading", async () => {
+    let resolveRates: ((value: unknown) => void) | undefined;
+    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveRates = resolve;
+    }));
+    const wrapper = await mountProfit();
+    await nextTick();
+    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · 获取中…");
+    expect(wrapper.text()).not.toContain("当前有效");
+    expect(wrapper.text()).not.toContain("Ozon 服务和罚款汇率 · USD/RUB 80");
+    resolveRates?.({
+      source: "ozon_xapi",
+      as_of: "2026-08-31T08:00:00Z",
+      rates: {
+        USD: {
+          service_penalty_exchange_rate: "80",
+          valid_from_utc: "2026-08-30T21:00:00Z",
+          valid_to_utc: "2026-08-31T21:00:00Z",
+        },
+        CNY: {
+          service_penalty_exchange_rate: "12",
+          valid_from_utc: "2026-08-30T21:00:00Z",
+          valid_to_utc: "2026-08-31T21:00:00Z",
+        },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
   });
 
   it("requires an explicit Ozon SKU for multiple current-shop listings and uses shop plus SKU for the request", async () => {
@@ -284,6 +358,7 @@ describe("ProfitView forecast-cost integration", () => {
     expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain("平台商品：3017433550 · 当前货号：CURRENT-OFFER");
+    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · CNY/RUB 12 · 当前有效");
 
     await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 1);
     await nextTick();
@@ -566,9 +641,9 @@ describe("ProfitView forecast-cost integration", () => {
     await nextTick();
     expect(wrapper.text()).toContain("当前为纯手工阶段性测算");
     expect(wrapper.text()).toContain("平台佣金未计入");
-    expect(wrapper.text()).toContain("¥449.07");
-    expect(wrapper.text()).toContain("¥250.93");
-    expect(wrapper.text()).toContain("35.85%");
+    expect(wrapper.text()).toContain("¥463.07");
+    expect(wrapper.text()).toContain("¥236.93");
+    expect(wrapper.text()).toContain("33.85%");
     expect(api.saveProductCost).not.toHaveBeenCalled();
     expect(api.listProductCostHistory).not.toHaveBeenCalled();
   });

@@ -9,7 +9,7 @@ export type ProfitCostKey =
   | "purchase_cost"
   | "hunchun_shipping"
   | "cross_border_shipping"
-  | "last_mile_shipping"
+  | "ozon_logistics_platform_electronic_service"
   | "warehouse_fee"
   | "commission"
   | "advertising"
@@ -28,6 +28,7 @@ export interface ProfitInput {
   weightGrams?: ProfitValue;
   packingCostCny?: ProfitValue;
   otherCostCny?: ProfitValue;
+  servicePenaltyExchangeRateRub?: ProfitValue;
   salesPercentFbp?: ProfitValue;
   salesPercentRfbs?: ProfitValue;
   usdCnyRate?: ProfitValue;
@@ -62,7 +63,7 @@ export const PROFIT_COST_KEYS: readonly ProfitCostKey[] = [
   "purchase_cost",
   "hunchun_shipping",
   "cross_border_shipping",
-  "last_mile_shipping",
+  "ozon_logistics_platform_electronic_service",
   "warehouse_fee",
   "commission",
   "advertising",
@@ -151,6 +152,37 @@ export function calculateCrossBorderShippingCny(
     : { value: null, status: "data_unavailable" };
 }
 
+export function calculateOzonLogisticsPlatformElectronicServiceCny(
+  shopId: ProfitShopId | number | string | null | undefined,
+  priceOriginal: ProfitValue,
+  servicePenaltyExchangeRateRub: ProfitValue,
+  usdCnyRate: ProfitValue,
+): ProfitCostItem {
+  const price = profitNumber(priceOriginal);
+  if (price === null || price <= 0) return { value: null, status: "missing_input" };
+
+  const serviceRate = profitNumber(servicePenaltyExchangeRateRub);
+  if (serviceRate === null || serviceRate <= 0) return { value: null, status: "data_unavailable" };
+
+  const priceRub = price * serviceRate;
+  const serviceRubBeforeClamp = priceRub * 0.02;
+  if (!Number.isFinite(priceRub) || !Number.isFinite(serviceRubBeforeClamp)) {
+    return { value: null, status: "data_unavailable" };
+  }
+  const serviceRub = Math.min(200, Math.max(15, serviceRubBeforeClamp));
+  const shopNumber = Number(shopId);
+  if (shopNumber === 2) {
+    const value = serviceRub / serviceRate;
+    return Number.isFinite(value) ? { value, status: "implemented" } : { value: null, status: "data_unavailable" };
+  }
+  if (shopNumber !== 1) return { value: null, status: "data_unavailable" };
+
+  const reportRate = profitNumber(usdCnyRate);
+  if (reportRate === null || reportRate <= 0) return { value: null, status: "missing_input" };
+  const value = serviceRub / serviceRate * reportRate;
+  return Number.isFinite(value) ? { value, status: "implemented" } : { value: null, status: "data_unavailable" };
+}
+
 export function normalizeProfitPrice(
   shopId: ProfitShopId | number | string | null | undefined,
   original: ProfitValue,
@@ -218,6 +250,9 @@ export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): 
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: 10, status: "implemented" };
   costs.cross_border_shipping = calculateCrossBorderShippingCny(input.shopId, input.priceOriginal, input.weightGrams);
+  costs.ozon_logistics_platform_electronic_service = calculateOzonLogisticsPlatformElectronicServiceCny(
+    input.shopId, input.priceOriginal, input.servicePenaltyExchangeRateRub, input.usdCnyRate,
+  );
   costs.commission = commissionCost(price, input.salesPercentFbp);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
@@ -227,6 +262,9 @@ export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): 
 export function calculateRealFbsHongKongCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  costs.ozon_logistics_platform_electronic_service = calculateOzonLogisticsPlatformElectronicServiceCny(
+    input.shopId, input.priceOriginal, input.servicePenaltyExchangeRateRub, input.usdCnyRate,
+  );
   costs.commission = commissionCost(price, input.salesPercentRfbs);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
@@ -237,6 +275,9 @@ export function calculateRealFbsShenzhenCosts(input: ProfitInput = {}, price: Pr
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
   costs.cross_border_shipping = calculateCrossBorderShippingCny(input.shopId, input.priceOriginal, input.weightGrams);
+  costs.ozon_logistics_platform_electronic_service = calculateOzonLogisticsPlatformElectronicServiceCny(
+    input.shopId, input.priceOriginal, input.servicePenaltyExchangeRateRub, input.usdCnyRate,
+  );
   costs.commission = commissionCost(price, input.salesPercentRfbs);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
@@ -263,7 +304,9 @@ export function calculateProfit(input: ProfitInput = {}): ProfitResult {
   const commissionBlocksProfit = costs.commission.status === "data_unavailable";
   const crossBorderShippingBlocksProfit = (fulfillmentPath === "FBP" || fulfillmentPath === "realFBS_shenzhen")
     && costs.cross_border_shipping.status !== "implemented";
+  const ozonServiceBlocksProfit = costs.ozon_logistics_platform_electronic_service.status !== "implemented";
   const totalCostCny = hasPurchaseCost && !commissionBlocksProfit && !crossBorderShippingBlocksProfit
+    && !ozonServiceBlocksProfit
     ? PROFIT_COST_KEYS.reduce(
         (total, key) => total + (costs[key].status === "implemented" ? costs[key].value ?? 0 : 0),
         0,

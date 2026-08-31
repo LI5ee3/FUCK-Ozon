@@ -84,12 +84,14 @@ def _rows(payload, fetched_at):
         if from_currency not in ("USD", "CNY") or to_currency != "RUB":
             continue
         service_penalty_exchange_rate = _parse_rate(exchange.get("rate"), "针对服务和罚款")
-        sales_exchange_rate = _parse_rate(exchange.get("rateWithAdjustment"), "用于销售")
+        sales_value = exchange.get("rateWithAdjustment")
+        sales_exchange_rate = None if sales_value is None else _parse_rate(sales_value, "用于销售")
         valid_from, valid_to = item.get("fromDate"), item.get("toDate")
         if not valid_from or not valid_to:
             raise ValueError("汇率接口未返回有效时间区间")
         rows.append((from_currency, to_currency, str(valid_from), str(valid_to),
-                     str(service_penalty_exchange_rate), str(sales_exchange_rate), SOURCE, fetched_at))
+                     str(service_penalty_exchange_rate),
+                     None if sales_exchange_rate is None else str(sales_exchange_rate), SOURCE, fetched_at))
     return rows
 
 
@@ -157,6 +159,59 @@ def sales_rates_for_event(periods, event_time):
 
 def service_penalty_rates_for_event(periods, event_time):
     return _rates_for_event(periods, event_time)
+
+
+def _current_service_penalty_rate_entries(db, moment):
+    periods = load_service_penalty_rate_periods(
+        db, _iso(moment), _iso(moment + timedelta(microseconds=1)))
+    entries = {}
+    for currency in ("USD", "CNY"):
+        matching = [period for period in periods
+                    if period[0] <= moment < period[1] and currency in period[2]]
+        if len(matching) != 1:
+            continue
+        start, end, _ = matching[0]
+        rates = service_penalty_rates_for_event(matching, moment)
+        if rates and currency in rates:
+            entries[currency] = {
+                "service_penalty_exchange_rate": str(rates[currency]),
+                "valid_from_utc": _iso(start),
+                "valid_to_utc": _iso(end),
+            }
+    return entries
+
+
+def current_service_penalty_exchange_rates(now=None):
+    if now is None:
+        moment = datetime.now(timezone.utc)
+    elif isinstance(now, datetime):
+        moment = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        moment = moment.astimezone(timezone.utc)
+    else:
+        moment = _parse_utc(now)
+
+    def read_current():
+        with connect() as db:
+            return _current_service_penalty_rate_entries(db, moment)
+
+    entries = read_current()
+    sync_error = None
+    if not all(currency in entries for currency in ("USD", "CNY")):
+        current_date = moment.astimezone(MOSCOW).date()
+        try:
+            sync_exchange_rates(current_date, current_date)
+        except (OSError, RuntimeError, ValueError) as error:
+            sync_error = str(error)
+        entries = read_current()
+
+    result = {
+        "source": SOURCE,
+        "as_of": _iso(moment),
+        "rates": {currency: entries.get(currency) for currency in ("USD", "CNY")},
+    }
+    if sync_error and not all(result["rates"].values()):
+        result["error"] = sync_error[:200]
+    return result
 
 
 def convert_compensation(db, amount, compensated_at, source_currency, target_currency):

@@ -214,6 +214,10 @@
   border-radius: var(--opanel-radius-input);
 }
 
+.profit-service-rate-meta {
+  margin-bottom: 14px;
+}
+
 .profit-cost-row {
   display: flex;
   min-width: 0;

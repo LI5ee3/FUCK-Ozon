@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import "../../styles/analytics.css";
 import "./profit.css";
-import { computed, h, ref, watch, type VNodeChild } from "vue";
+import { computed, h, onMounted, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import { NAlert, NButton, NCard, NInputNumber, NSelect, NTag } from "naive-ui";
 import { useShop } from "../../shared/composables/useShop";
@@ -21,6 +21,7 @@ import {
 } from "./calculator";
 import { useProfitCommission } from "./useProfitCommission";
 import { useProfitProduct } from "./useProfitProduct";
+import { useProfitServicePenaltyRate } from "./useProfitServicePenaltyRate";
 
 const { shops } = useShop();
 const router = useRouter();
@@ -32,6 +33,12 @@ const {
   load: loadCommission,
   clear: clearCommission,
 } = useProfitCommission();
+const {
+  rates: servicePenaltyRates,
+  loading: servicePenaltyRateLoading,
+  error: servicePenaltyRateError,
+  load: loadServicePenaltyRates,
+} = useProfitServicePenaltyRate();
 const profitShopId = ref<ProfitShopId>(1);
 const fulfillmentMode = ref<ProfitFulfillmentMode>("FBP");
 const realFbsChannel = ref<ProfitRealFbsChannel>("hongkong");
@@ -45,6 +52,8 @@ const usdCnyRate = ref<number | null>(7.2);
 const selectedProduct = ref<ProductCostRow | null>(null);
 const platformSku = ref<string | null>(null);
 const manualOverride = ref(false);
+
+onMounted(() => { void loadServicePenaltyRates(); });
 
 type ForecastParameters = {
   purchaseCost: number | null;
@@ -309,7 +318,7 @@ const profitCostLabels: Record<ProfitCostKey, string> = {
   purchase_cost: "采购成本",
   hunchun_shipping: "发往珲春物流费",
   cross_border_shipping: "跨境运费",
-  last_mile_shipping: "末端运费",
+  ozon_logistics_platform_electronic_service: "开通Ozon物流平台的电子服务",
   warehouse_fee: "仓库处理费",
   commission: "平台佣金",
   advertising: "广告费用",
@@ -349,6 +358,9 @@ const result = computed(() => calculateProfit({
   weightGrams: weightGrams.value,
   packingCostCny: packingCostCny.value,
   otherCostCny: otherCostCny.value,
+  servicePenaltyExchangeRateRub: profitShopId.value === 1
+    ? servicePenaltyRates.value?.rates.USD?.service_penalty_exchange_rate ?? null
+    : servicePenaltyRates.value?.rates.CNY?.service_penalty_exchange_rate ?? null,
   salesPercentFbp: selectedProduct.value ? productCommission.value?.sales_percent_fbp ?? null : undefined,
   salesPercentRfbs: selectedProduct.value ? productCommission.value?.sales_percent_rfbs ?? null : undefined,
   usdCnyRate: usdCnyRate.value,
@@ -367,11 +379,27 @@ const configuredCostNames = computed(() => PROFIT_COST_KEYS
     && (key !== "commission" || result.value.costs[key].status === "implemented"))
   .map((key) => profitCostLabels[key]));
 const profitNotice = computed(() => `当前已接入费用：${configuredCostNames.value.join("、") || "暂无"}；其他费用规则尚未接入。`);
+const servicePenaltyRateCurrency = computed(() => profitShopId.value === 1 ? "USD" : "CNY");
+const servicePenaltyRateValue = computed(() => servicePenaltyRateCurrency.value === "USD"
+  ? servicePenaltyRates.value?.rates.USD?.service_penalty_exchange_rate ?? null
+  : servicePenaltyRates.value?.rates.CNY?.service_penalty_exchange_rate ?? null);
+const servicePenaltyRateNote = computed(() => {
+  if (servicePenaltyRateLoading.value) return "Ozon 服务和罚款汇率 · 获取中…";
+  if (!servicePenaltyRateValue.value) {
+    return servicePenaltyRateError.value
+      ? `当前 Ozon 服务和罚款汇率不可用：${servicePenaltyRateError.value}`
+      : "当前 Ozon 服务和罚款汇率不可用，暂时无法完成利润测算";
+  }
+  return `Ozon 服务和罚款汇率 · ${servicePenaltyRateCurrency.value}/RUB ${formatNumber(Number(servicePenaltyRateValue.value), 4)} · 当前有效`;
+});
 const summaryNote = computed(() => {
   const crossBorderShippingMissing = ["FBP", "realFBS_shenzhen"].includes(result.value.fulfillment_path)
     && result.value.costs.cross_border_shipping.status === "missing_input";
   if (result.value.costs.commission.status === "data_unavailable") {
     return `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`;
+  }
+  if (result.value.costs.ozon_logistics_platform_electronic_service.status === "data_unavailable") {
+    return `当前 Ozon 服务和罚款汇率不可用，暂时无法完成利润测算；${profitNotice.value}`;
   }
   if (!selectedProduct.value && result.value.costs.commission.status === "missing_input") {
     return crossBorderShippingMissing
@@ -620,6 +648,9 @@ function formatProfitPercent(value: number | null): string {
           <NTag size="small" round class="profit-tone-tag--azure">{{ profitPathLabels[result.fulfillment_path] }}</NTag>
         </div>
       </template>
+      <div class="profit-price-meta profit-service-rate-meta" role="status">
+        <span>{{ servicePenaltyRateNote }}</span>
+      </div>
       <div class="profit-cost-list">
         <div v-for="key in PROFIT_COST_KEYS" :key="key" class="profit-cost-row">
           <div class="profit-cost-label">
