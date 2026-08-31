@@ -22,6 +22,10 @@ const row: ProductCostRow = {
   display_name: "蓝牙追踪器",
   ozon_skus: ["1936515175", "1936515176"],
   offer_ids: ["WGMFR265C46BL", "WGMFR265C46GR"],
+  listings: [
+    { shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL" },
+    { shop_id: 2, sku: "1936515176", offer_id: "WGMFR265C46GR" },
+  ],
   sku: "1936515175",
   offer_id: "WGMFR265C46BL",
   forecast_cost: {
@@ -52,6 +56,7 @@ const unconfiguredRow: ProductCostRow = {
   display_name: "未配置商品",
   ozon_skus: ["1936515177"],
   offer_ids: ["WGMFR265C46RD"],
+  listings: [{ shop_id: 1, sku: "1936515177", offer_id: "WGMFR265C46RD" }],
   sku: "1936515177",
   offer_id: "WGMFR265C46RD",
   forecast_cost: null,

@@ -16,11 +16,18 @@ export interface ProductForecastCost {
   updated_at: string;
 }
 
+export interface ProductListing {
+  shop_id: number;
+  sku: string;
+  offer_id: string;
+}
+
 export interface ProductCostRow {
   product_identity: string | null;
   display_name: string;
   ozon_skus: string[];
   offer_ids: string[];
+  listings: ProductListing[];
   sku: string;
   offer_id: string;
   forecast_cost: ProductForecastCost | null;

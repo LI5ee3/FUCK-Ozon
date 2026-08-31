@@ -98,14 +98,14 @@ def _page(value, label):
 def _product_items(db):
     return db.execute("""
       WITH preferred AS (
-        SELECT sku,offer_id,
+        SELECT shop_id,sku,offer_id,
           COALESCE(MIN(CASE WHEN source='api' THEN rowid END),MIN(rowid)) item_rowid
         FROM order_items
         WHERE NULLIF(trim(sku),'') IS NOT NULL OR NULLIF(trim(offer_id),'') IS NOT NULL
-        GROUP BY sku,offer_id)
-      SELECT i.sku,i.offer_id,i.product_name_raw
+        GROUP BY shop_id,sku,offer_id)
+      SELECT i.shop_id,i.sku,i.offer_id,i.product_name_raw
       FROM preferred p JOIN order_items i ON i.rowid=p.item_rowid
-      ORDER BY i.sku,i.offer_id
+      ORDER BY i.shop_id,i.sku,i.offer_id
     """).fetchall()
 
 
@@ -132,6 +132,7 @@ def _product_rows(db, rules):
     products = {}
     sku_group_ids = _sku_group_ids_by_sku(rules)
     for item in _product_items(db):
+        shop_id = int(item["shop_id"])
         sku = str(item["sku"] or "").strip()
         offer_id = str(item["offer_id"] or "").strip()
         raw_name = item["product_name_raw"] or ""
@@ -142,27 +143,37 @@ def _product_rows(db, rules):
                 "product_identity": None,
                 "display_name": clean_product_name(raw_name) or "商品匹配冲突",
                 "ozon_skus": set(), "offer_ids": set(),
+                "listings": set(),
                 "sku": sku, "offer_id": offer_id,
                 "conflict": True, "conflict_message": conflict,
             })
             row["ozon_skus"].add(sku) if sku else None
             row["offer_ids"].add(offer_id) if offer_id else None
+            if sku and offer_id:
+                row["listings"].add((shop_id, sku, offer_id))
             continue
         identity = resolved["identity"]
         row = products.setdefault(identity, {
             "product_identity": identity,
             "display_name": resolved["display_name"],
             "ozon_skus": set(), "offer_ids": set(),
+            "listings": set(),
             "sku": resolved["primary_sku"] or sku,
             "offer_id": resolved["primary_offer_id"] or offer_id,
             "conflict": False, "conflict_message": None,
         })
         row["ozon_skus"].add(sku) if sku else None
         row["offer_ids"].add(offer_id) if offer_id else None
+        if sku and offer_id:
+            row["listings"].add((shop_id, sku, offer_id))
     result = []
     for row in products.values():
         row["ozon_skus"] = sorted(row["ozon_skus"])
         row["offer_ids"] = sorted(row["offer_ids"])
+        row["listings"] = [
+            {"shop_id": shop_id, "sku": sku, "offer_id": offer_id}
+            for shop_id, sku, offer_id in sorted(row["listings"])
+        ]
         result.append(row)
     return result
 

@@ -4,7 +4,7 @@ export type ProfitPurchaseCurrency = "USD" | "CNY";
 export type ProfitFulfillmentMode = "FBP" | "realFBS";
 export type ProfitRealFbsChannel = "hongkong" | "shenzhen";
 export type ProfitPath = "FBP" | "realFBS_hongkong" | "realFBS_shenzhen";
-export type ProfitCostStatus = "implemented" | "missing_input" | "not_implemented" | "not_applicable";
+export type ProfitCostStatus = "implemented" | "missing_input" | "data_unavailable" | "not_implemented" | "not_applicable";
 export type ProfitCostKey =
   | "purchase_cost"
   | "hunchun_shipping"
@@ -28,6 +28,8 @@ export interface ProfitInput {
   weightGrams?: ProfitValue;
   packingCostCny?: ProfitValue;
   otherCostCny?: ProfitValue;
+  salesPercentFbp?: ProfitValue;
+  salesPercentRfbs?: ProfitValue;
   usdCnyRate?: ProfitValue;
   fulfillmentMode?: ProfitFulfillmentMode;
   realFbsChannel?: ProfitRealFbsChannel;
@@ -81,6 +83,18 @@ function optionalCost(value: ProfitValue): ProfitCostItem {
   if (normalized !== null) return { value: normalized, status: "implemented" };
   const missing = value == null || (typeof value === "string" && value.trim() === "");
   return { value: null, status: missing ? "not_implemented" : "missing_input" };
+}
+
+function commissionCost(price: ProfitPrice, percent: ProfitValue): ProfitCostItem {
+  if (percent === undefined) return { value: null, status: "missing_input" };
+  if (percent === null) return { value: null, status: "data_unavailable" };
+  const normalized = profitNumber(percent);
+  if (normalized === null || normalized > 100) return { value: null, status: "data_unavailable" };
+  if (price.price_cny === null) return { value: null, status: "missing_input" };
+  const value = price.price_cny * normalized / 100;
+  return Number.isFinite(value)
+    ? { value, status: "implemented" }
+    : { value: null, status: "data_unavailable" };
 }
 
 export function normalizeProfitPrice(
@@ -149,6 +163,7 @@ function acquiringFeeCost(price: ProfitPrice): ProfitCostItem {
 export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: 10, status: "implemented" };
+  costs.commission = commissionCost(price, input.salesPercentFbp);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
@@ -157,6 +172,7 @@ export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): 
 export function calculateRealFbsHongKongCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  costs.commission = commissionCost(price, input.salesPercentRfbs);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
@@ -165,6 +181,7 @@ export function calculateRealFbsHongKongCosts(input: ProfitInput = {}, price: Pr
 export function calculateRealFbsShenzhenCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  costs.commission = commissionCost(price, input.salesPercentRfbs);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
   return costs;
@@ -187,7 +204,8 @@ export function calculateProfit(input: ProfitInput = {}): ProfitResult {
   }
 
   const hasPurchaseCost = costs.purchase_cost.status === "implemented";
-  const totalCostCny = hasPurchaseCost
+  const commissionReady = costs.commission.status === "implemented";
+  const totalCostCny = hasPurchaseCost && commissionReady
     ? PROFIT_COST_KEYS.reduce(
         (total, key) => total + (costs[key].status === "implemented" ? costs[key].value ?? 0 : 0),
         0,

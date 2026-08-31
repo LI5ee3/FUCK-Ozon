@@ -2,12 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PROFIT_COST_KEYS,
-  calculateProfit,
+  calculateProfit as calculateProfitFunction,
   normalizeProfitPrice,
 } from "../frontend/src/features/profit/calculator.ts";
 
 function assertClose(actual, expected) {
   assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} is not close to ${expected}`);
+}
+
+const zeroCommission = { salesPercentFbp: 0, salesPercentRfbs: 0 };
+function calculateProfit(input = {}) {
+  return calculateProfitFunction({ ...zeroCommission, ...input });
 }
 
 test("店铺1将 USD 售价标准化为 USD/CNY", () => {
@@ -218,4 +223,59 @@ test("负数、NaN、Infinity 不参与计算", () => {
   assert.ok(Number.isFinite(result.total_cost_cny));
   assert.equal(infinite.costs.purchase_cost.value, 400);
   assert.ok(Number.isFinite(infinite.total_cost_cny));
+});
+
+test("FBP 和 realFBS 分别使用当前 Ozon 佣金率", () => {
+  const fbp = calculateProfitFunction({
+    shopId: 1, priceOriginal: 100, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: 7.2,
+    salesPercentFbp: 15, salesPercentRfbs: 12, fulfillmentMode: "FBP",
+  });
+  assert.equal(fbp.price_cny, 720);
+  assert.equal(fbp.costs.commission.value, 108);
+  assert.equal(fbp.costs.commission.status, "implemented");
+
+  for (const channel of ["hongkong", "shenzhen"]) {
+    const realFbs = calculateProfitFunction({
+      shopId: 2, priceOriginal: 700, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: null,
+      salesPercentFbp: 15, salesPercentRfbs: 12, fulfillmentMode: "realFBS", realFbsChannel: channel,
+    });
+    assert.equal(realFbs.costs.commission.value, 84);
+    assert.equal(realFbs.costs.commission.status, "implemented");
+  }
+});
+
+test("佣金 0% 是已接入的零成本，缺失或非法佣金不会当作 0", () => {
+  const zero = calculateProfitFunction({
+    shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
+    salesPercentFbp: 0, packingCostCny: 0, otherCostCny: 0, fulfillmentMode: "FBP",
+  });
+  assert.equal(zero.costs.commission.value, 0);
+  assert.equal(zero.costs.commission.status, "implemented");
+  assert.ok(Number.isFinite(zero.profit_cny));
+
+  const missing = calculateProfitFunction({
+    shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(missing.costs.commission.value, null);
+  assert.equal(missing.costs.commission.status, "missing_input");
+  assert.equal(missing.total_cost_cny, null);
+  assert.equal(missing.profit_cny, null);
+
+  const unavailable = calculateProfitFunction({
+    shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
+    salesPercentFbp: null, fulfillmentMode: "FBP",
+  });
+  assert.equal(unavailable.costs.commission.status, "data_unavailable");
+  assert.equal(unavailable.profit_cny, null);
+
+  for (const value of [-1, 101, NaN, Infinity, true]) {
+    const invalid = calculateProfitFunction({
+      shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
+      salesPercentFbp: value, fulfillmentMode: "FBP",
+    });
+    assert.equal(invalid.costs.commission.value, null);
+    assert.equal(invalid.costs.commission.status, "data_unavailable");
+    assert.equal(invalid.profit_cny, null);
+  }
 });

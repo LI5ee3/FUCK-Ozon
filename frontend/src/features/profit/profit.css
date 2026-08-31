@@ -21,6 +21,7 @@
 }
 
 .profit-product-field,
+.profit-platform-listing-field,
 .profit-product-info,
 .profit-product-alert {
   grid-column: 1 / -1;
@@ -53,6 +54,10 @@
   min-width: 0;
   flex-direction: column;
   gap: 4px;
+}
+
+.profit-product-meta {
+  align-items: flex-end;
 }
 
 .profit-product-info strong,

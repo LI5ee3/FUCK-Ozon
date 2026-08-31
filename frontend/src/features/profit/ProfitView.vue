@@ -7,7 +7,7 @@ import { NAlert, NButton, NCard, NInputNumber, NSelect, NTag } from "naive-ui";
 import { useShop } from "../../shared/composables/useShop";
 import { formatBeijingDateTime, formatNumber } from "../../shared/utils/format";
 import { useRouter } from "vue-router";
-import type { ProductCostRow, ProductForecastCost } from "../product-costs/types";
+import type { ProductCostRow, ProductForecastCost, ProductListing } from "../product-costs/types";
 import {
   calculateProfit,
   PROFIT_COST_KEYS,
@@ -19,11 +19,19 @@ import {
   type ProfitRealFbsChannel,
   type ProfitShopId,
 } from "./calculator";
+import { useProfitCommission } from "./useProfitCommission";
 import { useProfitProduct } from "./useProfitProduct";
 
 const { shops } = useShop();
 const router = useRouter();
 const { products, loading: productSearchLoading, error: productSearchError, search: searchProducts, clear: clearProductSearch } = useProfitProduct();
+const {
+  commission: productCommission,
+  loading: commissionLoading,
+  error: commissionError,
+  load: loadCommission,
+  clear: clearCommission,
+} = useProfitCommission();
 const profitShopId = ref<ProfitShopId>(1);
 const fulfillmentMode = ref<ProfitFulfillmentMode>("FBP");
 const realFbsChannel = ref<ProfitRealFbsChannel>("hongkong");
@@ -35,6 +43,7 @@ const packingCostCny = ref<number | null>(null);
 const otherCostCny = ref<number | null>(null);
 const usdCnyRate = ref<number | null>(7.2);
 const selectedProduct = ref<ProductCostRow | null>(null);
+const platformSku = ref<string | null>(null);
 const manualOverride = ref(false);
 
 type ForecastParameters = {
@@ -46,6 +55,7 @@ type ForecastParameters = {
 };
 
 type ProductOption = { label: string; value: string; row: ProductCostRow };
+type PlatformSkuOption = { label: string; value: string; offer_id: string };
 
 const purchaseCurrencyOptions = [
   { label: "USD · 美元", value: "USD" },
@@ -70,6 +80,13 @@ function renderProductLabel(option: { label?: unknown; row?: unknown }): VNodeCh
   return h("div", { class: "profit-product-option" }, [
     h("strong", row.display_name),
     h("small", `${compactIdentifiers(offers)} · ${compactIdentifiers(skus)}${suffix}`),
+  ]);
+}
+
+function renderPlatformSkuLabel(option: { label?: unknown; value?: unknown; offer_id?: unknown }): VNodeChild {
+  return h("div", { class: "profit-product-option" }, [
+    h("strong", String(option.value ?? option.label ?? "")),
+    h("small", String(option.offer_id ?? "")),
   ]);
 }
 
@@ -145,6 +162,8 @@ function selectProduct(value: string | number | null): void {
   }
   const option = productOptions.value.find((item) => item.value === String(value));
   if (!option) return;
+  platformSku.value = null;
+  clearCommission();
   selectedProduct.value = option.row;
   resetForecastParameters();
   if (option.row.conflict || !option.row.configured || !isUsableForecastCost(option.row.forecast_cost)) return;
@@ -165,6 +184,8 @@ function selectProduct(value: string | number | null): void {
 }
 
 function clearProduct(): void {
+  platformSku.value = null;
+  clearCommission();
   selectedProduct.value = null;
   resetForecastParameters();
   clearProductSearch();
@@ -185,9 +206,81 @@ function formatProductSize(cost: ProductForecastCost): string {
     : `${values.map((value) => value === null ? "—" : formatNumber(value, 1)).join(" × ")} cm`;
 }
 
+function validProductListing(value: unknown): value is ProductListing {
+  if (!value || typeof value !== "object") return false;
+  const listing = value as Record<string, unknown>;
+  return (listing.shop_id === 1 || listing.shop_id === 2)
+    && typeof listing.sku === "string" && listing.sku.trim() !== ""
+    && typeof listing.offer_id === "string" && listing.offer_id.trim() !== "";
+}
+
+const shopListings = computed<ProductListing[]>(() => {
+  const row = selectedProduct.value;
+  if (!row || row.conflict || !Array.isArray(row.listings)) return [];
+  return row.listings.filter((listing) => validProductListing(listing) && listing.shop_id === profitShopId.value);
+});
+
+const platformSkus = computed(() => [...new Set(shopListings.value.map((listing) => listing.sku))]);
+const platformSkuOptions = computed<PlatformSkuOption[]>(() => platformSkus.value.map((sku) => {
+  const offerIds = [...new Set(shopListings.value.filter((listing) => listing.sku === sku).map((listing) => listing.offer_id))];
+  return { label: `${sku} · ${compactIdentifiers(offerIds)}`, value: sku, offer_id: compactIdentifiers(offerIds) };
+}));
+const selectedPlatformListing = computed<ProductListing | null>(() => {
+  if (!platformSku.value) return null;
+  const matches = shopListings.value.filter((listing) => listing.sku === platformSku.value);
+  return matches.length === 1 ? matches[0] : null;
+});
+const platformListingConflict = computed(() => {
+  const offersBySku = new Map<string, Set<string>>();
+  for (const listing of shopListings.value) {
+    const offers = offersBySku.get(listing.sku) ?? new Set<string>();
+    offers.add(listing.offer_id);
+    offersBySku.set(listing.sku, offers);
+  }
+  return [...offersBySku.values()].some((offers) => offers.size > 1);
+});
+const platformListingNeedsSelection = computed(() => platformSkus.value.length > 1);
+const platformListingMessage = computed(() => {
+  if (!selectedProduct.value || selectedProduct.value.conflict) return "";
+  if (!shopListings.value.length) return "当前店铺未找到该商品的 Ozon listing，无法自动获取平台佣金。";
+  if (platformListingConflict.value) return "当前店铺同一 Ozon SKU 对应多个 offer_id，无法安全确定平台商品。";
+  if (platformListingNeedsSelection.value && !selectedPlatformListing.value) return "当前店铺存在多个 Ozon SKU，请选择平台商品。";
+  return "";
+});
+
+function syncPlatformSelection(): void {
+  const skus = platformSkus.value;
+  platformSku.value = skus.length === 1 && shopListings.value.filter((listing) => listing.sku === skus[0]).length === 1
+    ? skus[0]
+    : null;
+  clearCommission();
+}
+
+function selectPlatformSku(value: string | number | null): void {
+  const sku = value == null || value === "" ? null : String(value);
+  if (sku !== null && !platformSkuOptions.value.some((option) => option.value === sku)) return;
+  clearCommission();
+  platformSku.value = sku;
+}
+
+watch([selectedProduct, profitShopId], syncPlatformSelection, { immediate: true });
+watch(selectedPlatformListing, (listing) => {
+  if (!listing) {
+    clearCommission();
+    return;
+  }
+  void loadCommission(profitShopId.value, listing.sku);
+}, { immediate: true });
+
+function formatCommissionPercent(value: number | null | undefined): string {
+  return value === null || value === undefined || !Number.isFinite(value)
+    ? "—"
+    : `${Number.isInteger(value) ? value : formatNumber(value, 2)}%`;
+}
+
 const parameterSourceLabel = computed(() => {
   const row = selectedProduct.value;
-  if (!row) return "预测参数：纯手工测算";
+  if (!row) return "预测参数：纯手工测算 · 选择商品后自动获取 Ozon 佣金";
   if (row.conflict) return "预测参数：不可用（商品匹配规则冲突）";
   if (forecastCostError.value) return "预测参数：数据异常，已回退手工输入";
   if (selectedForecastCost.value) {
@@ -215,6 +308,7 @@ const profitCostLabels: Record<ProfitCostKey, string> = {
 const profitStatusLabels: Record<ProfitCostStatus, string> = {
   implemented: "已接入",
   missing_input: "待输入",
+  data_unavailable: "数据不可用",
   not_implemented: "未接入规则",
   not_applicable: "不适用",
 };
@@ -241,6 +335,8 @@ const result = computed(() => calculateProfit({
   weightGrams: weightGrams.value,
   packingCostCny: packingCostCny.value,
   otherCostCny: otherCostCny.value,
+  salesPercentFbp: selectedProduct.value ? productCommission.value?.sales_percent_fbp ?? null : undefined,
+  salesPercentRfbs: selectedProduct.value ? productCommission.value?.sales_percent_rfbs ?? null : undefined,
   usdCnyRate: usdCnyRate.value,
   fulfillmentMode: fulfillmentMode.value,
   realFbsChannel: realFbsChannel.value,
@@ -256,15 +352,20 @@ const configuredCostNames = computed(() => PROFIT_COST_KEYS
   .filter((key) => !["not_implemented", "not_applicable"].includes(result.value.costs[key].status))
   .map((key) => profitCostLabels[key]));
 const profitNotice = computed(() => `当前已接入费用：${configuredCostNames.value.join("、") || "暂无"}；其他费用规则尚未接入。`);
-const summaryNote = computed(() => result.value.profit_cny === null
-  ? `请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率；${profitNotice.value}`
-  : profitNotice.value);
+const summaryNote = computed(() => result.value.costs.commission.status === "data_unavailable"
+  ? `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`
+  : result.value.profit_cny === null
+    ? `请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率；${profitNotice.value}`
+    : profitNotice.value);
 
 type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 
 function updateShop(value: string | number | null): void {
-  if (value === 1 || value === "1") profitShopId.value = 1;
-  if (value === 2 || value === "2") profitShopId.value = 2;
+  const nextShop = value === 1 || value === "1" ? 1 : value === 2 || value === "2" ? 2 : null;
+  if (nextShop === null || nextShop === profitShopId.value) return;
+  platformSku.value = null;
+  clearCommission();
+  profitShopId.value = nextShop;
 }
 
 function updateFulfillment(value: string | number | null): void {
@@ -342,14 +443,31 @@ function formatProfitPercent(value: number | null): string {
             />
             <small class="profit-product-source">{{ parameterSourceLabel }}</small>
           </label>
+          <label v-if="selectedProduct && !selectedProduct.conflict && platformListingNeedsSelection && !platformListingConflict" class="profit-field profit-platform-listing-field">
+            <span>平台商品 <small>Ozon SKU</small></span>
+            <NSelect
+              :value="platformSku"
+              :options="platformSkuOptions"
+              placeholder="选择 Ozon SKU"
+              :render-label="renderPlatformSkuLabel"
+              aria-label="平台商品 Ozon SKU"
+              @update:value="selectPlatformSku"
+            />
+          </label>
           <div v-if="selectedProduct && !selectedProduct.conflict" class="profit-product-info" role="status">
             <div>
               <strong>{{ selectedProduct.display_name }}</strong>
               <span>货号：{{ compactIdentifiers(selectedProduct.offer_ids) }} · Ozon SKU：{{ compactIdentifiers(selectedProduct.ozon_skus) }}</span>
             </div>
-            <small v-if="selectedForecastCost">
-              最后更新：{{ formatBeijingDateTime(selectedForecastCost.updated_at) }} · 尺寸：{{ formatProductSize(selectedForecastCost) }}<span v-if="selectedForecastCost.note"> · 备注：{{ selectedForecastCost.note }}</span>
-            </small>
+            <div class="profit-product-meta">
+              <small v-if="selectedForecastCost">
+                最后更新：{{ formatBeijingDateTime(selectedForecastCost.updated_at) }} · 尺寸：{{ formatProductSize(selectedForecastCost) }}<span v-if="selectedForecastCost.note"> · 备注：{{ selectedForecastCost.note }}</span>
+              </small>
+              <small v-if="selectedPlatformListing">
+                平台商品：{{ selectedPlatformListing.sku }} · {{ selectedPlatformListing.offer_id }} · 平台佣金：FBP {{ formatCommissionPercent(productCommission?.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission?.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询<span v-if="productCommission">{{ formatBeijingDateTime(productCommission.fetched_at) }}</span>
+              </small>
+              <small v-else-if="commissionLoading">平台佣金：获取中…</small>
+            </div>
           </div>
           <NAlert v-if="productSearchError" type="error" class="profit-product-alert">
             商品搜索失败：{{ productSearchError }}；仍可继续手工测算。
@@ -360,8 +478,20 @@ function formatProfitPercent(value: number | null): string {
           <NAlert v-else-if="forecastCostError" type="error" class="profit-product-alert">
             {{ forecastCostError }}
           </NAlert>
+          <NAlert v-else-if="commissionError" type="error" class="profit-product-alert">
+            Ozon 平台佣金获取失败：{{ commissionError }}；仍可继续调整测算参数。
+          </NAlert>
+          <NAlert v-else-if="platformListingMessage" type="warning" class="profit-product-alert">
+            {{ platformListingMessage }}
+          </NAlert>
           <NAlert v-else-if="selectedProduct && !selectedProduct.configured" type="warning" class="profit-product-alert">
             该商品尚未配置 SKU 预测成本，可继续手工输入，或 <NButton text type="primary" @click="openProductCosts">前往 SKU 成本</NButton>。
+          </NAlert>
+          <NAlert v-else-if="commissionLoading" type="info" class="profit-product-alert">
+            正在获取当前 Ozon 平台佣金…
+          </NAlert>
+          <NAlert v-else-if="selectedPlatformListing && result.costs.commission.status === 'data_unavailable'" type="warning" class="profit-product-alert">
+            当前履约模式的 Ozon 平台佣金不可用，无法计算完整预计利润。
           </NAlert>
           <label class="profit-field">
             <span>店铺</span>
