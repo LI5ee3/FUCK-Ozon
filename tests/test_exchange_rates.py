@@ -158,9 +158,7 @@ class ExchangeRateTest(DatabaseTestCase):
 
     def test_each_ozon_rate_is_required_positive_and_finite(self):
         for field in ("rate", "rateWithAdjustment"):
-            values = (None, 0, -1, float("nan"), float("inf"), "invalid") if field == "rate" \
-                else (0, -1, float("nan"), float("inf"), "invalid")
-            for value in values:
+            for value in (None, 0, -1, float("nan"), float("inf"), "invalid"):
                 with self.subTest(field=field, value=value):
                     def invalid_opener(request, timeout=0, *, field=field, value=value):
                         query = parse_qs(urlsplit(request.full_url).query)
@@ -179,6 +177,30 @@ class ExchangeRateTest(DatabaseTestCase):
                         sync_exchange_rates(date(2026, 1, 1), date(2026, 1, 1), invalid_opener)
                     with db.connect() as connection:
                         self.assertEqual(connection.execute("SELECT COUNT(*) FROM exchange_rates").fetchone()[0], 0)
+
+    def test_invalid_sales_rate_does_not_overwrite_existing_exchange_row(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO exchange_rates VALUES(
+              'USD','RUB','2025-12-31T21:00:00Z','2026-01-01T21:00:00Z','90','88',
+              'ozon_xapi','2026-01-01T00:00:00Z')""")
+
+        def invalid_opener(request, timeout=0):
+            query = parse_qs(urlsplit(request.full_url).query)
+            start = datetime.fromisoformat(query["fromDate"][0].replace("Z", "+00:00"))
+            end = datetime.fromisoformat(query["toDate"][0].replace("Z", "+00:00"))
+            return _Response({"items": [{
+                "fromCurrencyId": "USD", "toCurrencyId": "RUB",
+                "fromDate": start.isoformat().replace("+00:00", "Z"),
+                "toDate": end.isoformat().replace("+00:00", "Z"),
+                "exchangeRate": {"rate": 91, "rateWithAdjustment": None},
+            }]})
+
+        with self.assertRaisesRegex(ValueError, "汇率"):
+            sync_exchange_rates(date(2026, 1, 1), date(2026, 1, 1), invalid_opener)
+        with db.connect() as connection:
+            self.assertEqual(tuple(connection.execute(
+                "SELECT service_penalty_exchange_rate, sales_exchange_rate FROM exchange_rates"
+            ).fetchone()), ("90", "88"))
 
     def test_current_service_penalty_rates_use_only_current_utc_interval(self):
         with db.transaction() as connection:
@@ -236,3 +258,26 @@ class ExchangeRateTest(DatabaseTestCase):
         sync.assert_called_once()
         self.assertEqual(result["rates"]["USD"]["service_penalty_exchange_rate"], "85.6007")
         self.assertEqual(result["rates"]["CNY"]["service_penalty_exchange_rate"], "12.7335")
+
+    def test_current_service_penalty_rates_use_half_open_interval_boundaries(self):
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO exchange_rates VALUES(
+              ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-08-31T00:00:00Z')""", [
+                ("USD", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "80"),
+                ("CNY", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "12")])
+        with patch("app.exchange.sync_exchange_rates") as sync:
+            at_start = current_service_penalty_exchange_rates(
+                datetime(2026, 8, 30, 21, tzinfo=timezone.utc))
+        sync.assert_not_called()
+        self.assertEqual(at_start["rates"]["USD"]["service_penalty_exchange_rate"], "80")
+
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO exchange_rates VALUES(
+              ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-09-01T00:00:00Z')""", [
+                ("USD", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "81"),
+                ("CNY", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "13")])
+        with patch("app.exchange.sync_exchange_rates") as sync:
+            at_end = current_service_penalty_exchange_rates(
+                datetime(2026, 8, 31, 21, tzinfo=timezone.utc))
+        sync.assert_not_called()
+        self.assertEqual(at_end["rates"]["USD"]["service_penalty_exchange_rate"], "81")

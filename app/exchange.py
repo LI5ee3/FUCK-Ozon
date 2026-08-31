@@ -84,14 +84,13 @@ def _rows(payload, fetched_at):
         if from_currency not in ("USD", "CNY") or to_currency != "RUB":
             continue
         service_penalty_exchange_rate = _parse_rate(exchange.get("rate"), "针对服务和罚款")
-        sales_value = exchange.get("rateWithAdjustment")
-        sales_exchange_rate = None if sales_value is None else _parse_rate(sales_value, "用于销售")
+        sales_exchange_rate = _parse_rate(exchange.get("rateWithAdjustment"), "用于销售")
         valid_from, valid_to = item.get("fromDate"), item.get("toDate")
         if not valid_from or not valid_to:
             raise ValueError("汇率接口未返回有效时间区间")
         rows.append((from_currency, to_currency, str(valid_from), str(valid_to),
                      str(service_penalty_exchange_rate),
-                     None if sales_exchange_rate is None else str(sales_exchange_rate), SOURCE, fetched_at))
+                     str(sales_exchange_rate), SOURCE, fetched_at))
     return rows
 
 
@@ -162,8 +161,10 @@ def service_penalty_rates_for_event(periods, event_time):
 
 
 def _current_service_penalty_rate_entries(db, moment):
+    current_date = moment.astimezone(MOSCOW).date()
+    day_start, day_end = utc_period(current_date, current_date)
     periods = load_service_penalty_rate_periods(
-        db, _iso(moment), _iso(moment + timedelta(microseconds=1)))
+        db, _iso(day_start), _iso(day_end))
     entries = {}
     for currency in ("USD", "CNY"):
         matching = [period for period in periods
