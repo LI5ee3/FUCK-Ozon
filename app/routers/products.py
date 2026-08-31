@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from ..db import connect, transaction
+from ..product_costs import forecast_cost_identities_for_rule_change, rekey_product_forecast_cost
 from ..products import clean_product_name, load_product_rules, resolve_product
 from .common import _utc_text, read_bounded_json
 
@@ -108,6 +109,12 @@ async def save_product_rule(request: Request):
                   AND ((key_type='sku' AND key_value=?) OR (key_type='offer_id' AND key_value=?)) LIMIT 1""",
                   (group_id, pair["sku"], pair["offer_id"])).fetchone()
                 if owner: raise HTTPException(400, f"商品 {pair['sku']} / {pair['offer_id']} 与其他主货号冲突")
+            try:
+                rules = load_product_rules(db)
+                old_identities = forecast_cost_identities_for_rule_change(db, rules, members, group_id)
+                rekey_product_forecast_cost(db, old_identities, primary_offer)
+            except ValueError as error:
+                raise HTTPException(400, str(error)) from error
             if group_id:
                 if not db.execute("SELECT 1 FROM product_groups WHERE id=?", (group_id,)).fetchone():
                     raise HTTPException(400, "合并关系不存在")
@@ -123,6 +130,13 @@ async def save_product_rule(request: Request):
             db.executemany("INSERT INTO product_group_members VALUES(?,?,?)",
                            [(group_id, key_type, value) for key_type, value in members])
         elif kind == "dissolve":
+            group = db.execute("SELECT primary_offer_id,primary_sku FROM product_group_config WHERE group_id=?",
+                               (group_id,)).fetchone()
+            if group and group["primary_offer_id"] and group["primary_sku"]:
+                try:
+                    rekey_product_forecast_cost(db, {group["primary_offer_id"]}, group["primary_sku"])
+                except ValueError as error:
+                    raise HTTPException(400, str(error)) from error
             db.execute("DELETE FROM product_groups WHERE id=?", (group_id,))
         else:
             raise HTTPException(400, "未知规则类型")

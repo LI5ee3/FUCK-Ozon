@@ -38,6 +38,7 @@ const permissionOptions: Array<{ key: PermissionKey; label: string }> = [
   { key: "orders", label: "订单" },
   { key: "returns", label: "退货" },
   { key: "stock", label: "库存" },
+  { key: "product_pricing", label: "商品价格" },
 ];
 const statusLabels: Record<OzonProbeStatus, string> = {
   idle: "待检测",

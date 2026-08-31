@@ -8,7 +8,7 @@ from app.migrations import SCHEMA_VERSION, init_db
 from app.product_costs import (list_product_forecast_cost_history, list_product_forecast_costs,
                                save_product_forecast_cost)
 from app.routers.product_costs import product_cost_history
-from app.routers.products import save_product_rule
+from app.routers.products import product_rules, save_product_rule
 from tests.support import DatabaseTestCase, MockRequest, add_item, add_order
 
 
@@ -155,6 +155,150 @@ class ProductForecastCostsTest(DatabaseTestCase):
             {"shop_id": 1, "sku": "SKU-2", "offer_id": "OFFER-2", "offer_ids": ["OFFER-2"]},
         ])
         self.assertEqual(rows[0]["forecast_cost"]["purchase_cost"], 12)
+
+    def test_merge_rekeys_existing_cost_and_complete_history(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
+        save_product_forecast_cost(self._payload(purchase_cost=10))
+        save_product_forecast_cost(self._payload(purchase_cost=12, change_note="供应商涨价"))
+        with db.connect() as connection:
+            current_before = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-1", "primary_sku": "SKU-1",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-2"}],
+        })))
+
+        with db.connect() as connection:
+            current_after = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_after = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+        self.assertEqual(current_after["product_identity"], "OFFER-1")
+        self.assertEqual(current_after["id"], current_before["id"])
+        self.assertEqual(current_after["updated_at"], current_before["updated_at"])
+        self.assertEqual([row["id"] for row in history_after], [row["id"] for row in history_before])
+        for before, after in zip(history_before, history_after):
+            self.assertEqual(after["product_identity"], "OFFER-1")
+            for field in ("purchase_cost", "purchase_currency", "weight_grams", "length_cm", "width_cm",
+                          "height_cm", "packing_cost_cny", "other_cost_cny", "note", "change_note", "recorded_at"):
+                self.assertEqual(after[field], before[field])
+        self.assertEqual(list_product_forecast_cost_history(
+            sku="SKU-1", offer_id="OFFER-1")["total"], len(history_before))
+
+    def test_merge_rejects_multiple_forecast_costs_and_rolls_back(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
+        save_product_forecast_cost(self._payload(purchase_cost=10))
+        save_product_forecast_cost(self._payload(sku="SKU-2", offer_id="OFFER-2", purchase_cost=12))
+        with db.connect() as connection:
+            current_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_costs ORDER BY product_identity")]
+            history_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(MockRequest({
+                "kind": "merge", "primary_offer_id": "OFFER-1", "primary_sku": "SKU-1",
+                "members": [{"key_type": "offer_id", "key_value": "OFFER-2"}],
+            })))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("多个独立预测成本", raised.exception.detail)
+
+        with db.connect() as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM product_groups").fetchone()[0], 0)
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_costs ORDER BY product_identity")], current_before)
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")], history_before)
+
+    def test_primary_offer_change_rekeys_cost_and_noop_does_not_update_it(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
+        merge = {"kind": "merge", "primary_offer_id": "OFFER-1", "primary_sku": "SKU-1",
+                 "members": [{"key_type": "offer_id", "key_value": "OFFER-2"}]}
+        asyncio.run(save_product_rule(MockRequest(merge)))
+        save_product_forecast_cost(self._payload(purchase_cost=13, change_note="主货号调整"))
+        group_id = product_rules()["groups"][0]["id"]
+        with db.connect() as connection:
+            before = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+
+        changed = {"kind": "merge", "id": group_id, "primary_offer_id": "OFFER-2", "primary_sku": "SKU-2",
+                   "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}]}
+        asyncio.run(save_product_rule(MockRequest(changed)))
+        with db.connect() as connection:
+            after_change = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_after_change = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+        self.assertEqual(after_change["product_identity"], "OFFER-2")
+        self.assertEqual(after_change["id"], before["id"])
+        self.assertEqual(after_change["updated_at"], before["updated_at"])
+        self.assertEqual([row["id"] for row in history_after_change], [row["id"] for row in history_before])
+        self.assertTrue(all(row["product_identity"] == "OFFER-2" for row in history_after_change))
+
+        asyncio.run(save_product_rule(MockRequest(changed)))
+        with db.connect() as connection:
+            after_noop = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_after_noop = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+        self.assertEqual(after_noop, after_change)
+        self.assertEqual(history_after_noop, history_after_change)
+
+    def test_dissolve_rekeys_group_cost_to_primary_sku_without_copying(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-1", "primary_sku": "SKU-1",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-2"}],
+        })))
+        save_product_forecast_cost(self._payload(purchase_cost=14, change_note="解散前成本"))
+        group_id = product_rules()["groups"][0]["id"]
+        with db.connect() as connection:
+            before = dict(connection.execute("SELECT * FROM product_forecast_costs").fetchone())
+            history_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+
+        asyncio.run(save_product_rule(MockRequest({"kind": "dissolve", "id": group_id})))
+        with db.connect() as connection:
+            costs = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_costs ORDER BY product_identity")]
+            history = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_forecast_cost_history ORDER BY id")]
+        self.assertEqual([row["product_identity"] for row in costs], ["SKU-1"])
+        self.assertEqual(costs[0]["id"], before["id"])
+        self.assertEqual(costs[0]["updated_at"], before["updated_at"])
+        self.assertEqual([row["id"] for row in history], [row["id"] for row in history_before])
+        self.assertTrue(all(row["product_identity"] == "SKU-1" for row in history))
+        self.assertNotIn("SKU-2", {row["product_identity"] for row in costs})
+
+    def test_dissolve_rejects_primary_sku_cost_conflict_and_rolls_back(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-2", "SKU-2", "OFFER-2", "同款追踪器")
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-1", "primary_sku": "SKU-1",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-2"}],
+        })))
+        save_product_forecast_cost(self._payload(purchase_cost=14))
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO product_forecast_costs(
+              product_identity,purchase_cost,purchase_currency,weight_grams,length_cm,width_cm,height_cm,
+              packing_cost_cny,other_cost_cny,note,created_at,updated_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               ("SKU-1", 99, "CNY", 100, 10, 5, 3, 2, 1, "冲突成本",
+                                "2026-08-31T00:00:00Z", "2026-08-31T00:00:00Z"))
+        group_id = product_rules()["groups"][0]["id"]
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(MockRequest({"kind": "dissolve", "id": group_id})))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("目标商品已存在", raised.exception.detail)
+        self.assertEqual(product_rules()["groups"][0]["id"], group_id)
+        with db.connect() as connection:
+            self.assertEqual({row["product_identity"] for row in connection.execute(
+                "SELECT product_identity FROM product_forecast_costs")}, {"OFFER-1", "SKU-1"})
 
     def test_conflicting_product_rules_are_not_guessed(self):
         with db.transaction() as connection:

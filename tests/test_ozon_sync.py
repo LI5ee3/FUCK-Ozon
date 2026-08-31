@@ -275,12 +275,21 @@ class OzonSyncTest(DatabaseTestCase):
         self.assertIsNotNone(new_completed)
 
     def test_return_permission_probe_includes_rfbs_detail(self):
-        methods = ["/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"]
+        methods = ["/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get",
+                   "/v3/product/info/list", "/v5/product/info/prices"]
         with patch("app.ozon.client._post", side_effect=[{"roles": [{"name": "Admin", "methods": methods}]},
                                                    {"result": {"name": "Shop"}}]) as post:
             result = client.probe_shop(1)
         self.assertEqual(result["permissions"]["returns"], "可用")
+        self.assertEqual(result["permissions"]["product_pricing"], "可用")
         self.assertEqual([call.args[1] for call in post.call_args_list], ["/v1/roles", "/v1/seller/info"])
+
+    def test_product_pricing_permission_probe_reports_missing_endpoint(self):
+        methods = ["/v3/product/info/list"]
+        with patch("app.ozon.client._post", side_effect=[{"roles": [{"methods": methods}]},
+                                                   {"result": {"name": "Shop"}}]):
+            result = client.probe_shop(1)
+        self.assertEqual(result["permissions"]["product_pricing"], "缺少：/v5/product/info/prices")
 
     def test_order_sync_saves_shipping_time_and_tracking_number(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建;已转移配送\n"

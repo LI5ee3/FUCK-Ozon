@@ -128,6 +128,28 @@ def _resolve_item(rules, sku, offer_id, raw_name, sku_group_ids):
     return resolve_product(rules, sku, offer_id, raw_name), None
 
 
+def forecast_cost_identities_for_rule_change(db, rules, members, group_id=0):
+    keys = set(members)
+    member_skus = {value for key_type, value in keys if key_type == "sku"}
+    member_offers = {value for key_type, value in keys if key_type == "offer_id"}
+    identities = set()
+    if group_id:
+        group = db.execute("SELECT primary_offer_id FROM product_group_config WHERE group_id=?", (group_id,)).fetchone()
+        if group and group["primary_offer_id"]:
+            identities.add(group["primary_offer_id"])
+    sku_group_ids = _sku_group_ids_by_sku(rules)
+    for item in _product_items(db):
+        sku = str(item["sku"] or "").strip()
+        offer_id = str(item["offer_id"] or "").strip()
+        if sku not in member_skus and offer_id not in member_offers:
+            continue
+        resolved, conflict = _resolve_item(rules, sku, offer_id, item["product_name_raw"] or "", sku_group_ids)
+        if conflict:
+            raise ValueError(conflict)
+        identities.add(resolved["identity"])
+    return identities
+
+
 def _add_listing(row, shop_id, sku, offer_id):
     if not sku:
         return
@@ -255,6 +277,33 @@ def _insert_history(db, identity, values, change_note, recorded_at):
       product_identity,purchase_cost,purchase_currency,weight_grams,length_cm,width_cm,height_cm,
       packing_cost_cny,other_cost_cny,note,change_note,recorded_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (identity, *(_business_values(values)), change_note, recorded_at))
+
+
+def rekey_product_forecast_cost(db, old_identities, new_identity):
+    old_identities = {identity for identity in old_identities if identity}
+    new_identity = str(new_identity or "").strip()
+    if not new_identity:
+        return
+    target = _cost_row(db, new_identity)
+    if target and new_identity not in old_identities:
+        raise ValueError("目标商品已存在另一份预测成本，不能覆盖")
+    source_identities = sorted(old_identities - {new_identity})
+    if not source_identities:
+        return
+    marks = ",".join("?" for _ in source_identities)
+    source_costs = db.execute(
+        f"SELECT id,product_identity FROM product_forecast_costs WHERE product_identity IN ({marks})",
+        tuple(source_identities)).fetchall()
+    if target and source_costs:
+        raise ValueError("目标商品已存在另一份预测成本，不能覆盖")
+    if len(source_costs) > 1:
+        raise ValueError("存在多个独立预测成本，请先统一预测成本后再修改商品规则")
+    if source_costs:
+        db.execute("UPDATE product_forecast_costs SET product_identity=? WHERE id=?",
+                   (new_identity, source_costs[0]["id"]))
+    db.execute(
+        f"UPDATE product_forecast_cost_history SET product_identity=? WHERE product_identity IN ({marks})",
+        (new_identity, *source_identities))
 
 
 def save_product_forecast_cost(body):

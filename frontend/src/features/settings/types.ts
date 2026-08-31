@@ -16,6 +16,7 @@ export interface OzonProbePermissions {
   orders?: string;
   returns?: string;
   stock?: string;
+  product_pricing?: string;
 }
 
 export interface OzonProbeResponse {
