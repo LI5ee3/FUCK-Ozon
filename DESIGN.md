@@ -1,12 +1,13 @@
 ---
-version: 2.0.0
+version: 2.1.0
 name: oPanel-Design-System
 description: "Apple-based design language for a high-density e-commerce operations workspace, extended with oPanel's Open Macaron identity, business semantic tones, and resilient UI/UX rules."
 authority:
   foundation: "Apple DESIGN.md"
   product-identity: "oPanel Open Macaron and high-density data-workspace rules"
   ux-supplement: "UI UX Pro Max — UI/UX quality guidance only"
-  motion: "oPanel Motion / Physics rules in this document"
+  motion-supplement: "Emil Kowalski Skills — Motion / Animation / Interaction quality guidance only"
+  motion: "oPanel Motion System defined in this document"
 ---
 
 # oPanel Design System
@@ -19,33 +20,43 @@ future frontends must use this document as their design contract.
 
 The sources have a strict relationship:
 
-1. **Apple DESIGN.md is the foundation.** It supplies the base visual language:
-   quiet chrome, clear typography, restrained surfaces, hairlines, purposeful
-   whitespace, precise alignment, and coherent light/dark expression.
+1. **Apple DESIGN.md is the foundation.** It supplies the base visual and
+   interaction language: quiet chrome, clear typography, restrained surfaces,
+   hairlines, purposeful whitespace, precise alignment, spatial clarity, and
+   coherent light/dark expression.
 2. **oPanel is the product identity.** Open Macaron tones, Apple Action Blue,
-   high-density e-commerce operations, business semantics, tabular data,
-   KPI-oriented summaries, and oPanel's chart language and icon system define
-   what makes oPanel oPanel.
-3. **UI UX Pro Max is a quality supplement.** Use its applicable guidance for
-   information hierarchy, anti-boxification, content resilience, responsive
-   behavior, accessibility, forms, feedback, navigation, tables, chart choice,
-   and UX anti-patterns.
+   high-density e-commerce operations, Data First, operational efficiency,
+   business semantics, tabular data, KPI-oriented summaries, and oPanel's chart
+   language and icon system define what makes oPanel oPanel.
+3. **UI UX Pro Max is a UI/UX quality supplement only.** Use its applicable
+   guidance for information hierarchy, anti-boxification, content resilience,
+   responsive behavior, accessibility, forms, feedback, navigation, tables,
+   chart choice, and UX anti-patterns. It has no Motion or Animation authority.
+4. **Emil Kowalski Skills is the Motion / Animation / Interaction quality
+   supplement.** Use it to guide animation decisions, purpose, frequency,
+   easing, duration, physicality, spatial origin, continuity, interruptibility,
+   gesture behavior, performance, reduced motion, and motion anti-patterns. It
+   must not redefine oPanel's colors, typography, radii, spacing, surface
+   hierarchy, Open Macaron tones, icon family, business semantics, table
+   alignment, or general UI style.
 
-The supplement must not redefine oPanel's visual system. Do not use it to
+The supplements must not redefine oPanel's visual system. Do not use them to
 automatically choose a new UI style, brand style, font family, color palette,
 radius system, shadow system, or icon family. Do not turn oPanel into Material,
 Fluent, Polaris, a generic SaaS dashboard, a Bento dashboard, Glassmorphism,
 or a generic Tailwind admin UI.
 
 If sources appear to conflict, preserve the Apple foundation and the oPanel
-identity defined here; apply UI UX Pro Max only where it improves UI/UX quality
-without changing those identities. The motion boundary is defined in
-[Motion / Physics](#14-motion--physics) and is not supplied by UI UX Pro Max.
+identity defined here. Apply UI UX Pro Max only within its UI/UX quality scope
+and Emil Kowalski Skills only within the Motion System scope. The normative
+motion rules are defined in [Motion System](#14-motion-system), and
+`DESIGN.md` remains the final authority.
 
 Reference sources:
 
 - [Apple DESIGN.md](https://getdesign.md/apple/design-md)
 - [UI UX Pro Max Skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+- [Emil Kowalski Skills](https://github.com/emilkowalski/skills)
 
 ## 2. Design Philosophy
 
@@ -830,37 +841,374 @@ specific exception necessary and the full meaning remains accessible:
 - Series or statuses distinguished only by color
 - Excessive centering used to make a dense table look symmetrical
 
-## 14. Motion / Physics
+## 14. Motion System
 
-This section defines the oPanel motion system. It is not derived
-from, and must not be rewritten using, UI UX Pro Max motion guidance.
+This section is the normative oPanel Motion / Animation / Interaction Motion
+system. Emil Kowalski Skills is a quality supplement for this section; UI UX
+Pro Max contributes no Motion or Animation authority. No external source or
+animation library outranks the rules defined here.
 
-- The shared oPanel fluid easing is
-  `cubic-bezier(0.16, 1, 0.3, 1)`.
-- oPanel spring physics use the `snappy` preset (`ζ=0.73`, fast with subtle
-  overshoot); the `smooth` and `bouncy` variants remain available where
-  appropriate.
-- Press feedback is a scale transform rather than a color-only change:
-  containers use the defined `0.95–0.995` range by surface size, and icons
-  inside interactive elements use `0.88` unless the container also scales.
-- Icon state changes use oPanel morphing icon behavior and the defined spring
-  treatment.
-- oPanel transitions use the shared `0.16s` fluid transition for applicable
-  color, background, border, shadow, and transform state changes.
-- All oPanel motion honors the user's reduced-motion preference and presents
-  the final readable state when motion is reduced.
+### 14.1 Motion Philosophy
 
-UI UX Pro Max contributes **no** Animation Guidelines, GSAP guidance, motion
-presets, animation durations, animation easings, spring recommendations,
-transition recommendations, page transitions, stagger rules, shared-element
-animation, animation hierarchy, or animation-performance recommendations to
-oPanel. Do not add them through this document.
+oPanel motion is **crisp, direct, restrained, spatially coherent, and
+interruptible**. Motion explains change and confirms interaction; it never
+competes with operational data.
+
+- **Crisp:** respond quickly without making an operation feel delayed.
+- **Direct:** show meaningful feedback at the moment the user acts.
+- **Restrained:** treat oPanel as a high-density operations workspace, not a
+  showcase for continuous animation.
+- **Spatially coherent:** explain where an element came from, where it goes,
+  and which trigger or state change it belongs to.
+- **Interruptible:** allow fast, reversible interactions to change direction
+  from their current visual state.
+- **Data First:** never animate in a way that competes with KPI reading,
+  table scanning, status recognition, or an operational action.
+
+Motion must feel cohesive across the product. A single playful or elastic
+component is a defect when it conflicts with the calm, precise oPanel tone.
+
+### 14.2 Motion Decision Framework
+
+Before specifying any animation, answer these questions in order:
+
+1. **Should this animate?** Consider how frequently the interaction occurs and
+   whether an instant state change is clearer.
+2. **Why does it animate?** Name the concrete UX purpose.
+3. **How frequently is it triggered?** Assign a frequency tier before choosing
+   a motion level.
+4. **What kind of change is it?** Identify it as spatial, stateful, physical,
+   or purely visual.
+5. **Does it need to be interruptible?** Any rapidly reversible or
+   user-directed motion must be able to retarget.
+6. **Which easing or spring model fits it?** Match the motion model to its
+   purpose, not to a component library default.
+7. **How long should it take?** Use the duration budget for the interaction's
+   scale and frequency; a spring's response is not its duration.
+8. **What is its spatial origin?** Connect the motion to its trigger, edge, or
+   invocation point when such a relationship exists.
+9. **Which properties should animate?** Prefer compositor-friendly properties
+   and avoid animating layout as a default.
+10. **How does reduced motion represent the same state?** Define the gentler
+    or static equivalent before shipping the motion.
+
+If the purpose is unclear, the default decision is **no animation**. “Looks
+cool,” “feels dynamic,” “makes the dashboard alive,” and “adds visual
+interest” are not sufficient reasons for frequent UI motion.
+
+### 14.3 Purpose and Frequency
+
+Valid motion purposes are limited to the following:
+
+- **Feedback:** confirm that the interface received a press, toggle, save,
+  copy, or selection.
+- **State indication:** make a meaningful state change legible.
+- **Spatial consistency:** show where a drawer, popover, tooltip, or detail
+  surface came from and where it returns.
+- **Continuity:** bridge a content or layout change that would otherwise
+  teleport, jump, or lose context.
+- **Physical interaction:** represent drag, swipe, momentum, or direct
+  manipulation.
+- **Explanation:** teach a relationship or operation in rare onboarding or
+  explanatory content.
+- **Delight:** add a restrained response only to a rare, meaningful moment
+  such as onboarding or exceptional success.
+
+Frequency determines the motion budget:
+
+| Frequency | Motion budget | Rule |
+|---|---|---|
+| Extremely frequent, keyboard-driven, or repeated navigation | Level 0: instant or nearly instant | No visible entrance/exit animation; critical operational response is immediate |
+| Frequent hover, table actions, filters, or selections | Level 1: minimal feedback | Use only the smallest useful confirmation; avoid visual noise |
+| Normal dropdown, disclosure, popover, or select | Level 2: short functional motion | Use brief motion only when it clarifies state or ownership |
+| Occasional modal, drawer, sheet, or toast | Level 3: standard motion | Use spatially meaningful motion without delaying the task |
+| Gesture or drag | Level 4: continuous physical motion | Track input directly and preserve velocity and reversibility |
+| Rare onboarding, milestone, or exceptional success | Level 5: limited delight | Delight is allowed only when it is non-blocking and genuinely meaningful |
+
+Keyboard-driven actions default to Level 0. Navigation used repeatedly must
+not acquire a long page transition. Hover, row-action, filter, and table
+selection feedback must not repeatedly animate a high-density workspace. Rare
+motion must not become the default dashboard style.
+
+### 14.4 Motion Hierarchy
+
+The motion level describes the amount of motion a purpose earns; it does not
+override frequency or accessibility:
+
+- **Level 0 — Instant:** keyboard actions, critical operational responses,
+  extremely frequent navigation, and changes where motion adds no meaning.
+- **Level 1 — Micro Feedback:** press, hover where supported, focus-adjacent
+  feedback, toggle confirmation, and lightweight selection.
+- **Level 2 — Component Transition:** dropdowns, popovers, disclosures,
+  tooltips, selects, and segmented state changes.
+- **Level 3 — Spatial Transition:** drawers, modals, sheets, large panels, and
+  substantial detail relationships.
+- **Level 4 — Physical / Gesture Motion:** drag, swipe, reorder, dismiss, and
+  other direct manipulation with momentum or boundary behavior.
+- **Level 5 — Delight:** rare onboarding, exceptional success, or another
+  explicitly meaningful moment; never a normal dashboard treatment.
+
+### 14.5 Easing System
+
+oPanel uses semantic easing roles rather than one universal easing curve:
+
+| Motion situation | Easing | Intent |
+|---|---|---|
+| Enter or exit | `cubic-bezier(0.23, 1, 0.32, 1)` | Strong ease-out: immediate response with a natural settle |
+| Move or morph on screen | `cubic-bezier(0.77, 0, 0.175, 1)` | Strong ease-in-out: coherent acceleration and deceleration |
+| Drawer or sheet spatial movement | `cubic-bezier(0.32, 0.72, 0, 1)` | Spatially direct movement with a responsive landing |
+| Hover or color change | `ease` | Light, unobtrusive visual feedback |
+| Continuous deterministic motion | `linear` | Uniform progress or other genuinely constant motion |
+| Gesture or physical motion | Spring | Velocity-aware, retargetable movement rather than a fixed curve |
+
+The defined curves are shared semantic roles, not arbitrary per-component
+choices. **`ease-in` for UI entrances is prohibited.** An ease-in entrance is
+slow at the moment the user is watching and makes the interface feel
+unresponsive.
+
+### 14.6 Duration and Perceived Performance
+
+Time-based motion uses a component and frequency budget:
+
+| Interaction | Target range or policy |
+|---|---:|
+| Press feedback | `100–160ms` |
+| Tooltip or tiny popover | `125–180ms` |
+| Dropdown, select, or lightweight disclosure | `150–220ms` |
+| Standard component transition | `160–240ms` |
+| Modal, drawer, or sheet | `200–300ms` default |
+| Large spatial transition | Only as long as the spatial relationship requires; remain restrained |
+| Marketing or explanatory motion | Not a normal oPanel application pattern |
+
+Normal oPanel UI animation should generally stay below approximately `300ms`.
+This is a budget, not a mechanical hard cap: a large spatial transition or a
+physical gesture settle may need more time when distance and velocity justify
+it, but it must not feel sluggish.
+
+Spring motion is specified by physical response and damping, not by a fixed
+duration. The first visible response must be immediate. Easing must not create
+an artificial wait before the user sees system feedback, and animation must
+never delay a business action that is already ready to complete.
+
+When an interaction includes a deliberate phase, such as hold-to-confirm, the
+deliberate phase may be slower while the system's response remains quick. Do
+not make a user wait for a decorative phase to finish before accepting the
+next input.
+
+### 14.7 Press, Hover, and Immediate Feedback
+
+- Press feedback starts on pointer-down or the equivalent active input, not
+  only after release.
+- Press scale is subtle, normally approximately `0.95–0.98`, and is chosen by
+  control size and interaction role.
+- One element owns the press scale. Do not independently scale the container,
+  text, and icon in a way that compounds into excessive shrinkage.
+- A press may combine physical feedback with a semantic color or state change,
+  but color alone is not the default substitute for acknowledging a press.
+- Hover-based motion is allowed only where hover is a real input capability.
+  Touch and keyboard users must receive an equivalent non-hover path.
+- High-frequency hover motion is near-imperceptible or absent. It must never
+  distract from table scanning or data comparison.
+
+### 14.8 Enter and Exit
+
+- Enter and exit use the same spatial path. A right-originating drawer enters
+  from the right and exits to the right.
+- UI must not enter from `scale(0)`. When scale contributes meaning, start
+  near the final size, approximately `0.9–0.97`, with opacity as needed.
+- Do not animate every mount, refresh, or state change. Keep a simple change
+  instant when motion would add no explanation or feedback.
+- An exit must not leave a stale or misleading copy of business data on
+  screen, and an entrance must not hide the content needed to act.
+
+### 14.9 Spatial Origin and Continuity
+
+Motion must answer “where did this come from?” when the interface has a clear
+source:
+
+| Surface | Spatial origin |
+|---|---|
+| Popover, dropdown, menu, or tooltip | The triggering control or anchor; do not default to center without a reason |
+| Modal | Center of the viewport when no single trigger origin explains the task |
+| Drawer or sheet | The edge or direction from which the surface is attached |
+| Context menu | The invocation point or the object it acts on |
+| Detail surface | The owning row, card, or content region when that relationship is meaningful |
+
+Origin-aware motion, path, and easing must agree. An element must not enter
+from one relationship and exit through an unrelated direction. If there is no
+meaningful spatial relationship, use a restrained component transition or an
+instant state instead of inventing one.
+
+### 14.10 State Changes and Morphing
+
+- Use an instant change when it is the clearest representation of a simple
+  state.
+- Use a transition or morph when it helps users understand that two states
+  belong to the same object or action.
+- Morphing is appropriate when the source and destination icons or states
+  have a clear semantic continuity.
+- Do not morph merely to show off, for unrelated icons, or for a high-frequency
+  action whose speed matters more than visual continuity.
+- A morph must have a static or gentler equivalent for reduced motion and must
+  not block the underlying action.
+- The Motion System defines behavior, not a particular icon component or
+  implementation API.
+
+### 14.11 Interruptibility and Transition Choice
+
+Interruptibility is a core requirement for any rapidly reversible or
+user-directed motion:
+
+- Continue from the current presentation value, not from the original start
+  or logical target value.
+- Retarget an open/close, disclosure, toggle, toast, panel, drag, or swipe
+  from its current visual state.
+- Never lock input until an animation completes.
+- Never force a visible jump, restart from zero, or make the user wait for a
+  previous animation before reversing it.
+
+Choose the motion mechanism by behavior:
+
+| Need | Preferred behavior |
+|---|---|
+| Reversible state or rapidly triggered UI | CSS transition that can retarget from the current value |
+| Predetermined time sequence | Keyframes only when the sequence itself is necessary and interruption is not the primary interaction |
+| Gesture, velocity, or physical continuity | Spring or equivalent motion that carries current value and velocity |
+
+Keyframes are not the default for toggles, toasts, disclosures, or other
+rapidly reversible UI. A spring is not a license to add bounce; it is a way to
+preserve continuity when physical input requires it.
+
+### 14.12 Springs and Physical Motion
+
+oPanel does not use named spring presets as its Motion taxonomy. Specify a
+spring by physical purpose:
+
+| Physical purpose | Rule |
+|---|---|
+| Default UI movement | Near-critical or critically damped behavior, approximately damping ratio `1.0`, with no visible bounce |
+| Repositioning | Smooth, retargetable movement that settles without visual noise |
+| Drawer or sheet | Quick, weight-aware movement that can reverse without a hard seam |
+| Momentum-driven gesture | Limited under-damping, approximately `0.8`, only when the gesture carries meaningful velocity |
+| Decorative bounce | Prohibited by default; physical character must come from the interaction itself |
+
+Spring response controls how quickly motion approaches its target; it is not a
+fixed duration. Use a lower damping ratio only when overshoot communicates
+momentum, release velocity, or a physical boundary. “More premium” is not a
+spring justification.
+
+### 14.13 Gesture Motion
+
+These rules define future direct-manipulation behavior without assuming that a
+particular gesture exists:
+
+- **1:1 tracking:** the object follows the user's input continuously and
+  respects the point where it was grabbed.
+- **Velocity handoff:** release motion inherits the gesture's velocity so the
+  settle has no visible seam.
+- **Momentum projection:** choose a resting or snap point from the projected
+  endpoint when velocity materially changes where the gesture is going.
+- **Rubber banding:** use progressive resistance only at a real physical
+  boundary; do not create a hard stop that reads as frozen.
+- **Interruptibility:** an object in motion can be grabbed again, redirected,
+  or reversed from its current presentation.
+- **Input continuity:** one active gesture must not jump because another input
+  point or unrelated recognizer takes over.
+
+Do not apply gesture physics, momentum, or rubber-banding to ordinary
+dropdowns, filters, table sorting, or static navigation.
+
+### 14.14 Loading and Progress Motion
+
+- Loading motion must stabilize the wait rather than create visual anxiety.
+- Skeletons preserve the intended layout; they do not perform decorative
+  entrance choreography.
+- Use determinate progress only when the system has real progress to report.
+- Do not add an entrance animation to every data refresh or make an entire
+  dashboard repeatedly animate during periodic updates.
+- Background sync should remain low-interference while exposing meaningful
+  status when attention is needed.
+- Success feedback is concise and finite. Do not repeat celebrations or use
+  motion that competes with the next operational task.
+
+### 14.15 Performance and Tool Choice
+
+- Prefer `transform` and `opacity` for animated properties.
+- Avoid animating `width`, `height`, `margin`, `padding`, `top`, or `left` as a
+  default because layout and paint work can make dense screens feel unstable.
+- `transition: all` is prohibited. Name the properties that are allowed to
+  transition.
+- Do not use a continuous `requestAnimationFrame` loop for simple deterministic
+  motion that a native CSS mechanism can express.
+- Avoid large layout animations, repeated filter or shadow animation, and
+  unnecessary simultaneous property changes.
+- Blur is only a limited bridge for a crossfade that would otherwise show a
+  double exposure. It is not a default oPanel motion language; keep transition
+  blur light and below `20px` when it is justified.
+- Stagger is not a default oPanel style. Use it only for a small, low-frequency
+  group when the sequence explains group relationship, keep delays around
+  `30–80ms`, and never block interaction. Do not stagger KPI cards, table rows,
+  navigation, or repeated dashboard refreshes.
+- CSS, WAAPI, and a spring-capable implementation are all valid tools. Choose
+  the cheapest tool that preserves the behavior; do not require Motion,
+  Framer Motion, GSAP, React Spring, or any other animation library.
+
+### 14.16 Reduced Motion
+
+**Reduced Motion does not mean No Feedback.** When the user requests reduced
+motion, provide the same meaning through a gentler or static equivalent:
+
+- Reduce or remove large displacement, spring overshoot, parallax, large
+  scale changes, decorative movement, and repeated spatial motion.
+- Keep short opacity or color transitions when they aid comprehension, and
+  keep necessary progress or state feedback in a calm form.
+- Replace spatial movement with a cross-fade or static state when movement is
+  not essential to understanding the relationship.
+- Preserve the same final content, state, focus, information hierarchy, and
+  ability to interact.
+- Do not use `animation: none !important` and `transition: none !important`
+  as the blanket design-system strategy.
+- Hover motion remains gated by actual input capability regardless of motion
+  preference.
+
+### 14.17 Motion Anti-Patterns
+
+The following are prohibited in oPanel Motion / Animation design:
+
+- Animation whose only purpose is decoration on frequent UI
+- `ease-in` UI entrances
+- Excessive animation on keyboard actions
+- Long animation on repeated navigation
+- `transition: all`
+- `scale(0)` entrances
+- Incorrect transform origin
+- Popovers scaling from center without a spatial reason
+- Spatially inconsistent enter/exit paths
+- Non-interruptible reversible UI
+- Forcing an animation to finish before accepting new input
+- Keyframes used by default for rapidly reversible state
+- Unnecessary layout-property animation
+- Excessive bounce
+- Bounce without physical justification
+- Repeated dashboard entrance animation
+- Table-row animation noise
+- Excessive stagger
+- Decorative infinite motion
+- Hover movement that is not gated by input capability
+- Movement without a reduced-motion equivalent
+- Large parallax in operational UI
+- Animation that obscures data
+- Animation that delays business actions
+- Simultaneous competing animations
+- Animation added merely because a component library supports it
+- Heavy blur, filter, or shadow animation without a specific perceptual need
+- Continuous script-driven motion where CSS or a simpler mechanism is enough
 
 ## 15. Design Authority / Source of Truth
 
 - `DESIGN.md` is the normative source for visual language, tokens, semantic
   meaning, component contracts, content behavior, responsive priority, and
-  accessibility requirements.
+  accessibility requirements, and Motion System rules.
 - Any runtime token layer must mirror the values and semantics here. Feature
   work must consume the system rather than inventing new colors, radii,
   shadows, type scales, or icon families.
@@ -871,8 +1219,9 @@ oPanel. Do not add them through this document.
   shape, hierarchy level, or semantic tone. Add a new rule only when the
   product meaning cannot be represented by this system.
 - Apple remains the base design language, oPanel remains the visual identity,
-  and UI UX Pro Max remains a UI/UX quality supplement. No later external
-  catalog silently outranks this authority order.
+  UI UX Pro Max remains a UI/UX quality supplement without Motion authority,
+  and Emil Kowalski Skills remains a Motion / Animation / Interaction quality
+  supplement. No later external catalog silently outranks this authority order.
 
 ## 16. UI / UX Definition of Done
 
@@ -933,3 +1282,23 @@ oPanel. Do not add them through this document.
 - [ ] The legend is clear, or direct labels provide equivalent context.
 - [ ] Tooltips provide precise values and meaningful context.
 - [ ] The chart is not being used only as decoration.
+
+### Motion
+
+- [ ] Every animation has a functional reason.
+- [ ] Motion budget matches interaction frequency.
+- [ ] High-frequency and keyboard-driven actions are instant or minimal.
+- [ ] Easing matches the motion type.
+- [ ] Duration matches component scale and frequency.
+- [ ] UI entrances do not use `ease-in`.
+- [ ] Enter and exit preserve spatial continuity.
+- [ ] Trigger-anchored UI uses an appropriate spatial origin.
+- [ ] Rapidly reversible motion is interruptible.
+- [ ] Gesture motion preserves direct manipulation and velocity where relevant.
+- [ ] Spring or bounce is used only where physicality justifies it.
+- [ ] Motion does not delay operational actions.
+- [ ] Motion does not compete with data.
+- [ ] `transition: all` is not used.
+- [ ] Compositor-friendly properties are preferred.
+- [ ] Reduced motion preserves state, feedback, and usability.
+- [ ] Repeated dashboard updates do not create animation noise.
