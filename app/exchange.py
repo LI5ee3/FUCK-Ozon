@@ -160,59 +160,41 @@ def service_penalty_rates_for_event(periods, event_time):
     return _rates_for_event(periods, event_time)
 
 
-def _current_service_penalty_rate_entries(db, moment):
+def current_exchange_rate_entries(db, moment):
     current_date = moment.astimezone(MOSCOW).date()
     day_start, day_end = utc_period(current_date, current_date)
-    periods = load_service_penalty_rate_periods(
+    service_periods = load_service_penalty_rate_periods(
         db, _iso(day_start), _iso(day_end))
+    sales_periods = load_sales_rate_periods(
+        db, _iso(day_start), _iso(day_end))
+    sales_by_interval = {(start, end): rates for start, end, rates in sales_periods}
     entries = {}
     for currency in ("USD", "CNY"):
-        matching = [period for period in periods
-                    if period[0] <= moment < period[1] and currency in period[2]]
+        matching = [(start, end, service_rates[currency], sales_by_interval[(start, end)][currency])
+                    for start, end, service_rates in service_periods
+                    if start <= moment < end
+                    and currency in service_rates
+                    and currency in sales_by_interval.get((start, end), {})]
         if len(matching) != 1:
             continue
-        start, end, _ = matching[0]
-        rates = service_penalty_rates_for_event(matching, moment)
-        if rates and currency in rates:
-            entries[currency] = {
-                "service_penalty_exchange_rate": str(rates[currency]),
-                "valid_from_utc": _iso(start),
-                "valid_to_utc": _iso(end),
-            }
+        start, end, service_rate, sales_rate = matching[0]
+        entries[currency] = {
+            "service_penalty_exchange_rate": str(service_rate),
+            "sales_exchange_rate": str(sales_rate),
+            "valid_from_utc": _iso(start),
+            "valid_to_utc": _iso(end),
+        }
     return entries
 
 
-def current_service_penalty_exchange_rates(now=None):
+def _utc_moment(now=None):
     if now is None:
-        moment = datetime.now(timezone.utc)
+        return datetime.now(timezone.utc)
     elif isinstance(now, datetime):
         moment = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
-        moment = moment.astimezone(timezone.utc)
+        return moment.astimezone(timezone.utc)
     else:
-        moment = _parse_utc(now)
-
-    def read_current():
-        with connect() as db:
-            return _current_service_penalty_rate_entries(db, moment)
-
-    entries = read_current()
-    sync_error = None
-    if not all(currency in entries for currency in ("USD", "CNY")):
-        current_date = moment.astimezone(MOSCOW).date()
-        try:
-            sync_exchange_rates(current_date, current_date)
-        except (OSError, RuntimeError, ValueError) as error:
-            sync_error = str(error)
-        entries = read_current()
-
-    result = {
-        "source": SOURCE,
-        "as_of": _iso(moment),
-        "rates": {currency: entries.get(currency) for currency in ("USD", "CNY")},
-    }
-    if sync_error and not all(result["rates"].values()):
-        result["error"] = sync_error[:200]
-    return result
+        return _parse_utc(now)
 
 
 def convert_compensation(db, amount, compensated_at, source_currency, target_currency):
@@ -241,14 +223,11 @@ def convert_compensation(db, amount, compensated_at, source_currency, target_cur
     return result
 
 
-def exchange_rate_status():
+def exchange_rate_status(now=None):
+    moment = _utc_moment(now)
     with connect() as db:
         summary = db.execute("SELECT MAX(fetched_at),MAX(valid_to_utc) FROM exchange_rates").fetchone()
-        latest = {}
-        for currency in ("USD", "CNY"):
-            row = db.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate,
-              valid_from_utc,valid_to_utc FROM exchange_rates
-              WHERE from_currency=? AND to_currency='RUB' AND source=?
-              ORDER BY valid_to_utc DESC LIMIT 1""", (currency, SOURCE)).fetchone()
-            latest[currency] = dict(row) if row else None
-    return {"source": SOURCE, "last_success_at": summary[0], "data_through": summary[1], "rates": latest}
+        current = current_exchange_rate_entries(db, moment)
+    return {"source": SOURCE, "last_success_at": summary[0], "data_through": summary[1],
+            "as_of": _iso(moment),
+            "rates": {currency: current.get(currency) for currency in ("USD", "CNY")}}

@@ -23,6 +23,7 @@ describe("Sync exchange rate contract", () => {
       source: "ozon_xapi",
       last_success_at: null,
       data_through: null,
+      as_of: "2026-08-31T08:00:00Z",
       rates: {
         USD: {
           service_penalty_exchange_rate: "90",
@@ -58,6 +59,7 @@ describe("Sync exchange rate contract", () => {
       source: "ozon_xapi",
       last_success_at: null,
       data_through: null,
+      as_of: "2026-08-31T08:00:00Z",
       rates: {
         USD: {
           service_penalty_exchange_rate: "90",

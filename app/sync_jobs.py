@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from .alerts import evaluate_alerts
 from .db import connect, transaction
 from .dingtalk import send_sync_failure
+from .exchange import MOSCOW, current_exchange_rate_entries, sync_exchange_rates
 from .ozon.client import BEIJING
 from .ozon.sync import sync_module
 from .performance import sync_performance_campaigns, sync_performance_statistics
@@ -21,6 +22,8 @@ PERFORMANCE_SYNC_MODULE = "ad_campaigns"
 AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
 _auto_sync_stop = threading.Event()
 _auto_sync_thread = None
+_exchange_rate_last_attempt_at = None
+_EXCHANGE_RATE_RETRY_COOLDOWN = timedelta(hours=1)
 
 
 def _trim_sync_runs(db, keep=10, scheduled_slot=None, today=None):
@@ -247,12 +250,42 @@ def run_auto_sync_once(now=None):
     return started
 
 
+def run_exchange_rate_auto_sync_once(now=None):
+    global _exchange_rate_last_attempt_at
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    moment = moment.astimezone(timezone.utc)
+    with connect() as db:
+        current = current_exchange_rate_entries(db, moment)
+    if all(currency in current for currency in ("USD", "CNY")):
+        return False
+
+    last_attempt = _exchange_rate_last_attempt_at
+    same_moscow_day = last_attempt and last_attempt.astimezone(MOSCOW).date() == moment.astimezone(MOSCOW).date()
+    if same_moscow_day and moment - last_attempt < _EXCHANGE_RATE_RETRY_COOLDOWN:
+        return False
+
+    _exchange_rate_last_attempt_at = moment
+    current_date = moment.astimezone(MOSCOW).date()
+    try:
+        sync_exchange_rates(current_date, current_date)
+    except Exception:
+        logger.exception("Ozon 汇率自动同步失败")
+        return False
+    return True
+
+
 def _auto_sync_scheduler():
     while not _auto_sync_stop.wait(20):
         try:
             run_auto_sync_once()
         except Exception:
-            pass
+            logger.exception("自动同步调度失败")
+        try:
+            run_exchange_rate_auto_sync_once()
+        except Exception:
+            logger.exception("Ozon 汇率自动同步调度失败")
 
 
 def _start_auto_sync_scheduler():

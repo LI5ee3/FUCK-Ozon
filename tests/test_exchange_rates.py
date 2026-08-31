@@ -6,7 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from app import db
 from app.exchange import (convert_compensation, exchange_rate_status, split_period,
-                          current_service_penalty_exchange_rates, sync_exchange_rates, utc_period)
+                          sync_exchange_rates, utc_period)
 from app.routers.dashboard import _gmv_summary, order_trend, summary
 from tests.support import DatabaseTestCase
 
@@ -71,9 +71,10 @@ class ExchangeRateTest(DatabaseTestCase):
         self.assertEqual(count, 69 * 2)
         self.assertEqual(row["service_penalty_exchange_rate"], "90.123456789")
         self.assertEqual(row["sales_exchange_rate"], "88.987654321")
-        status = exchange_rate_status()
+        status = exchange_rate_status(datetime(2026, 2, 1, 12, tzinfo=timezone.utc))
         self.assertEqual(status["rates"]["USD"]["service_penalty_exchange_rate"], "90.123456789")
         self.assertEqual(status["rates"]["USD"]["sales_exchange_rate"], "88.987654321")
+        self.assertEqual(status["as_of"], "2026-02-01T12:00:00Z")
         self.assertNotIn("base_rate", status["rates"]["USD"])
         self.assertNotIn("rate_with_adjustment", status["rates"]["USD"])
         self.assertFalse(any(key.lower() in ("client-id", "api-key", "cookie")
@@ -147,14 +148,17 @@ class ExchangeRateTest(DatabaseTestCase):
         self.assertEqual(platform_usd["service_penalty_exchange_rates"], {"USD_RUB": "90"})
         self.assertNotIn("base_rates", platform_usd)
 
-    def test_exchange_rate_status_preserves_missing_historical_sales_rate(self):
+    def test_exchange_rate_status_does_not_expose_incomplete_current_rate(self):
         with db.transaction() as connection:
             connection.execute("""INSERT INTO exchange_rates VALUES(
               'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90',NULL,
               'ozon_xapi','2026-08-22T22:00:00Z')""")
-        status = exchange_rate_status()
-        self.assertEqual(status["rates"]["USD"]["service_penalty_exchange_rate"], "90")
-        self.assertIsNone(status["rates"]["USD"]["sales_exchange_rate"])
+        status = exchange_rate_status(datetime(2026, 8, 22, 0, tzinfo=timezone.utc))
+        self.assertIsNone(status["rates"]["USD"])
+        with db.connect() as connection:
+            self.assertIsNone(connection.execute(
+                "SELECT sales_exchange_rate FROM exchange_rates"
+            ).fetchone()[0])
 
     def test_each_ozon_rate_is_required_positive_and_finite(self):
         for field in ("rate", "rateWithAdjustment"):
@@ -202,82 +206,68 @@ class ExchangeRateTest(DatabaseTestCase):
                 "SELECT service_penalty_exchange_rate, sales_exchange_rate FROM exchange_rates"
             ).fetchone()), ("90", "88"))
 
-    def test_current_service_penalty_rates_use_only_current_utc_interval(self):
+    def test_exchange_rate_status_uses_only_current_utc_interval(self):
         with db.transaction() as connection:
             connection.executemany("""INSERT INTO exchange_rates VALUES(
-              ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-08-31T00:00:00Z')""", [
-                ("USD", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "80"),
-                ("CNY", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "12")])
+              ?,'RUB',?,?,?,?, 'ozon_xapi','2026-08-31T00:00:00Z')""", [
+                ("USD", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "80", "88"),
+                ("CNY", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "12", "11")])
         moment = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
         with patch("app.exchange.sync_exchange_rates") as sync:
-            result = current_service_penalty_exchange_rates(moment)
+            result = exchange_rate_status(moment)
         sync.assert_not_called()
         self.assertEqual(result["rates"]["USD"]["service_penalty_exchange_rate"], "80")
         self.assertEqual(result["rates"]["CNY"]["service_penalty_exchange_rate"], "12")
+        self.assertEqual(result["rates"]["USD"]["sales_exchange_rate"], "88")
         self.assertEqual(result["rates"]["USD"]["valid_from_utc"], "2026-08-30T21:00:00Z")
 
-    def test_current_service_penalty_rates_ignore_expired_and_future_intervals(self):
+    def test_exchange_rate_status_ignores_expired_and_future_intervals(self):
         for valid_from, valid_to in (
             ("2026-08-29T21:00:00Z", "2026-08-30T21:00:00Z"),
             ("2026-09-01T21:00:00Z", "2026-09-02T21:00:00Z"),
         ):
             with db.transaction() as connection:
                 connection.executemany("""INSERT INTO exchange_rates VALUES(
-                  ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-08-31T00:00:00Z')""", [
-                    ("USD", valid_from, valid_to, "80"), ("CNY", valid_from, valid_to, "12")])
+                  ?,'RUB',?,?,?,?, 'ozon_xapi','2026-08-31T00:00:00Z')""", [
+                    ("USD", valid_from, valid_to, "80", "88"),
+                    ("CNY", valid_from, valid_to, "12", "11")])
             with patch("app.exchange.sync_exchange_rates", return_value={"records": 0}) as sync:
-                result = current_service_penalty_exchange_rates(
+                result = exchange_rate_status(
                     datetime(2026, 8, 31, 12, tzinfo=timezone.utc))
-            sync.assert_called_once_with(date(2026, 8, 31), date(2026, 8, 31))
+            sync.assert_not_called()
             self.assertIsNone(result["rates"]["USD"])
             self.assertIsNone(result["rates"]["CNY"])
 
-    def test_current_service_penalty_rates_never_fallback_to_sales_rate(self):
+    def test_exchange_rate_status_never_falls_back_to_sales_rate(self):
         with db.transaction() as connection:
             connection.execute("""INSERT INTO exchange_rates VALUES(
               'USD','RUB','2026-08-30T21:00:00Z','2026-08-31T21:00:00Z','0','88',
               'ozon_xapi','2026-08-31T00:00:00Z')""")
         with patch("app.exchange.sync_exchange_rates", return_value={"records": 0}) as sync:
-            result = current_service_penalty_exchange_rates(
+            result = exchange_rate_status(
                 datetime(2026, 8, 31, 12, tzinfo=timezone.utc))
-        sync.assert_called_once_with(date(2026, 8, 31), date(2026, 8, 31))
+        sync.assert_not_called()
         self.assertIsNone(result["rates"]["USD"])
 
-    def test_current_service_penalty_rates_sync_once_then_rereads_current_interval(self):
-        def sync_current(date_from, date_to):
-            self.assertEqual((date_from, date_to), (date(2026, 8, 31), date(2026, 8, 31)))
-            with db.transaction() as connection:
-                connection.executemany("""INSERT INTO exchange_rates VALUES(
-                  ?,'RUB','2026-08-30T21:00:00Z','2026-08-31T21:00:00Z',?,NULL,
-                  'ozon_xapi','2026-08-31T12:00:00Z')""", [("USD", "85.6007"), ("CNY", "12.7335")])
-            return {"records": 2, "segments": 1}
-
-        with patch("app.exchange.sync_exchange_rates", side_effect=sync_current) as sync:
-            result = current_service_penalty_exchange_rates(
-                datetime(2026, 8, 31, 12, tzinfo=timezone.utc))
-        sync.assert_called_once()
-        self.assertEqual(result["rates"]["USD"]["service_penalty_exchange_rate"], "85.6007")
-        self.assertEqual(result["rates"]["CNY"]["service_penalty_exchange_rate"], "12.7335")
-
-    def test_current_service_penalty_rates_use_half_open_interval_boundaries(self):
+    def test_exchange_rate_status_uses_half_open_interval_boundaries(self):
         with db.transaction() as connection:
             connection.executemany("""INSERT INTO exchange_rates VALUES(
-              ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-08-31T00:00:00Z')""", [
-                ("USD", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "80"),
-                ("CNY", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "12")])
+              ?,'RUB',?,?,?,?, 'ozon_xapi','2026-08-31T00:00:00Z')""", [
+                ("USD", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "80", "88"),
+                ("CNY", "2026-08-30T21:00:00Z", "2026-08-31T21:00:00Z", "12", "11")])
         with patch("app.exchange.sync_exchange_rates") as sync:
-            at_start = current_service_penalty_exchange_rates(
+            at_start = exchange_rate_status(
                 datetime(2026, 8, 30, 21, tzinfo=timezone.utc))
         sync.assert_not_called()
         self.assertEqual(at_start["rates"]["USD"]["service_penalty_exchange_rate"], "80")
 
         with db.transaction() as connection:
             connection.executemany("""INSERT INTO exchange_rates VALUES(
-              ?,'RUB',?,?,?,NULL,'ozon_xapi','2026-09-01T00:00:00Z')""", [
-                ("USD", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "81"),
-                ("CNY", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "13")])
+              ?,'RUB',?,?,?,?, 'ozon_xapi','2026-09-01T00:00:00Z')""", [
+                ("USD", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "81", "89"),
+                ("CNY", "2026-08-31T21:00:00Z", "2026-09-01T21:00:00Z", "13", "14")])
         with patch("app.exchange.sync_exchange_rates") as sync:
-            at_end = current_service_penalty_exchange_rates(
+            at_end = exchange_rate_status(
                 datetime(2026, 8, 31, 21, tzinfo=timezone.utc))
         sync.assert_not_called()
         self.assertEqual(at_end["rates"]["USD"]["service_penalty_exchange_rate"], "81")

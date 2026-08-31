@@ -84,6 +84,7 @@ export interface ExchangeRateStatus {
   source: string;
   last_success_at: string | null;
   data_through: string | null;
+  as_of: string;
   rates: Record<string, ExchangeRate | null>;
 }
 

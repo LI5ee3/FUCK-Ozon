@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 import unittest
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -10,7 +10,8 @@ from app import db
 from app.ozon.client import BEIJING
 from app.routers.sync import sync as start_sync
 from app.sync_jobs import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_sync_runs,
-                           auto_sync_slot, run_auto_sync_once, save_auto_sync_settings)
+                           auto_sync_slot, run_auto_sync_once, run_exchange_rate_auto_sync_once,
+                           save_auto_sync_settings)
 from tests.support import DatabaseTestCase, MockRequest
 
 
@@ -105,6 +106,34 @@ class AutoSyncTest(DatabaseTestCase):
         self.assertEqual(cooling, [])
         self.assertEqual(len(retried), 1)
         self.assertEqual(thread.call_count, 1)
+
+    def test_exchange_rate_auto_sync_skips_complete_current_data(self):
+        with db.transaction() as connection:
+            connection.executemany("""INSERT INTO exchange_rates VALUES(
+              ?,'RUB','2026-08-30T21:00:00Z','2026-08-31T21:00:00Z',?,?,
+              'ozon_xapi','2026-08-31T00:00:00Z')""", [
+                ("USD", "90", "88"), ("CNY", "12", "11")])
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        with patch("app.sync_jobs._exchange_rate_last_attempt_at", None), \
+             patch("app.sync_jobs.sync_exchange_rates") as sync:
+            self.assertFalse(run_exchange_rate_auto_sync_once(now))
+        sync.assert_not_called()
+
+    def test_exchange_rate_auto_sync_uses_moscow_today_when_current_data_is_missing(self):
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        with patch("app.sync_jobs._exchange_rate_last_attempt_at", None), \
+             patch("app.sync_jobs.sync_exchange_rates") as sync:
+            self.assertTrue(run_exchange_rate_auto_sync_once(now))
+        sync.assert_called_once_with(date(2026, 8, 31), date(2026, 8, 31))
+
+    def test_exchange_rate_auto_sync_throttles_failures_for_one_hour(self):
+        now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+        with patch("app.sync_jobs._exchange_rate_last_attempt_at", None), \
+             patch("app.sync_jobs.sync_exchange_rates", side_effect=RuntimeError("offline")) as sync:
+            run_exchange_rate_auto_sync_once(now)
+            run_exchange_rate_auto_sync_once(now + timedelta(minutes=30))
+            run_exchange_rate_auto_sync_once(now + timedelta(hours=1, seconds=1))
+        self.assertEqual(sync.call_count, 2)
 
     def test_settings_validation_and_stock_range(self):
         save_auto_sync_settings(settings(interval=6, days=7))

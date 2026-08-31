@@ -1,8 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
-from ..exchange import (current_service_penalty_exchange_rates, exchange_rate_status,
-                        sync_exchange_rates)
+from ..exchange import exchange_rate_status, sync_exchange_rates
 from .common import _overview_range, read_bounded_json
 
 
@@ -13,11 +12,6 @@ JSON_MAX_BODY_BYTES = 8 * 1024
 @router.get("/api/exchange-rates")
 def get_exchange_rate_status():
     return exchange_rate_status()
-
-
-@router.get("/api/exchange-rates/current-service-penalty")
-async def get_current_service_penalty_exchange_rates():
-    return await run_in_threadpool(current_service_penalty_exchange_rates)
 
 
 @router.post("/api/exchange-rates/sync")

@@ -11,11 +11,11 @@ const api = vi.hoisted(() => ({
   listProductCostHistory: vi.fn(),
 }));
 const commissionApi = vi.hoisted(() => ({ getProductCommission: vi.fn() }));
-const servicePenaltyApi = vi.hoisted(() => ({ getCurrentServicePenaltyExchangeRates: vi.fn() }));
+const exchangeApi = vi.hoisted(() => ({ getExchangeRateStatus: vi.fn() }));
 
 vi.mock("../product-costs/api", () => api);
 vi.mock("./commission", () => commissionApi);
-vi.mock("./servicePenalty", () => servicePenaltyApi);
+vi.mock("../sync/api", () => exchangeApi);
 
 const usdCost = {
   id: 1,
@@ -165,17 +165,21 @@ describe("ProfitView forecast-cost integration", () => {
         fetched_at: "2026-08-31T08:00:00Z",
       });
     });
-    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockResolvedValue({
+    exchangeApi.getExchangeRateStatus.mockResolvedValue({
       source: "ozon_xapi",
+      last_success_at: "2026-08-31T08:00:00Z",
+      data_through: "2026-08-31T21:00:00Z",
       as_of: "2026-08-31T08:00:00Z",
       rates: {
         USD: {
           service_penalty_exchange_rate: "80",
+          sales_exchange_rate: "88",
           valid_from_utc: "2026-08-30T21:00:00Z",
           valid_to_utc: "2026-08-31T21:00:00Z",
         },
         CNY: {
           service_penalty_exchange_rate: "12",
+          sales_exchange_rate: "11",
           valid_from_utc: "2026-08-30T21:00:00Z",
           valid_to_utc: "2026-08-31T21:00:00Z",
         },
@@ -204,7 +208,7 @@ describe("ProfitView forecast-cost integration", () => {
     await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
     await nextTick();
     await flushPromises();
-    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
+    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
     expect(numberInput(wrapper, "采购成本").props("value")).toBe(60);
     expect(numberInput(wrapper, "重量克数").props("value")).toBe(200);
     expect(numberInput(wrapper, "包装成本 CNY").props("value")).toBe(2);
@@ -239,7 +243,7 @@ describe("ProfitView forecast-cost integration", () => {
     expect(numberInput(wrapper, "其他成本 CNY").props("value")).toBe(0);
     expect(wrapper.text()).toContain("SKU 成本库");
     expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
-    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
+    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
     expect(api.listProductCostHistory).not.toHaveBeenCalled();
   });
 
@@ -253,7 +257,7 @@ describe("ProfitView forecast-cost integration", () => {
     await nextTick();
     expect(wrapper.text()).toContain("¥108.00");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
+    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
 
     await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
     await nextTick();
@@ -270,12 +274,14 @@ describe("ProfitView forecast-cost integration", () => {
     expect(numberInput(wrapper, "平台售价").props("value")).toBe(92);
     expect(wrapper.text()).toContain("¥79.49");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-    expect(servicePenaltyApi.getCurrentServicePenaltyExchangeRates).toHaveBeenCalledTimes(1);
+    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
   });
 
   it("blocks profit when the current service/penalty rate is unavailable", async () => {
-    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockResolvedValueOnce({
+    exchangeApi.getExchangeRateStatus.mockResolvedValueOnce({
       source: "ozon_xapi",
+      last_success_at: "2026-08-31T08:00:00Z",
+      data_through: "2026-08-31T21:00:00Z",
       as_of: "2026-08-31T08:00:00Z",
       rates: { USD: null, CNY: null },
     });
@@ -295,7 +301,7 @@ describe("ProfitView forecast-cost integration", () => {
 
   it("does not show a current rate while the service/penalty request is loading", async () => {
     let resolveRates: ((value: unknown) => void) | undefined;
-    servicePenaltyApi.getCurrentServicePenaltyExchangeRates.mockImplementationOnce(() => new Promise((resolve) => {
+    exchangeApi.getExchangeRateStatus.mockImplementationOnce(() => new Promise((resolve) => {
       resolveRates = resolve;
     }));
     const wrapper = await mountProfit();
@@ -305,15 +311,19 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).not.toContain("Ozon 服务和罚款汇率 · USD/RUB 80");
     resolveRates?.({
       source: "ozon_xapi",
+      last_success_at: "2026-08-31T08:00:00Z",
+      data_through: "2026-08-31T21:00:00Z",
       as_of: "2026-08-31T08:00:00Z",
       rates: {
         USD: {
           service_penalty_exchange_rate: "80",
+          sales_exchange_rate: "88",
           valid_from_utc: "2026-08-30T21:00:00Z",
           valid_to_utc: "2026-08-31T21:00:00Z",
         },
         CNY: {
           service_penalty_exchange_rate: "12",
+          sales_exchange_rate: "11",
           valid_from_utc: "2026-08-30T21:00:00Z",
           valid_to_utc: "2026-08-31T21:00:00Z",
         },
