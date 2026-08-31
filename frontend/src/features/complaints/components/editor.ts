@@ -70,7 +70,7 @@ export function compensationPreview(
   if (!converted || !target) return "折算金额：—";
   if (source === target) return `折算金额：${formatConvertedMoney(converted, target)}\n店铺币种相同，无需折算`;
   const rateText = Object.entries(rates || {}).map(([key, value]) => `${key.replace("_", "/")} ${value}`).join("｜");
-  return `折算金额：${formatConvertedMoney(converted, target)}${rateText ? `\n采用基础汇率：${rateText}` : ""}`;
+  return `折算金额：${formatConvertedMoney(converted, target)}${rateText ? `\n采用针对服务和罚款汇率：${rateText}` : ""}`;
 }
 
 const deadlineLabels: Partial<Record<ComplaintDeadlineStatus, string>> = {

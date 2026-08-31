@@ -142,7 +142,7 @@ def _with_compensation_conversion(db, row):
         row[f"{prefix}_original_currency"] = source
         row[f"{prefix}_converted_amount"] = result["converted_amount"]
         row[f"{prefix}_converted_currency"] = result["converted_currency"]
-        row[f"{prefix}_base_rates"] = result["base_rates"]
+        row[f"{prefix}_service_penalty_exchange_rates"] = result["service_penalty_exchange_rates"]
         row[f"{prefix}_missing_rate"] = result["missing_rate"]
         moment = _utc_moment(row.get(time_key))
         row[f"{time_key}_beijing"] = moment.astimezone(BEIJING).strftime("%Y-%m-%d %H:%M") if moment else None

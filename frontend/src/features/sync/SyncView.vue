@@ -174,9 +174,9 @@ const summaryCards = computed<Array<{ icon: IconName; label: string; value: stri
   },
   {
     icon: "trendingUp",
-    label: "Ozon 官方基础汇率",
-    value: `${rateValue("USD")} USD/RUB`,
-    note: `CNY/RUB ${rateValue("CNY")}`,
+    label: "用于销售汇率",
+    value: `${rateValue("USD", "sales_exchange_rate")} USD/RUB`,
+    note: `CNY/RUB ${rateValue("CNY", "sales_exchange_rate")}`,
     tone: "lavender" as SummaryTone,
   },
   {
@@ -263,8 +263,11 @@ function moduleLabel(module: string): string {
   return syncNames[module as ManualSyncModule] ?? module;
 }
 
-function rateValue(currency: "USD" | "CNY"): string {
-  const value = Number(exchange.value?.rates[currency]?.base_rate);
+function rateValue(
+  currency: "USD" | "CNY",
+  kind: "service_penalty_exchange_rate" | "sales_exchange_rate" = "sales_exchange_rate",
+): string {
+  const value = Number(exchange.value?.rates[currency]?.[kind]);
   return Number.isFinite(value) ? formatNumber(value, 4) : "暂无";
 }
 
@@ -640,7 +643,7 @@ onBeforeUnmount(() => {
         <template #header>
           <div class="analytics-panel-heading">
             <div>
-          <h2><morph-icon icon="coins" size="18" stroke-width="1.8" />Ozon 官方汇率</h2>
+            <h2><morph-icon icon="coins" size="18" stroke-width="1.8" />Ozon 汇率</h2>
               <span>独立于 Profit 测算汇率，状态来自 `/api/exchange-rates`。</span>
             </div>
             <NSpin v-if="exchangeLoading" size="small" />
@@ -674,16 +677,32 @@ onBeforeUnmount(() => {
             <strong>{{ exchangeDataThrough }}</strong>
             <small>数据库中的有效期上界</small>
           </div>
-          <div class="sync-rate-tile">
-            <span>USD / RUB</span>
-            <strong>{{ rateValue('USD') }}</strong>
-            <small>官方基础汇率</small>
-          </div>
-          <div class="sync-rate-tile">
-            <span>CNY / RUB</span>
-            <strong>{{ rateValue('CNY') }}</strong>
-            <small>官方基础汇率</small>
-          </div>
+          <section class="sync-rate-group">
+            <h3 class="sync-rate-group-heading">针对服务和罚款</h3>
+            <div class="sync-rate-pair">
+              <div class="sync-rate-tile">
+                <span>USD / RUB</span>
+                <strong>{{ rateValue('USD', 'service_penalty_exchange_rate') }}</strong>
+              </div>
+              <div class="sync-rate-tile">
+                <span>CNY / RUB</span>
+                <strong>{{ rateValue('CNY', 'service_penalty_exchange_rate') }}</strong>
+              </div>
+            </div>
+          </section>
+          <section class="sync-rate-group">
+            <h3 class="sync-rate-group-heading">用于销售</h3>
+            <div class="sync-rate-pair">
+              <div class="sync-rate-tile">
+                <span>USD / RUB</span>
+                <strong>{{ rateValue('USD', 'sales_exchange_rate') }}</strong>
+              </div>
+              <div class="sync-rate-tile">
+                <span>CNY / RUB</span>
+                <strong>{{ rateValue('CNY', 'sales_exchange_rate') }}</strong>
+              </div>
+            </div>
+          </section>
         </div>
         <div class="sync-exchange-actions">
           <span>汇率范围与手动同步日期相互独立，当前按北京时间显示状态。</span>

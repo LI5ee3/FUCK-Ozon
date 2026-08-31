@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from ..db import connect
-from ..exchange import load_base_rate_periods, rates_for_order
+from ..exchange import load_sales_rate_periods, sales_rates_for_event
 from ..ozon.client import BEIJING
 from ..products import load_product_rules, resolve_product
 from .common import ACTIVE, _duration_hours, _overview_range, _percentile, _shop_clause
@@ -62,7 +62,7 @@ def _gmv_summary(rows, shop_id, rate_periods=()):
         elif value_currency == "CNY":
             amount += value
         elif value_currency == "USD":
-            rates = rates_for_order(rate_periods, row["created_at"])
+            rates = sales_rates_for_event(rate_periods, row["created_at"])
             if not rates or not rates.get("USD") or not rates.get("CNY"):
                 missing += 1
             else:
@@ -149,7 +149,7 @@ def summary(shop_id: int = 0,
           ORDER BY o.created_at
         """, args)]
         top_products = _overview_top_products(db, utc_start, utc_end, shop_id)
-        rate_periods = load_base_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
+        rate_periods = load_sales_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
     totals = {"orders": 0, "pieces": 0, "cancelled_orders": 0, "cancelled_pieces": 0}
     channels_by_name = {channel: {"channel": channel, "orders": 0, "pieces": 0, "cancelled_pieces": 0}
                         for channel in ("FBP", "realFBS", "WHD")}
@@ -244,7 +244,7 @@ def order_trend(shop_id: int = 0, granularity: str = "day"):
           GROUP BY o.shop_id,o.posting_number
           ORDER BY o.created_at
         """, args)]
-        rate_periods = load_base_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
+        rate_periods = load_sales_rate_periods(db, utc_start, utc_end) if shop_id == 0 else []
     bucket_dates = []
     cursor = _bucket_start(start, granularity)
     while cursor <= end:

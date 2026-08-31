@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _create_webhook_events(db):
@@ -189,6 +189,12 @@ def _migrate_v7_to_v8(db):
     db.execute("PRAGMA user_version=8")
 
 
+def _migrate_v8_to_v9(db):
+    db.execute("ALTER TABLE exchange_rates RENAME COLUMN base_rate TO service_penalty_exchange_rate")
+    db.execute("ALTER TABLE exchange_rates RENAME COLUMN rate_with_adjustment TO sales_exchange_rate")
+    db.execute("PRAGMA user_version=9")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -216,6 +222,9 @@ def init_db():
             if version == 7:
                 _migrate_v7_to_v8(db)
                 version = 8
+            if version == 8:
+                _migrate_v8_to_v9(db)
+                version = 9
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -229,7 +238,8 @@ def init_db():
         CREATE TABLE exchange_rates (
           from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
           to_currency TEXT NOT NULL CHECK(to_currency='RUB'), valid_from_utc TEXT NOT NULL,
-          valid_to_utc TEXT NOT NULL, base_rate TEXT NOT NULL, rate_with_adjustment TEXT,
+          valid_to_utc TEXT NOT NULL, service_penalty_exchange_rate TEXT NOT NULL,
+          sales_exchange_rate TEXT NOT NULL,
           source TEXT NOT NULL DEFAULT 'ozon_xapi' CHECK(source='ozon_xapi'), fetched_at TEXT NOT NULL,
           PRIMARY KEY(from_currency,to_currency,valid_from_utc,valid_to_utc));
         CREATE TABLE import_batches (

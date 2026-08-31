@@ -58,6 +58,8 @@ class ProductForecastCostsTest(DatabaseTestCase):
         with db.transaction() as connection:
             connection.execute("DROP TABLE product_forecast_cost_history")
             connection.execute("DROP TABLE product_forecast_costs")
+            connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
+            connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("PRAGMA user_version=7")
         init_db()
         with db.connect() as connection:

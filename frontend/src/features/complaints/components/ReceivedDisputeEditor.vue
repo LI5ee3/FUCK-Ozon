@@ -102,7 +102,7 @@ const platformConversion = computed(() => compensationPreview(
   props.row?.platform_compensation_missing_rate,
   props.row?.platform_compensation_converted_currency,
   props.row?.platform_compensation_converted_amount,
-  props.row?.platform_compensation_base_rates,
+  props.row?.platform_compensation_service_penalty_exchange_rates,
   "RUB",
 ));
 const logisticsConversion = computed(() => compensationPreview(
@@ -113,7 +113,7 @@ const logisticsConversion = computed(() => compensationPreview(
   props.row?.logistics_compensation_missing_rate,
   props.row?.logistics_compensation_converted_currency,
   props.row?.logistics_compensation_converted_amount,
-  props.row?.logistics_compensation_base_rates,
+  props.row?.logistics_compensation_service_penalty_exchange_rates,
   "CNY",
 ));
 

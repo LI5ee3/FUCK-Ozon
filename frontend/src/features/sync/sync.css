@@ -177,6 +177,35 @@
   white-space: nowrap;
 }
 
+.sync-rate-group {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+  background: var(--opanel-panel-hover);
+}
+
+.sync-rate-group-heading {
+  margin: 0;
+  color: var(--opanel-text);
+  font-size: 13px;
+}
+
+.sync-rate-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sync-rate-group .sync-rate-tile {
+  min-height: 82px;
+  padding: 10px;
+  background: var(--opanel-panel);
+}
+
 .sync-exchange-actions {
   display: flex;
   align-items: center;
@@ -352,6 +381,10 @@
   .sync-auto-shop-grid,
   .sync-manual-grid,
   .sync-exchange-status {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-rate-pair {
     grid-template-columns: 1fr;
   }
 

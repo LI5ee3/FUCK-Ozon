@@ -206,14 +206,17 @@ class ComplaintsTest(DatabaseTestCase):
 
         with db.transaction() as connection:
             connection.executemany("""INSERT INTO exchange_rates VALUES(
-              ?,'RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z',?,'9999','ozon_xapi','2026-08-22T22:00:00Z')""", [
-                ("USD", "80"), ("CNY", "10.666666666666666666")])
+              ?,'RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z',?,?,'ozon_xapi','2026-08-22T22:00:00Z')""", [
+                ("USD", "90", "88"), ("CNY", "12", "11")])
         converted = received_disputes(1, q="RET-1")["items"][0]
-        self.assertEqual(converted["platform_compensation_converted_amount"], "64.48")
+        self.assertEqual(converted["platform_compensation_converted_amount"], "57.31")
         self.assertEqual(converted["logistics_compensation_converted_amount"], "133.33")
         self.assertFalse(converted["platform_compensation_missing_rate"])
         self.assertEqual(converted["platform_compensation_original_currency"], "RUB")
         self.assertEqual(converted["logistics_compensation_original_currency"], "CNY")
+        self.assertEqual(converted["platform_compensation_service_penalty_exchange_rates"], {"USD_RUB": "90"})
+        self.assertEqual(converted["logistics_compensation_service_penalty_exchange_rates"], {
+            "CNY_RUB": "12", "USD_RUB": "90"})
 
         for invalid in (
             {"platform_compensation_rub": 1}, {"platform_compensated_at": "2026-08-22T08:00"},

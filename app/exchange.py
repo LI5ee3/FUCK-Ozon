@@ -66,6 +66,16 @@ def _currency(item, prefix):
     return str(value or "").upper()
 
 
+def _parse_rate(value, label):
+    try:
+        rate = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError, OverflowError) as error:
+        raise ValueError(f"汇率接口返回了无效的{label}汇率") from error
+    if not rate.is_finite() or rate <= 0:
+        raise ValueError(f"汇率接口返回了无效的{label}汇率")
+    return rate
+
+
 def _rows(payload, fetched_at):
     rows = []
     for item in _rate_items(payload):
@@ -73,18 +83,13 @@ def _rows(payload, fetched_at):
         from_currency, to_currency = _currency(item, "from"), _currency(item, "to")
         if from_currency not in ("USD", "CNY") or to_currency != "RUB":
             continue
-        try:
-            base_rate = Decimal(str(exchange["rate"]))
-            adjustment = exchange.get("rateWithAdjustment")
-            if base_rate <= 0:
-                raise ValueError
-        except (KeyError, InvalidOperation, ValueError) as error:
-            raise ValueError("汇率接口返回了无效的基础汇率") from error
+        service_penalty_exchange_rate = _parse_rate(exchange.get("rate"), "针对服务和罚款")
+        sales_exchange_rate = _parse_rate(exchange.get("rateWithAdjustment"), "用于销售")
         valid_from, valid_to = item.get("fromDate"), item.get("toDate")
         if not valid_from or not valid_to:
             raise ValueError("汇率接口未返回有效时间区间")
-        rows.append((from_currency, to_currency, str(valid_from), str(valid_to), str(base_rate),
-                     None if adjustment is None else str(Decimal(str(adjustment))), SOURCE, fetched_at))
+        rows.append((from_currency, to_currency, str(valid_from), str(valid_to),
+                     str(service_penalty_exchange_rate), str(sales_exchange_rate), SOURCE, fetched_at))
     return rows
 
 
@@ -96,10 +101,11 @@ def sync_exchange_rates(date_from: date, date_to: date, opener=None):
         rows = _rows(_request_json(segment_start, segment_end, opener), fetched_at)
         with transaction() as db:
             db.executemany("""INSERT INTO exchange_rates(
-              from_currency,to_currency,valid_from_utc,valid_to_utc,base_rate,
-              rate_with_adjustment,source,fetched_at) VALUES(?,?,?,?,?,?,?,?)
+              from_currency,to_currency,valid_from_utc,valid_to_utc,
+              service_penalty_exchange_rate,sales_exchange_rate,source,fetched_at) VALUES(?,?,?,?,?,?,?,?)
               ON CONFLICT(from_currency,to_currency,valid_from_utc,valid_to_utc) DO UPDATE SET
-              base_rate=excluded.base_rate,rate_with_adjustment=excluded.rate_with_adjustment,
+              service_penalty_exchange_rate=excluded.service_penalty_exchange_rate,
+              sales_exchange_rate=excluded.sales_exchange_rate,
               source=excluded.source,fetched_at=excluded.fetched_at""", rows)
         written += len(rows)
         segments += 1
@@ -111,29 +117,51 @@ def _parse_utc(value):
     return (moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
 
 
-def load_base_rate_periods(db, start_utc, end_utc):
+def _load_rate_periods(db, start_utc, end_utc, rate_column):
     grouped = {}
-    rows = db.execute("""SELECT from_currency,valid_from_utc,valid_to_utc,base_rate
+    rows = db.execute(f"""SELECT from_currency,valid_from_utc,valid_to_utc,{rate_column}
       FROM exchange_rates WHERE source=? AND valid_to_utc>?
       AND valid_from_utc<?
       ORDER BY valid_from_utc""", (SOURCE, start_utc, end_utc))
     for row in rows:
+        try:
+            rate = Decimal(row[rate_column])
+        except (InvalidOperation, TypeError, ValueError):
+            continue
+        if not rate.is_finite() or rate <= 0:
+            continue
         key = (_parse_utc(row["valid_from_utc"]), _parse_utc(row["valid_to_utc"]))
-        grouped.setdefault(key, {})[row["from_currency"]] = Decimal(row["base_rate"])
+        grouped.setdefault(key, {})[row["from_currency"]] = rate
     return [(start, end, rates) for (start, end), rates in sorted(grouped.items())]
 
 
-def rates_for_order(periods, created_at):
+def load_sales_rate_periods(db, start_utc, end_utc):
+    return _load_rate_periods(db, start_utc, end_utc, "sales_exchange_rate")
+
+
+def load_service_penalty_rate_periods(db, start_utc, end_utc):
+    return _load_rate_periods(db, start_utc, end_utc, "service_penalty_exchange_rate")
+
+
+def _rates_for_event(periods, event_time):
     try:
-        moment = _parse_utc(created_at)
+        moment = _parse_utc(event_time)
     except (TypeError, ValueError):
         return None
     return next((rates for start, end, rates in periods if start <= moment < end), None)
 
 
+def sales_rates_for_event(periods, event_time):
+    return _rates_for_event(periods, event_time)
+
+
+def service_penalty_rates_for_event(periods, event_time):
+    return _rates_for_event(periods, event_time)
+
+
 def convert_compensation(db, amount, compensated_at, source_currency, target_currency):
     result = {"converted_amount": None, "converted_currency": target_currency,
-              "base_rates": {}, "missing_rate": False}
+              "service_penalty_exchange_rates": {}, "missing_rate": False}
     if amount in (None, "") or not compensated_at:
         return result
     value = Decimal(str(amount))
@@ -141,8 +169,8 @@ def convert_compensation(db, amount, compensated_at, source_currency, target_cur
         result["converted_amount"] = str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
         return result
     moment = _parse_utc(compensated_at)
-    periods = load_base_rate_periods(db, _iso(moment), _iso(moment + timedelta(seconds=1)))
-    rates = rates_for_order(periods, moment)
+    periods = load_service_penalty_rate_periods(db, _iso(moment), _iso(moment + timedelta(seconds=1)))
+    rates = service_penalty_rates_for_event(periods, moment)
     required = {target_currency} if source_currency == "RUB" else {"CNY", "USD"}
     if not rates or any(currency not in rates for currency in required):
         result["missing_rate"] = True
@@ -152,7 +180,8 @@ def convert_compensation(db, amount, compensated_at, source_currency, target_cur
     else:
         converted = value * rates["CNY"] / rates["USD"]
     result["converted_amount"] = str(converted.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-    result["base_rates"] = {f"{currency}_RUB": str(rates[currency]) for currency in sorted(required)}
+    result["service_penalty_exchange_rates"] = {
+        f"{currency}_RUB": str(rates[currency]) for currency in sorted(required)}
     return result
 
 
@@ -161,7 +190,8 @@ def exchange_rate_status():
         summary = db.execute("SELECT MAX(fetched_at),MAX(valid_to_utc) FROM exchange_rates").fetchone()
         latest = {}
         for currency in ("USD", "CNY"):
-            row = db.execute("""SELECT base_rate,valid_from_utc,valid_to_utc FROM exchange_rates
+            row = db.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate,
+              valid_from_utc,valid_to_utc FROM exchange_rates
               WHERE from_currency=? AND to_currency='RUB' AND source=?
               ORDER BY valid_to_utc DESC LIMIT 1""", (currency, SOURCE)).fetchone()
             latest[currency] = dict(row) if row else None

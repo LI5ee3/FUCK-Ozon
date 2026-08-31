@@ -29,13 +29,13 @@ export interface ComplaintRecord {
   platform_compensation_original_currency: string;
   platform_compensation_converted_amount: string | null;
   platform_compensation_converted_currency: string;
-  platform_compensation_base_rates: Record<string, string>;
+  platform_compensation_service_penalty_exchange_rates: Record<string, string>;
   platform_compensation_missing_rate: boolean;
   platform_compensated_at_beijing: string | null;
   logistics_compensation_original_currency: string;
   logistics_compensation_converted_amount: string | null;
   logistics_compensation_converted_currency: string;
-  logistics_compensation_base_rates: Record<string, string>;
+  logistics_compensation_service_penalty_exchange_rates: Record<string, string>;
   logistics_compensation_missing_rate: boolean;
   logistics_compensated_at_beijing: string | null;
 }
@@ -121,13 +121,13 @@ export interface ReceivedDisputeRecord {
   platform_compensation_original_currency: string;
   platform_compensation_converted_amount: string | null;
   platform_compensation_converted_currency: string;
-  platform_compensation_base_rates: Record<string, string>;
+  platform_compensation_service_penalty_exchange_rates: Record<string, string>;
   platform_compensation_missing_rate: boolean;
   platform_compensated_at_beijing: string | null;
   logistics_compensation_original_currency: string;
   logistics_compensation_converted_amount: string | null;
   logistics_compensation_converted_currency: string;
-  logistics_compensation_base_rates: Record<string, string>;
+  logistics_compensation_service_penalty_exchange_rates: Record<string, string>;
   logistics_compensation_missing_rate: boolean;
   logistics_compensated_at_beijing: string | null;
 }

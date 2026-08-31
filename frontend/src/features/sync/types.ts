@@ -70,12 +70,12 @@ export interface AutoSyncSettingValue {
 export type AutoSyncSettingsPayload = Record<"1" | "2", Record<AutoSyncModule, AutoSyncSettingValue>>;
 
 export interface ExchangeRate {
-  base_rate: string;
+  service_penalty_exchange_rate: string;
+  sales_exchange_rate: string;
   valid_from_utc: string;
   valid_to_utc: string;
   from_currency?: string;
   to_currency?: string;
-  rate_with_adjustment?: string | null;
   source?: string;
   fetched_at?: string;
 }
