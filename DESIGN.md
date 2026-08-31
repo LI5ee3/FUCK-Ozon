@@ -11,10 +11,9 @@ authority:
 
 # oPanel Design System
 
-This document is the upstream design specification for oPanel. It describes
-how oPanel should be designed, not what any existing implementation happens to
-render. New screens and future frontends must use this document as their design
-contract.
+This document is the upstream design specification for oPanel. It defines how
+oPanel should be designed independently of any implementation. New screens and
+future frontends must use this document as their design contract.
 
 ## 1. Design Sources & Authority
 
@@ -25,8 +24,8 @@ The sources have a strict relationship:
    whitespace, precise alignment, and coherent light/dark expression.
 2. **oPanel is the product identity.** Open Macaron tones, Apple Action Blue,
    high-density e-commerce operations, business semantics, tabular data,
-   KPI-oriented summaries, existing chart language, and the existing icon
-   system define what makes oPanel oPanel.
+   KPI-oriented summaries, and oPanel's chart language and icon system define
+   what makes oPanel oPanel.
 3. **UI UX Pro Max is a quality supplement.** Use its applicable guidance for
    information hierarchy, anti-boxification, content resilience, responsive
    behavior, accessibility, forms, feedback, navigation, tables, chart choice,
@@ -38,8 +37,8 @@ radius system, shadow system, or icon family. Do not turn oPanel into Material,
 Fluent, Polaris, a generic SaaS dashboard, a Bento dashboard, Glassmorphism,
 or a generic Tailwind admin UI.
 
-If sources appear to conflict, preserve the Apple foundation and the verified
-oPanel identity; apply UI UX Pro Max only where it improves UI/UX quality
+If sources appear to conflict, preserve the Apple foundation and the oPanel
+identity defined here; apply UI UX Pro Max only where it improves UI/UX quality
 without changing those identities. The motion boundary is defined in
 [Motion / Physics](#14-motion--physics) and is not supplied by UI UX Pro Max.
 
@@ -62,7 +61,7 @@ copied as a consumer product page.
 
 oPanel is an Open Macaron, high-density e-commerce operations workspace. Its
 pastel-to-ganache light/dark pairs, five business tones, compact analytical
-summaries, structured tables, KPI reading, and existing charts are product
+summaries, structured tables, KPI reading, and its chart language are product
 identity—not optional themes and not recommendations to be replaced.
 
 ### Data First
@@ -117,7 +116,7 @@ must not become an equal-weight square grid.
 
 ### 3.1 Colors and Semantic Tones
 
-The existing oPanel palette is normative. Light and dark values are paired
+The oPanel palette defined here is normative. Light and dark values are paired
 expressions of the same role; do not invent feature-specific replacements.
 
 #### Core and Surface Tokens
@@ -126,7 +125,7 @@ expressions of the same role; do not invent feature-specific replacements.
 |---|---|---|---|
 | Apple Action Blue | `#0066CC` | `#2997FF` | Primary action, links, selected interactive emphasis |
 | Focus Blue | `#0071E3` | `#47A7FF` | Visible keyboard focus |
-| Active Blue | `#0055B3` | `#1F7CD6` | Existing active action tone |
+| Active Blue | `#0055B3` | `#1F7CD6` | Active action tone |
 | Soft Action Blue | `rgba(0, 102, 204, 0.08)` | `rgba(41, 151, 255, 0.15)` | Subtle interactive surface |
 | Canvas | `#F5F5F7` | `#151419` | Page background |
 | Panel | `rgba(255, 255, 255, 0.88)` | `rgba(28, 26, 36, 0.85)` | Translucent primary surface |
@@ -165,7 +164,7 @@ pastel shell with high-contrast text and a dark deep shell with bright text.
 | Supply chain and data | Mint |
 | System configuration | Lavender |
 
-Use existing semantic mappings consistently. `Delivered`, `Healthy`, and
+Use these semantic mappings consistently. `Delivered`, `Healthy`, and
 `Success` use Mint; `Shipping`, `In Transit`, and `Warning` use Butter;
 `Cancelled`, `Dispute`, and `High Risk` use Peach; `Pending` and `Awaiting
 Action` use Lavender; neutral informational states use Azure. Every state also
@@ -174,7 +173,7 @@ needs a readable label, icon, shape, position, or other non-color signal.
 ### 3.2 Typography
 
 The typography direction is SF Pro Text and the system fallback stack. Do not
-introduce a second brand type system. Display text uses the existing negative
+introduce a second brand type system. Display text uses the defined negative
 tracking to create an Apple-like compact cadence; small text must remain
 readable and must not be tightened into illegibility.
 
@@ -205,7 +204,7 @@ Rules:
   balanced wrapping as a progressive enhancement, but must work without it.
 - Keep a readable fallback stack for Chinese, English, and Russian. Do not
   assume one script's glyph width or line height.
-- Use the existing SF Mono / system monospace stack only when a fixed-width
+- Use the defined SF Mono / system monospace stack only when a fixed-width
   identifier or code-like value benefits from it; typography must not make
   identifiers harder to scan.
 
@@ -237,7 +236,7 @@ with centered content.
 
 ### 3.5 Shapes
 
-The existing radius system is intentionally small:
+The radius system defined here is intentionally small:
 
 | Token | Value | Assigned use |
 |---|---:|---|
@@ -257,12 +256,12 @@ Use surfaces in this order:
 
 1. **Canvas:** page background.
 2. **Primary panel:** use an 18px radius, a 1px oPanel hairline, and the
-   existing whisper-soft oPanel card shadow only when an outer panel is truly
+   defined whisper-soft oPanel card shadow only when an outer panel is truly
    needed.
 3. **Inset surface:** use an 8px radius, a subtle panel-hover difference, and
    no shadow. An optional hairline may clarify a real boundary.
 4. **Flat section:** use no border or shadow when whitespace and typography
-   already express the relationship.
+   express the relationship.
 
 Hairlines come before shadows. No decorative gradients. Backdrop blur is
 allowed only for functional floating chrome where content passes beneath it;
@@ -284,8 +283,8 @@ hide content or keyboard focus.
 
 ### 3.7 Iconography
 
-Retain the existing curated Tabler-style 24x24 stroke icon system. Use one
-coherent icon family, consistent optical weight, and the existing morphing icon
+oPanel uses the curated Tabler-style 24x24 stroke icon system defined here. Use
+one coherent icon family, consistent optical weight, and oPanel morphing icon
 behavior. Typical view stroke width remains `1.8–2`; compact controls may use
 the system default where optical balance requires it.
 
@@ -297,7 +296,7 @@ Icons have a semantic role:
   equivalent.
 - An interactive icon is a control and needs a clear accessible name.
 
-Do not replace the existing icon identity with emojis, mixed icon families, or
+Do not replace oPanel's icon identity with emojis, mixed icon families, or
 an automatically selected external library.
 
 ## 4. Information Architecture
@@ -382,17 +381,17 @@ business question.
 - A layout is successful when it preserves priority and meaning, not when all
   desktop columns remain visible.
 
-### 5.2 Existing Breakpoint System
+### 5.2 Breakpoint System
 
-Retain oPanel's established semantic breakpoints. Do not replace them with
-values selected by an external style catalog.
+oPanel uses the following semantic breakpoints. Do not replace them with values
+selected by an external style catalog.
 
 | Key | Threshold | Semantic behavior |
 |---|---|---|
 | `compact` | `< 640px` | Single-column summaries; toolbar stacks; tables use a bounded horizontal-scroll region or a detail alternative |
-| `navigation-collapse` | `< 800px` | Navigation collapses to its existing compact/drawer expression; header actions wrap; summaries reduce columns |
+| `navigation-collapse` | `< 800px` | Navigation collapses to oPanel's compact/drawer expression; header actions wrap; summaries reduce columns |
 | `dense-layout` | `< 1100px` | Summary grids fold; secondary table columns hide or move into detail; analytical columns remain readable |
-| `wide` | `> 1200px` | Established high-density summary grids and side-by-side analysis may be used where content supports them |
+| `wide` | `> 1200px` | High-density summary grids and side-by-side analysis may be used where content supports them |
 
 ### 5.3 Responsive Priority
 
@@ -426,7 +425,7 @@ make the page look clean.
 
 ## 6. Component Contracts
 
-Components are chosen after information hierarchy is established. A component
+Components are chosen after information hierarchy is defined. A component
 must communicate a stable semantic role and must not introduce a new visual
 system for one feature.
 
@@ -439,7 +438,7 @@ system for one feature.
   values may use a deliberate multi-line treatment rather than shrinking.
 - Primary KPIs receive the strongest position and type. Supporting KPIs may be
   quieter or grouped without equal borders.
-- Wide layouts may use oPanel's established five-column dashboard or
+- Wide layouts may use oPanel's five-column dashboard or
   four-column analytical summary patterns when the content supports them; the
   pattern is not a mandate to give every metric equal weight.
 
@@ -449,8 +448,8 @@ system for one feature.
 - Maximum Card Nesting Depth = 1.
 - Use dividers, whitespace, headings, alignment, or an 8px inset surface for
   internal grouping.
-- A card may be omitted when the canvas and section rhythm already establish
-  ownership.
+- A card may be omitted when the canvas and section rhythm express ownership on
+  their own.
 
 ### Table
 
@@ -463,7 +462,7 @@ information surface, not a card grid.
 - Group controls by task: search, date range, scope, status, and primary
   actions should not become an unstructured control strip.
 - Search has a clear affordance and a clear/reset action where applicable.
-- Date presets and filters use the existing pill grammar. Do not turn a
+- Date presets and filters use the defined pill grammar. Do not turn a
   segmented choice into unrelated square buttons.
 - Controls need visible labels or an accessible equivalent; placeholder text is
   not a label.
@@ -480,7 +479,7 @@ information surface, not a card grid.
 
 - A badge communicates state or count; a chip represents a value or filter; an
   interactive chip is a real control. Do not make every pill clickable.
-- Use the existing semantic tones and the pill radius. Preserve the complete
+- Use the defined semantic tones and the pill radius. Preserve the complete
   label whenever practical.
 - A collection wraps or provides an operable `+n` disclosure. Never force a
   collection into one clipped row.
@@ -493,10 +492,10 @@ Use visible labels, helper text, inline validation, focus management, and
 feedback rules from [Forms & Feedback](#9-forms--feedback). Modals and drawers
 are for focused work, not for hiding normal page hierarchy.
 
-- Modals use the existing 18px card geometry, solid panel treatment, and
+- Modals use the defined 18px card geometry, solid panel treatment, and
   hairline boundary. The mask may use functional backdrop blur.
-- Drawers retain the existing right-docked, translucent floating-chrome
-  expression and must not obscure the page context without a clear title.
+- Drawers use the right-docked, translucent floating-chrome expression defined
+  here and must not obscure the page context without a clear title.
 - Footer actions align consistently: Cancel/default on the left of the action
   group, primary Confirm/Save on the right; destructive actions use the danger
   semantic.
@@ -620,8 +619,8 @@ identifier-like values must be safely displayable.
 ### Control States
 
 - Disabled controls remain visibly disabled, suppress unavailable actions, and
-  retain an accessible explanation where needed. The existing oPanel disabled
-  treatment is approximately `opacity: 0.45` with no active/hover transform.
+  provide an accessible explanation where needed. Disabled controls use
+  approximately `opacity: 0.45` with no active/hover transform.
 - A submitting action disables duplicate submission and exposes a loading
   state while preserving its purpose.
 - A successful save, copy, or sync action receives concise confirmation and a
@@ -640,9 +639,8 @@ identifier-like values must be safely displayable.
   Skeletons are preferred for stable content regions; a compact spinner may
   serve a local action.
 - Toasts are for transient, non-critical feedback such as copy or success and
-  may auto-dismiss in the existing oPanel window of approximately 2.5–3
-  seconds. Critical errors and required decisions persist until understood or
-  explicitly dismissed.
+  may auto-dismiss after approximately 2.5–3 seconds. Critical errors and
+  required decisions persist until understood or explicitly dismissed.
 - Multi-step operations expose current progress and the ability to recover or
   go back where applicable.
 
@@ -689,10 +687,11 @@ turn each row, cell group, or expansion into another 18px card.
 
 ## 11. Data Visualization UX
 
-Retain the existing ECharts/oPanel visual language: SF Pro Text typography,
-quiet axes and hairlines, restrained grid lines, readable labels, shared
-Macaron/semantic colors, and precise operational tooltips. A chart is a tool
-for a business question, not a decoration added to make a dashboard look full.
+oPanel data visualization uses the following visual language: SF Pro Text
+typography, quiet axes and hairlines, restrained grid lines, readable labels,
+shared Macaron/semantic colors, and precise operational tooltips. A chart is a
+tool for a business question, not a decoration added to make a dashboard look
+full.
 
 ### Chart Selection
 
@@ -723,7 +722,7 @@ bar/table when exact comparison is the real task.
   aggregation over visual effects or excessive series.
 - Provide a concise textual summary or visible data-table fallback when the
   chart carries an important decision.
-- Use existing oPanel series roles: Azure for primary, Mint for secondary,
+- Use the following oPanel series roles: Azure for primary, Mint for secondary,
   Butter for tertiary, Peach for comparison/cost, and Lavender only where its
   business meaning is relevant. Do not introduce a new chart palette.
 
@@ -744,7 +743,7 @@ Accessibility is a first-class design requirement, not a final cosmetic pass.
 - Every interactive element is keyboard reachable.
 - Focus order follows the visual and task order; do not create a keyboard trap
   or an illogical custom tab sequence.
-- Every interactive element has a visible focus state. The existing focus
+- Every interactive element has a visible focus state. The oPanel focus
   expression is a 2px Focus Blue outline with a 2px offset where the control
   permits it.
 - Modal and drawer controls receive logical focus entry and return focus
@@ -773,7 +772,8 @@ Accessibility is a first-class design requirement, not a final cosmetic pass.
 - Meaningful imagery has a text alternative; decorative imagery is marked as
   decorative.
 - Do not make an essential action or explanation hover-only.
-- Respect the user's reduced-motion preference under the existing oPanel rules;
+- Respect the user's reduced-motion preference under the reduced-motion rules
+  defined here;
   the final semantic state, content, and focus must remain correct.
 
 ## 13. UI / UX Anti-Patterns
@@ -820,7 +820,7 @@ specific exception necessary and the full meaning remains accessible:
 - Arbitrary shadows or equal-elevation shadows on every block
 - Excessive low-contrast muted text
 - Mixing multiple icon families
-- Automatically replacing the Open Macaron, Apple, or existing oPanel visual
+- Automatically replacing the Open Macaron, Apple, or oPanel visual
   system with an external recommendation
 
 ### Data and Charts
@@ -833,22 +833,22 @@ specific exception necessary and the full meaning remains accessible:
 
 ## 14. Motion / Physics
 
-This section preserves the existing oPanel motion system. It is not derived
+This section defines the oPanel motion system. It is not derived
 from, and must not be rewritten using, UI UX Pro Max motion guidance.
 
 - The shared oPanel fluid easing is
   `cubic-bezier(0.16, 1, 0.3, 1)`.
-- Existing oPanel spring physics use the `snappy` preset (`ζ=0.73`, fast with
-  subtle overshoot); existing `smooth` and `bouncy` variants remain available
-  where already appropriate.
+- oPanel spring physics use the `snappy` preset (`ζ=0.73`, fast with subtle
+  overshoot); the `smooth` and `bouncy` variants remain available where
+  appropriate.
 - Press feedback is a scale transform rather than a color-only change:
-  containers use the existing `0.95–0.995` range by surface size, and icons
-  inside interactive elements use `0.88` unless the container already scales.
-- Existing icon state changes use the oPanel morphing icon behavior and retain
-  the existing spring treatment.
-- Existing oPanel transitions remain the shared `0.16s` fluid transition for
-  applicable color, background, border, shadow, and transform state changes.
-- All existing motion honors the user's reduced-motion preference and presents
+  containers use the defined `0.95–0.995` range by surface size, and icons
+  inside interactive elements use `0.88` unless the container also scales.
+- Icon state changes use oPanel morphing icon behavior and the defined spring
+  treatment.
+- oPanel transitions use the shared `0.16s` fluid transition for applicable
+  color, background, border, shadow, and transform state changes.
+- All oPanel motion honors the user's reduced-motion preference and presents
   the final readable state when motion is reduced.
 
 UI UX Pro Max contributes **no** Animation Guidelines, GSAP guidance, motion
@@ -866,11 +866,11 @@ oPanel. Do not add them through this document.
   work must consume the system rather than inventing new colors, radii,
   shadows, type scales, or icon families.
 - This document is intentionally implementation-independent. A component or
-  screen is not compliant merely because it matches an existing file; it is
-  compliant when it satisfies the contracts here.
-- When adding a new visual treatment, first reuse an existing token, surface,
+  screen is not compliant merely because it matches a particular
+  implementation; it is compliant when it satisfies the contracts here.
+- When adding a new visual treatment, first reuse a defined token, surface,
   shape, hierarchy level, or semantic tone. Add a new rule only when the
-  product meaning cannot be represented by the existing system.
+  product meaning cannot be represented by this system.
 - Apple remains the base design language, oPanel remains the visual identity,
   and UI UX Pro Max remains a UI/UX quality supplement. No later external
   catalog silently outranks this authority order.
@@ -894,7 +894,7 @@ oPanel. Do not add them through this document.
 
 ### Color
 
-- [ ] Existing Apple and Open Macaron semantic tones are used.
+- [ ] Apple and Open Macaron semantic tones are used.
 - [ ] Status meaning does not depend on color alone.
 - [ ] Light and dark expressions remain readable.
 
