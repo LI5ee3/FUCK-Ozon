@@ -34,11 +34,12 @@ test("费用 key 完整重命名", () => {
   assert.equal(PROFIT_COST_KEYS.includes(["insur", "ance"].join("")), false);
 });
 
-test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流", () => {
+test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", () => {
   const fbp = calculateProfit({
     shopId: 1,
     priceOriginal: 100,
-    purchasePriceUsd: 40,
+    purchaseCost: 40,
+    purchaseCurrency: "USD",
     usdCnyRate: 7.2,
     fulfillmentMode: "FBP",
   });
@@ -58,7 +59,8 @@ test("采购成本使用 USD 采购价乘测算汇率，并按履约路径分流
   const realFbsInput = {
     shopId: 1,
     priceOriginal: 100,
-    purchasePriceUsd: 40,
+    purchaseCost: 40,
+    purchaseCurrency: "USD",
     usdCnyRate: 7.2,
     fulfillmentMode: "realFBS",
   };
@@ -88,7 +90,8 @@ test("店铺2使用 price_cny，缺少人民币售价时不返回 0", () => {
   const shop2 = calculateProfit({
     shopId: 2,
     priceOriginal: 720,
-    purchasePriceUsd: 40,
+    purchaseCost: 40,
+    purchaseCurrency: "USD",
     usdCnyRate: 7.2,
     fulfillmentMode: "FBP",
   });
@@ -105,4 +108,114 @@ test("店铺2使用 price_cny，缺少人民币售价时不返回 0", () => {
     assert.equal(result.costs.bank_acquiring_fee.value, null);
     assert.equal(result.costs.bank_acquiring_fee.status, "missing_input");
   }
+});
+
+test("CNY 采购成本不乘汇率，店铺2无汇率仍可计算", () => {
+  const result = calculateProfit({
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 400,
+    purchaseCurrency: "CNY",
+    usdCnyRate: null,
+    packingCostCny: 0,
+    otherCostCny: 0,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(result.price_cny, 700);
+  assert.equal(result.costs.purchase_cost.value, 400);
+  assert.equal(result.costs.purchase_cost.status, "implemented");
+  assert.equal(result.costs.packing.value, 0);
+  assert.equal(result.costs.packing.status, "implemented");
+  assert.equal(result.costs.other_cost.value, 0);
+  assert.equal(result.costs.other_cost.status, "implemented");
+  assertClose(result.total_cost_cny, 419.31);
+  assertClose(result.profit_cny, 280.69);
+});
+
+test("USD 采购成本缺少有效汇率时为 missing_input", () => {
+  const result = calculateProfit({
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 60,
+    purchaseCurrency: "USD",
+    usdCnyRate: 0,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(result.price_cny, 700);
+  assert.equal(result.costs.purchase_cost.value, null);
+  assert.equal(result.costs.purchase_cost.status, "missing_input");
+  assert.equal(result.total_cost_cny, null);
+  assert.equal(result.profit_cny, null);
+});
+
+test("店铺1缺少汇率时不能生成 CNY revenue 或 profit", () => {
+  const result = calculateProfit({
+    shopId: 1,
+    priceOriginal: 100,
+    purchaseCost: 400,
+    purchaseCurrency: "CNY",
+    usdCnyRate: null,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(result.price_usd, 100);
+  assert.equal(result.price_cny, null);
+  assert.equal(result.revenue_cny, null);
+  assert.equal(result.profit_cny, null);
+});
+
+test("采购币种与店铺售价币种解耦", () => {
+  const shop1CnyPurchase = calculateProfit({
+    shopId: 1, priceOriginal: 100, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: 7.2,
+    fulfillmentMode: "FBP",
+  });
+  const shop2UsdPurchase = calculateProfit({
+    shopId: 2, priceOriginal: 700, purchaseCost: 60, purchaseCurrency: "USD", usdCnyRate: 7.2,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(shop1CnyPurchase.costs.purchase_cost.value, 400);
+  assert.equal(shop2UsdPurchase.costs.purchase_cost.value, 432);
+});
+
+test("packing 和 other_cost 接收有效金额，零值仍为已接入", () => {
+  const result = calculateProfit({
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 400,
+    purchaseCurrency: "CNY",
+    usdCnyRate: null,
+    packingCostCny: 2.5,
+    otherCostCny: 1.5,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(result.costs.packing.value, 2.5);
+  assert.equal(result.costs.packing.status, "implemented");
+  assert.equal(result.costs.other_cost.value, 1.5);
+  assert.equal(result.costs.other_cost.status, "implemented");
+  assertClose(result.total_cost_cny, 423.31);
+});
+
+test("负数、NaN、Infinity 不参与计算", () => {
+  const result = calculateProfit({
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 400,
+    purchaseCurrency: "CNY",
+    usdCnyRate: null,
+    packingCostCny: NaN,
+    otherCostCny: -1,
+    fulfillmentMode: "FBP",
+  });
+  const infinite = calculateProfit({
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 400,
+    purchaseCurrency: "CNY",
+    usdCnyRate: Infinity,
+    fulfillmentMode: "FBP",
+  });
+  assert.equal(result.costs.packing.value, null);
+  assert.equal(result.costs.other_cost.value, null);
+  assert.ok(Number.isFinite(result.total_cost_cny));
+  assert.equal(infinite.costs.purchase_cost.value, 400);
+  assert.ok(Number.isFinite(infinite.total_cost_cny));
 });

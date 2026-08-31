@@ -1,5 +1,6 @@
 export type ProfitShopId = 1 | 2;
 export type ProfitPriceCurrency = "USD" | "CNY";
+export type ProfitPurchaseCurrency = "USD" | "CNY";
 export type ProfitFulfillmentMode = "FBP" | "realFBS";
 export type ProfitRealFbsChannel = "hongkong" | "shenzhen";
 export type ProfitPath = "FBP" | "realFBS_hongkong" | "realFBS_shenzhen";
@@ -22,8 +23,11 @@ type ProfitValue = number | string | null | undefined;
 export interface ProfitInput {
   shopId?: ProfitShopId;
   priceOriginal?: ProfitValue;
-  purchasePriceUsd?: ProfitValue;
+  purchaseCost?: ProfitValue;
+  purchaseCurrency?: ProfitPurchaseCurrency;
   weightGrams?: ProfitValue;
+  packingCostCny?: ProfitValue;
+  otherCostCny?: ProfitValue;
   usdCnyRate?: ProfitValue;
   fulfillmentMode?: ProfitFulfillmentMode;
   realFbsChannel?: ProfitRealFbsChannel;
@@ -67,9 +71,16 @@ export const PROFIT_COST_KEYS: readonly ProfitCostKey[] = [
 ];
 
 function profitNumber(value: ProfitValue): number | null {
-  if (value == null || String(value).trim() === "") return null;
+  if (value == null || typeof value === "boolean" || (typeof value === "string" && value.trim() === "")) return null;
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function optionalCost(value: ProfitValue): ProfitCostItem {
+  const normalized = profitNumber(value);
+  if (normalized !== null) return { value: normalized, status: "implemented" };
+  const missing = value == null || (typeof value === "string" && value.trim() === "");
+  return { value: null, status: missing ? "not_implemented" : "missing_input" };
 }
 
 export function normalizeProfitPrice(
@@ -103,17 +114,22 @@ export function normalizeProfitPrice(
 }
 
 export function emptyProfitCosts(input: ProfitInput = {}): ProfitCosts {
-  const purchasePriceUsd = profitNumber(input.purchasePriceUsd);
+  const purchaseCostInput = profitNumber(input.purchaseCost);
   const rate = profitNumber(input.usdCnyRate);
-  const purchaseCost = purchasePriceUsd !== null && rate !== null && rate > 0
-    ? purchasePriceUsd * rate
-    : null;
+  const purchaseCost = input.purchaseCurrency === "CNY"
+    ? purchaseCostInput
+    : input.purchaseCurrency === "USD" && purchaseCostInput !== null && rate !== null && rate > 0
+      ? purchaseCostInput * rate
+      : null;
   const costs = {} as ProfitCosts;
 
   for (const key of PROFIT_COST_KEYS) {
-    costs[key] = key === "purchase_cost"
-      ? { value: purchaseCost, status: purchaseCost === null ? "missing_input" : "implemented" }
-      : { value: null, status: "not_implemented" };
+    costs[key] = key === "purchase_cost" ? {
+      value: Number.isFinite(purchaseCost) ? purchaseCost : null,
+      status: Number.isFinite(purchaseCost) ? "implemented" : "missing_input",
+    } : key === "packing" ? optionalCost(input.packingCostCny)
+      : key === "other_cost" ? optionalCost(input.otherCostCny)
+        : { value: null, status: "not_implemented" };
   }
   return costs;
 }
