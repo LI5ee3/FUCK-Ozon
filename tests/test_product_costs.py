@@ -150,6 +150,10 @@ class ProductForecastCostsTest(DatabaseTestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["ozon_skus"], ["SKU-1", "SKU-2"])
         self.assertEqual(rows[0]["offer_ids"], ["OFFER-1", "OFFER-2"])
+        self.assertEqual(rows[0]["listings"], [
+            {"shop_id": 1, "sku": "SKU-1", "offer_id": "OFFER-1", "offer_ids": ["OFFER-1"]},
+            {"shop_id": 1, "sku": "SKU-2", "offer_id": "OFFER-2", "offer_ids": ["OFFER-2"]},
+        ])
         self.assertEqual(rows[0]["forecast_cost"]["purchase_cost"], 12)
 
     def test_conflicting_product_rules_are_not_guessed(self):

@@ -128,6 +128,14 @@ def _resolve_item(rules, sku, offer_id, raw_name, sku_group_ids):
     return resolve_product(rules, sku, offer_id, raw_name), None
 
 
+def _add_listing(row, shop_id, sku, offer_id):
+    if not sku:
+        return
+    offer_ids = row["listings"].setdefault((shop_id, sku), set())
+    if offer_id:
+        offer_ids.add(offer_id)
+
+
 def _product_rows(db, rules):
     products = {}
     sku_group_ids = _sku_group_ids_by_sku(rules)
@@ -143,37 +151,41 @@ def _product_rows(db, rules):
                 "product_identity": None,
                 "display_name": clean_product_name(raw_name) or "商品匹配冲突",
                 "ozon_skus": set(), "offer_ids": set(),
-                "listings": set(),
+                "listings": {},
                 "sku": sku, "offer_id": offer_id,
                 "conflict": True, "conflict_message": conflict,
             })
             row["ozon_skus"].add(sku) if sku else None
             row["offer_ids"].add(offer_id) if offer_id else None
-            if sku and offer_id:
-                row["listings"].add((shop_id, sku, offer_id))
+            _add_listing(row, shop_id, sku, offer_id)
             continue
         identity = resolved["identity"]
         row = products.setdefault(identity, {
             "product_identity": identity,
             "display_name": resolved["display_name"],
             "ozon_skus": set(), "offer_ids": set(),
-            "listings": set(),
+            "listings": {},
             "sku": resolved["primary_sku"] or sku,
             "offer_id": resolved["primary_offer_id"] or offer_id,
             "conflict": False, "conflict_message": None,
         })
         row["ozon_skus"].add(sku) if sku else None
         row["offer_ids"].add(offer_id) if offer_id else None
-        if sku and offer_id:
-            row["listings"].add((shop_id, sku, offer_id))
+        _add_listing(row, shop_id, sku, offer_id)
     result = []
     for row in products.values():
         row["ozon_skus"] = sorted(row["ozon_skus"])
         row["offer_ids"] = sorted(row["offer_ids"])
-        row["listings"] = [
-            {"shop_id": shop_id, "sku": sku, "offer_id": offer_id}
-            for shop_id, sku, offer_id in sorted(row["listings"])
-        ]
+        listing_map = row["listings"]
+        row["listings"] = []
+        for (shop_id, sku), offer_ids in sorted(listing_map.items()):
+            historical_offers = sorted(offer_ids)
+            row["listings"].append({
+                "shop_id": shop_id,
+                "sku": sku,
+                "offer_id": historical_offers[0] if len(historical_offers) == 1 else None,
+                "offer_ids": historical_offers,
+            })
         result.append(row)
     return result
 

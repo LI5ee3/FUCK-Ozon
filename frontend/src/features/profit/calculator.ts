@@ -204,8 +204,8 @@ export function calculateProfit(input: ProfitInput = {}): ProfitResult {
   }
 
   const hasPurchaseCost = costs.purchase_cost.status === "implemented";
-  const commissionReady = costs.commission.status === "implemented";
-  const totalCostCny = hasPurchaseCost && commissionReady
+  const commissionBlocksProfit = costs.commission.status === "data_unavailable";
+  const totalCostCny = hasPurchaseCost && !commissionBlocksProfit
     ? PROFIT_COST_KEYS.reduce(
         (total, key) => total + (costs[key].status === "implemented" ? costs[key].value ?? 0 : 0),
         0,

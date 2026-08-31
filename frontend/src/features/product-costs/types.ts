@@ -19,7 +19,8 @@ export interface ProductForecastCost {
 export interface ProductListing {
   shop_id: number;
   sku: string;
-  offer_id: string;
+  offer_id: string | null;
+  offer_ids: string[];
 }
 
 export interface ProductCostRow {

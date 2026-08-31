@@ -6,16 +6,19 @@ function validPercent(value: unknown): value is number | null {
   return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100);
 }
 
+function validProductId(value: unknown): value is number | string | null {
+  return value === null
+    || (typeof value === "number" && Number.isSafeInteger(value) && value > 0)
+    || (typeof value === "string" && /^[0-9]+$/.test(value.trim()) && /[1-9]/.test(value));
+}
+
 function isUsableCommission(value: unknown, shopId: number, sku: string): value is ProductCommission {
   if (!value || typeof value !== "object") return false;
   const commission = value as Record<string, unknown>;
-  const productIdValid = commission.product_id === null
-    || typeof commission.product_id === "string"
-    || (typeof commission.product_id === "number" && Number.isFinite(commission.product_id));
   return commission.shop_id === shopId
     && commission.sku === sku
     && typeof commission.offer_id === "string" && commission.offer_id.trim() !== ""
-    && productIdValid
+    && validProductId(commission.product_id)
     && validPercent(commission.sales_percent_fbp)
     && validPercent(commission.sales_percent_rfbs)
     && typeof commission.fetched_at === "string" && commission.fetched_at.trim() !== "";

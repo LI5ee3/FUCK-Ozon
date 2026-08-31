@@ -34,20 +34,20 @@ const cnyCost = { ...usdCost, id: 2, product_identity: "OFFER-CNY", purchase_cos
 const usdRow: ProductCostRow = {
   product_identity: "OFFER-USD", display_name: "美元商品", ozon_skus: ["1936515175"], offer_ids: ["WGMFR265C46BL"],
   listings: [
-    { shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL" },
-    { shop_id: 2, sku: "3017433550", offer_id: "WGMFR265C46BL" },
+    { shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL", offer_ids: ["WGMFR265C46BL"] },
+    { shop_id: 2, sku: "3017433550", offer_id: "WGMFR265C46BL", offer_ids: ["WGMFR265C46BL"] },
   ],
   sku: "1936515175", offer_id: "WGMFR265C46BL", forecast_cost: usdCost, configured: true,
   updated_at: usdCost.updated_at, conflict: false, conflict_message: null,
 };
 const cnyRow: ProductCostRow = {
   ...usdRow, product_identity: "OFFER-CNY", display_name: "人民币商品", ozon_skus: ["1936515176"], offer_ids: ["WGMFR265C46GR"],
-  listings: [{ shop_id: 1, sku: "1936515176", offer_id: "WGMFR265C46GR" }],
+  listings: [{ shop_id: 1, sku: "1936515176", offer_id: "WGMFR265C46GR", offer_ids: ["WGMFR265C46GR"] }],
   sku: "1936515176", offer_id: "WGMFR265C46GR", forecast_cost: cnyCost, updated_at: cnyCost.updated_at,
 };
 const unconfiguredRow: ProductCostRow = {
   ...usdRow, product_identity: "OFFER-EMPTY", display_name: "未配置商品", ozon_skus: ["1936515177"], offer_ids: ["WGMFR265C46RD"],
-  listings: [{ shop_id: 1, sku: "1936515177", offer_id: "WGMFR265C46RD" }],
+  listings: [{ shop_id: 1, sku: "1936515177", offer_id: "WGMFR265C46RD", offer_ids: ["WGMFR265C46RD"] }],
   sku: "1936515177", offer_id: "WGMFR265C46RD", forecast_cost: null, configured: false, updated_at: null,
 };
 const conflictRow: ProductCostRow = {
@@ -58,12 +58,19 @@ const multiRow: ProductCostRow = {
   ...usdRow, product_identity: "OFFER-MULTI", display_name: "多SKU商品", ozon_skus: ["1936515180", "1936515181"],
   offer_ids: ["WGMFR265C46M1", "WGMFR265C46M2"],
   listings: [
-    { shop_id: 1, sku: "1936515180", offer_id: "WGMFR265C46M1" },
-    { shop_id: 1, sku: "1936515181", offer_id: "WGMFR265C46M2" },
+    { shop_id: 1, sku: "1936515180", offer_id: "WGMFR265C46M1", offer_ids: ["WGMFR265C46M1"] },
+    { shop_id: 1, sku: "1936515181", offer_id: "WGMFR265C46M2", offer_ids: ["WGMFR265C46M2"] },
   ],
   sku: "1936515180", offer_id: "WGMFR265C46M1", forecast_cost: { ...usdCost, id: 3, product_identity: "OFFER-MULTI" },
 };
-const products = [usdRow, cnyRow, unconfiguredRow, conflictRow, multiRow];
+const historicalOfferRow: ProductCostRow = {
+  ...usdRow,
+  product_identity: "OFFER-HISTORICAL",
+  display_name: "历史货号商品",
+  offer_ids: ["OLD-OFFER", "NEW-OFFER"],
+  listings: [{ shop_id: 1, sku: "1936515190", offer_id: null, offer_ids: ["OLD-OFFER", "NEW-OFFER"] }],
+};
+const products = [usdRow, cnyRow, unconfiguredRow, conflictRow, multiRow, historicalOfferRow];
 
 const SlotStub = defineComponent({
   inheritAttrs: false,
@@ -140,11 +147,10 @@ describe("ProfitView forecast-cost integration", () => {
     vi.clearAllMocks();
     api.listProductCosts.mockResolvedValue({ items: products, total: products.length, page: 1, size: 50 });
     commissionApi.getProductCommission.mockImplementation((shopId: number, sku: string) => {
-      const listing = products.flatMap((row) => row.listings).find((item) => item.shop_id === shopId && item.sku === sku);
       return Promise.resolve({
         shop_id: shopId,
         sku,
-        offer_id: listing?.offer_id ?? "UNKNOWN",
+        offer_id: "CURRENT-OFFER",
         product_id: 123,
         sales_percent_fbp: 15,
         sales_percent_rfbs: 12,
@@ -271,14 +277,25 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.findAllComponents(SelectStub).some((component) => component.attributes("aria-label") === "平台商品 Ozon SKU")).toBe(false);
     expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("平台商品：3017433550 · WGMFR265C46BL");
+    expect(wrapper.text()).toContain("平台商品：3017433550 · CURRENT-OFFER");
 
     await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 1);
     await nextTick();
     await flushPromises();
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
     expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
-    expect(wrapper.text()).toContain("平台商品：1936515175 · WGMFR265C46BL");
+    expect(wrapper.text()).toContain("平台商品：1936515175 · CURRENT-OFFER");
+  });
+
+  it("treats historical offer IDs for one shop and SKU as one listing, then displays the current Ozon offer", async () => {
+    const wrapper = await mountProfit();
+    await search(wrapper, "历史货号商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HISTORICAL");
+    await nextTick();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("同一 Ozon SKU 对应多个 offer_id");
+    expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515190");
+    expect(wrapper.text()).toContain("平台商品：1936515190 · CURRENT-OFFER");
   });
 
   it("allows a selected product without a current-shop listing and does not request another shop's commission", async () => {
@@ -286,7 +303,7 @@ describe("ProfitView forecast-cost integration", () => {
       ...usdRow,
       product_identity: "OFFER-NO-LISTING",
       display_name: "无当前店铺 listing",
-      listings: [{ shop_id: 2, sku: "3017433551", offer_id: "WGMFR265C46XX" }],
+      listings: [{ shop_id: 2, sku: "3017433551", offer_id: "WGMFR265C46XX", offer_ids: ["WGMFR265C46XX"] }],
     };
     api.listProductCosts.mockResolvedValueOnce({ items: [rowWithoutShopListing], total: 1, page: 1, size: 50 });
     const wrapper = await mountProfit();
@@ -419,13 +436,22 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("SKU 成本数据异常");
     expect(numberInput(wrapper, "采购成本").props("value")).toBe(null);
 
+    await productSelect(wrapper).vm.$emit("clear");
+    await nextTick();
     api.listProductCosts.mockRejectedValueOnce(new Error("网络失败"));
     await search(wrapper, "网络失败");
     expect(wrapper.text()).toContain("仍可继续手工测算");
+    await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 2);
     await numberInput(wrapper, "平台售价").vm.$emit("update:value", 700);
     await numberInput(wrapper, "采购成本").vm.$emit("update:value", 400);
+    await selectInput(wrapper, "采购币种").vm.$emit("update:value", "CNY");
+    await numberInput(wrapper, "USD CNY 测算汇率").vm.$emit("update:value", null);
     await nextTick();
-    expect(wrapper.text()).toContain("预计利润");
+    expect(wrapper.text()).toContain("当前为纯手工阶段性测算");
+    expect(wrapper.text()).toContain("平台佣金未计入");
+    expect(wrapper.text()).toContain("¥419.31");
+    expect(wrapper.text()).toContain("¥280.69");
+    expect(wrapper.text()).toContain("40.10%");
     expect(api.saveProductCost).not.toHaveBeenCalled();
     expect(api.listProductCostHistory).not.toHaveBeenCalled();
   });

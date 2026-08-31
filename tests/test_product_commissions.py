@@ -1,13 +1,14 @@
 import asyncio
 import math
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from fastapi import HTTPException
 
 from app import db
-from app.product_commissions import (PRODUCT_PRICES_PATH, ProductCommissionInputError,
-                                     ProductCommissionUnavailable, get_product_commission)
+from app.product_commissions import (PRODUCT_INFO_PATH, PRODUCT_PRICES_PATH,
+                                     ProductCommissionInputError, ProductCommissionUnavailable,
+                                     get_product_commission)
 from app.product_costs import list_product_forecast_costs
 from app.routers.product_commissions import product_commission
 from app.routers.products import save_product_rule
@@ -19,91 +20,171 @@ class ProductCommissionTest(DatabaseTestCase):
         super().setUp()
         with db.transaction() as connection:
             add_order(connection, 1, "P-1", "FBP", "2026-08-01T00:00:00Z", "已签收", 1)
-            add_item(connection, 1, "P-1", "FBP", "1936515175", offer_id="OFFER-1", product_name_raw="测试商品")
+            add_item(connection, 1, "P-1", "FBP", "1936515175", offer_id="OLD-OFFER", product_name_raw="测试商品")
             add_order(connection, 2, "P-2", "FBP", "2026-08-01T00:00:00Z", "已签收", 1)
-            add_item(connection, 2, "P-2", "FBP", "1936515175", offer_id="OFFER-2", product_name_raw="测试商品")
+            add_item(connection, 2, "P-2", "FBP", "1936515175", offer_id="SHOP-2-OFFER", product_name_raw="测试商品")
 
     @staticmethod
-    def _response(offer_id="OFFER-1", commissions=None, product_id=123456789):
+    def _info_response(sku="1936515175", product_id=123456789, offer_id="CURRENT-OFFER", *, include_sku=True):
+        item = {"id": product_id, "offer_id": offer_id}
+        if include_sku:
+            item["sources"] = [{"sku": int(sku) if str(sku).isdigit() else sku}]
+        return {"items": [item]}
+
+    @staticmethod
+    def _price_response(product_id=123456789, offer_id="CURRENT-OFFER", commissions=None):
         return {"items": [{
-            "offer_id": offer_id,
             "product_id": product_id,
+            "offer_id": offer_id,
             "commissions": commissions if commissions is not None else {
                 "sales_percent_fbp": 15,
                 "sales_percent_rfbs": 12,
             },
         }]}
 
-    def test_resolves_shop_sku_to_local_offer_and_calls_prices_api(self):
-        with patch("app.product_commissions.client._post", return_value=self._response()) as post:
+    def _post_pair(self, info=None, prices=None):
+        return patch(
+            "app.product_commissions.client._post",
+            side_effect=[
+                self._info_response() if info is None else info,
+                self._price_response() if prices is None else prices,
+            ],
+        )
+
+    def test_resolves_shop_sku_through_v3_and_queries_prices_by_product_id(self):
+        with self._post_pair() as post:
             result = get_product_commission(1, " 1936515175 ")
-        post.assert_called_once_with(1, PRODUCT_PRICES_PATH, {
-            "filter": {"offer_id": ["OFFER-1"], "visibility": "ALL"},
-            "limit": 100,
-        })
-        self.assertEqual(result["offer_id"], "OFFER-1")
+        post.assert_has_calls([
+            call(1, PRODUCT_INFO_PATH, {"sku": ["1936515175"]}),
+            call(1, PRODUCT_PRICES_PATH, {
+                "filter": {"product_id": ["123456789"], "visibility": "ALL"},
+                "limit": 100,
+            }),
+        ])
+        self.assertEqual(post.call_count, 2)
+        self.assertEqual(result["offer_id"], "CURRENT-OFFER")
         self.assertEqual(result["product_id"], 123456789)
         self.assertEqual(result["sales_percent_fbp"], 15)
         self.assertEqual(result["sales_percent_rfbs"], 12)
         self.assertTrue(result["fetched_at"].endswith("Z"))
 
-    def test_shop_is_part_of_lookup_and_unknown_sku_is_rejected(self):
-        with patch("app.product_commissions.client._post", return_value=self._response("OFFER-2")) as post:
+    def test_shop_is_part_of_local_sku_lookup_and_unknown_sku_is_rejected(self):
+        with self._post_pair(
+            info=self._info_response(offer_id="SHOP-2-CURRENT"),
+            prices=self._price_response(offer_id="SHOP-2-CURRENT"),
+        ):
             result = get_product_commission(2, "1936515175")
-        self.assertEqual(result["offer_id"], "OFFER-2")
-        with self.assertRaises(ProductCommissionInputError):
-            get_product_commission(1, "UNKNOWN")
-        post.assert_called_once()
+        self.assertEqual(result["offer_id"], "SHOP-2-CURRENT")
+        with patch("app.product_commissions.client._post") as post:
+            with self.assertRaises(ProductCommissionInputError):
+                get_product_commission(1, "UNKNOWN")
+        post.assert_not_called()
 
-    def test_invalid_shop_and_missing_local_listing_are_rejected_without_api_call(self):
+    def test_invalid_shop_and_missing_local_sku_are_rejected_without_api_call(self):
         with patch("app.product_commissions.client._post") as post:
             for shop_id, sku in ((True, "1936515175"), (3, "1936515175"), (1, ""), (1, "NOPE")):
                 with self.subTest(shop_id=shop_id, sku=sku), self.assertRaises(ProductCommissionInputError):
                     get_product_commission(shop_id, sku)
         post.assert_not_called()
 
-    def test_multiple_local_offer_ids_are_not_guessed(self):
+    def test_historical_offer_changes_do_not_create_a_local_conflict(self):
         with db.transaction() as connection:
             add_order(connection, 1, "P-3", "FBP", "2026-08-02T00:00:00Z", "已签收", 1)
-            add_item(connection, 1, "P-3", "FBP", "1936515175", offer_id="OFFER-OTHER")
-        with patch("app.product_commissions.client._post") as post:
-            with self.assertRaisesRegex(ProductCommissionInputError, "多个不同 offer_id"):
-                get_product_commission(1, "1936515175")
-        post.assert_not_called()
+            add_item(connection, 1, "P-3", "FBP", "1936515175", offer_id="NEW-OFFER")
+        with self._post_pair(
+            info=self._info_response(offer_id="NEW-OFFER"),
+            prices=self._price_response(offer_id="NEW-OFFER"),
+        ) as post:
+            result = get_product_commission(1, "1936515175")
+        self.assertEqual(result["offer_id"], "NEW-OFFER")
+        self.assertEqual(post.call_count, 2)
 
-    def test_missing_local_offer_id_is_rejected(self):
+    def test_local_sku_validation_does_not_require_a_historical_offer(self):
         with db.transaction() as connection:
             add_order(connection, 1, "P-3", "FBP", "2026-08-02T00:00:00Z", "已签收", 1)
             add_item(connection, 1, "P-3", "FBP", "NO-OFFER", offer_id=None)
-        with self.assertRaisesRegex(ProductCommissionInputError, "没有可解析的 offer_id"):
-            get_product_commission(1, "NO-OFFER")
+        with self._post_pair(info=self._info_response(sku="NO-OFFER")):
+            result = get_product_commission(1, "NO-OFFER")
+        self.assertEqual(result["sku"], "NO-OFFER")
 
-    def test_response_must_contain_the_unique_matching_offer(self):
-        for response in ({"items": []}, {"items": [self._response("WRONG")["items"][0]]},
-                         {"items": [self._response()["items"][0], self._response()["items"][0]]},
-                         {"items": [{"offer_id": "OFFER-1", "commissions": []}]}):
-            with self.subTest(response=response), patch("app.product_commissions.client._post", return_value=response):
+    def test_v3_response_must_uniquely_match_requested_sku(self):
+        responses = (
+            [],
+            {"items": "invalid"},
+            {"items": []},
+            {"items": [{"id": 1, "offer_id": "CURRENT", "sources": [{"sku": 999}]}]},
+            {"items": [self._info_response()["items"][0], self._info_response()["items"][0]]},
+            {"items": [{"id": 1, "offer_id": "CURRENT"}, {"id": 2, "offer_id": "OTHER"}]},
+            {"items": [{"id": 1, "offer_id": "CURRENT", "sources": "invalid"}]},
+        )
+        for response in responses:
+            with self.subTest(response=response), patch(
+                "app.product_commissions.client._post", return_value=response,
+            ):
                 with self.assertRaises(ProductCommissionUnavailable):
                     get_product_commission(1, "1936515175")
-        with patch("app.product_commissions.client._post", return_value={
-            "items": [self._response("OTHER")["items"][0], self._response()["items"][0]],
-        }):
-            self.assertEqual(get_product_commission(1, "1936515175")["offer_id"], "OFFER-1")
+
+    def test_v3_single_item_without_sku_metadata_is_accepted_after_exact_sku_request(self):
+        with self._post_pair(info=self._info_response(include_sku=False)):
+            result = get_product_commission(1, "1936515175")
+        self.assertEqual(result["product_id"], 123456789)
+
+    def test_v3_product_id_must_be_a_positive_int_or_numeric_string(self):
+        for product_id in (True, 0, -1, 1.5, "", "not-a-number", None):
+            with self.subTest(product_id=product_id), patch(
+                "app.product_commissions.client._post",
+                return_value=self._info_response(product_id=product_id),
+            ):
+                with self.assertRaises(ProductCommissionUnavailable):
+                    get_product_commission(1, "1936515175")
+
+    def test_v3_current_offer_id_must_be_a_non_empty_string(self):
+        for offer_id in (None, "", "  ", 123, True):
+            with self.subTest(offer_id=offer_id), patch(
+                "app.product_commissions.client._post",
+                return_value=self._info_response(offer_id=offer_id),
+            ):
+                with self.assertRaises(ProductCommissionUnavailable):
+                    get_product_commission(1, "1936515175")
+
+    def test_v5_response_must_match_product_id_once_and_current_offer(self):
+        responses = (
+            {"items": []},
+            {"items": [self._price_response(product_id=999)["items"][0]]},
+            {"items": [self._price_response()["items"][0], self._price_response()["items"][0]]},
+            self._price_response(offer_id="OLD-OFFER"),
+            {"items": [{"product_id": 123456789, "offer_id": "CURRENT-OFFER", "commissions": []}]},
+        )
+        for response in responses:
+            with self.subTest(response=response), self._post_pair(prices=response):
+                with self.assertRaises(ProductCommissionUnavailable):
+                    get_product_commission(1, "1936515175")
+
+    def test_v3_string_product_id_is_normalized_for_v5_but_preserved_in_response(self):
+        with self._post_pair(
+            info=self._info_response(product_id="243686911", offer_id="CURRENT-OFFER"),
+            prices=self._price_response(product_id="243686911"),
+        ) as post:
+            result = get_product_commission(1, "1936515175")
+        self.assertEqual(result["product_id"], "243686911")
+        self.assertEqual(post.call_args_list[1], call(1, PRODUCT_PRICES_PATH, {
+            "filter": {"product_id": ["243686911"], "visibility": "ALL"},
+            "limit": 100,
+        }))
 
     def test_exact_fbp_and_rfbs_fields_are_mapped_without_fallback(self):
-        response = self._response(commissions={
+        response = self._price_response(commissions={
             "sales_percent_fbp": 0,
             "sales_percent_rfbs": 12.5,
             "sales_percent_fbs": 99,
             "sales_percent_fbo": 98,
         })
-        with patch("app.product_commissions.client._post", return_value=response):
+        with self._post_pair(prices=response):
             result = get_product_commission(1, "1936515175")
         self.assertEqual(result["sales_percent_fbp"], 0)
         self.assertEqual(result["sales_percent_rfbs"], 12.5)
 
-        with patch("app.product_commissions.client._post", return_value=self._response(
-                commissions={"sales_percent_fbs": 99, "sales_percent_fbo": 98})):
+        with self._post_pair(prices=self._price_response(commissions={"sales_percent_fbs": 99, "sales_percent_fbo": 98})):
             result = get_product_commission(1, "1936515175")
         self.assertIsNone(result["sales_percent_fbp"])
         self.assertIsNone(result["sales_percent_rfbs"])
@@ -112,9 +193,8 @@ class ProductCommissionTest(DatabaseTestCase):
         for field, value in (("sales_percent_fbp", True), ("sales_percent_fbp", -1),
                              ("sales_percent_fbp", 101), ("sales_percent_fbp", math.nan),
                              ("sales_percent_rfbs", math.inf), ("sales_percent_rfbs", "12")):
-            with self.subTest(field=field, value=value), patch(
-                "app.product_commissions.client._post",
-                return_value=self._response(commissions={field: value}),
+            with self.subTest(field=field, value=value), self._post_pair(
+                prices=self._price_response(commissions={field: value}),
             ):
                 with self.assertRaises(ProductCommissionUnavailable):
                     get_product_commission(1, "1936515175")
@@ -122,6 +202,9 @@ class ProductCommissionTest(DatabaseTestCase):
     def test_ozon_errors_are_unavailable_and_router_maps_errors(self):
         with patch("app.product_commissions.client._post", side_effect=RuntimeError("timeout")):
             with self.assertRaisesRegex(ProductCommissionUnavailable, "timeout"):
+                get_product_commission(1, "1936515175")
+        with self._post_pair(prices=RuntimeError("prices timeout")):
+            with self.assertRaisesRegex(ProductCommissionUnavailable, "prices timeout"):
                 get_product_commission(1, "1936515175")
         with patch("app.routers.product_commissions.get_product_commission", side_effect=ProductCommissionInputError("bad")):
             with self.assertRaises(HTTPException) as context:
@@ -132,10 +215,12 @@ class ProductCommissionTest(DatabaseTestCase):
                 product_commission(1, "1936515175")
         self.assertEqual(context.exception.status_code, 502)
 
-    def test_canonical_product_listings_preserve_shop_sku_and_offer(self):
+    def test_canonical_product_listings_preserve_shop_sku_and_deduplicate_historical_offers(self):
         with db.transaction() as connection:
             add_order(connection, 1, "P-A", "FBP", "2026-08-03T00:00:00Z", "已签收", 1)
             add_item(connection, 1, "P-A", "FBP", "SKU-A", offer_id="OFFER-A", product_name_raw="同一商品")
+            add_order(connection, 1, "P-A-OLD", "FBP", "2026-08-03T00:00:00Z", "已签收", 1)
+            add_item(connection, 1, "P-A-OLD", "FBP", "SKU-A", offer_id="OFFER-A-OLD", product_name_raw="同一商品")
             add_order(connection, 2, "P-B", "FBP", "2026-08-03T00:00:00Z", "已签收", 1)
             add_item(connection, 2, "P-B", "FBP", "SKU-B", offer_id="OFFER-B", product_name_raw="同一商品")
         asyncio.run(save_product_rule(MockRequest({
@@ -146,8 +231,8 @@ class ProductCommissionTest(DatabaseTestCase):
         rows = [row for row in result["items"] if row["product_identity"] == "OFFER-A"]
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["listings"], [
-            {"shop_id": 1, "sku": "SKU-A", "offer_id": "OFFER-A"},
-            {"shop_id": 2, "sku": "SKU-B", "offer_id": "OFFER-B"},
+            {"shop_id": 1, "sku": "SKU-A", "offer_id": None, "offer_ids": ["OFFER-A", "OFFER-A-OLD"]},
+            {"shop_id": 2, "sku": "SKU-B", "offer_id": "OFFER-B", "offer_ids": ["OFFER-B"]},
         ])
         self.assertTrue(set(rows[0]) - {"listings"} >= {
             "product_identity", "display_name", "ozon_skus", "offer_ids", "forecast_cost", "configured",
