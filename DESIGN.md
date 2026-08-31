@@ -956,10 +956,13 @@ oPanel uses semantic easing roles rather than one universal easing curve:
 |---|---|---|
 | Enter or exit | `cubic-bezier(0.23, 1, 0.32, 1)` | Strong ease-out: immediate response with a natural settle |
 | Move or morph on screen | `cubic-bezier(0.77, 0, 0.175, 1)` | Strong ease-in-out: coherent acceleration and deceleration |
-| Drawer or sheet spatial movement | `cubic-bezier(0.32, 0.72, 0, 1)` | Spatially direct movement with a responsive landing |
+| Non-gesture drawer or sheet spatial movement | `cubic-bezier(0.32, 0.72, 0, 1)` | Time-based spatial movement for click or programmatic interaction |
 | Hover or color change | `ease` | Light, unobtrusive visual feedback |
 | Continuous deterministic motion | `linear` | Uniform progress or other genuinely constant motion |
 | Gesture or physical motion | Spring | Velocity-aware, retargetable movement rather than a fixed curve |
+
+This curve applies to time-based, non-direct-manipulation drawer and sheet
+transitions. Gesture-driven drawers and sheets use the Spring System instead.
 
 The defined curves are shared semantic roles, not arbitrary per-component
 choices. **`ease-in` for UI entrances is prohibited.** An ease-in entrance is
@@ -976,16 +979,21 @@ Time-based motion uses a component and frequency budget:
 | Tooltip or tiny popover | `125–180ms` |
 | Dropdown, select, or lightweight disclosure | `150–220ms` |
 | Standard component transition | `160–240ms` |
-| Modal, drawer, or sheet | `200–300ms` default |
+| Modal, non-gesture drawer, or non-gesture sheet | `200–300ms` default |
 | Large spatial transition | Only as long as the spatial relationship requires; remain restrained |
 | Marketing or explanatory motion | Not a normal oPanel application pattern |
 
-Normal oPanel UI animation should generally stay below approximately `300ms`.
+Normal time-based oPanel UI animation should generally stay below approximately `300ms`.
 This is a budget, not a mechanical hard cap: a large spatial transition or a
 physical gesture settle may need more time when distance and velocity justify
 it, but it must not feel sluggish.
 
-Spring motion is specified by physical response and damping, not by a fixed
+The fixed-duration budget applies to modals and non-gesture drawers or sheets.
+Gesture-driven drawer and sheet motion uses the Spring System instead and is
+not governed by this budget. Spring `response` is not a CSS animation duration;
+settle time emerges from the physical parameters.
+
+Spring motion is specified by damping ratio and response, not by a fixed
 duration. The first visible response must be immediate. Easing must not create
 an artificial wait before the user sees system feedback, and animation must
 never delay a business action that is already ready to complete.
@@ -1071,9 +1079,15 @@ Choose the motion mechanism by behavior:
 
 | Need | Preferred behavior |
 |---|---|
+| Non-gesture drawer or sheet open/close | Retargetable time-based transition using the dedicated drawer/sheet curve |
+| Gesture-driven drawer or sheet | Spring or equivalent velocity-aware physical motion; not a fixed-duration cubic-bezier |
 | Reversible state or rapidly triggered UI | CSS transition that can retarget from the current value |
 | Predetermined time sequence | Keyframes only when the sequence itself is necessary and interruption is not the primary interaction |
 | Gesture, velocity, or physical continuity | Spring or equivalent motion that carries current value and velocity |
+
+A drawer or sheet chooses its motion model from the interaction, not from the
+component name. Direct manipulation and velocity continuity determine the
+mechanism.
 
 Keyframes are not the default for toggles, toasts, disclosures, or other
 rapidly reversible UI. A spring is not a license to add bounce; it is a way to
@@ -1084,18 +1098,25 @@ preserve continuity when physical input requires it.
 oPanel does not use named spring presets as its Motion taxonomy. Specify a
 spring by physical purpose:
 
-| Physical purpose | Rule |
-|---|---|
-| Default UI movement | Near-critical or critically damped behavior, approximately damping ratio `1.0`, with no visible bounce |
-| Repositioning | Smooth, retargetable movement that settles without visual noise |
-| Drawer or sheet | Quick, weight-aware movement that can reverse without a hard seam |
-| Momentum-driven gesture | Limited under-damping, approximately `0.8`, only when the gesture carries meaningful velocity |
-| Decorative bounce | Prohibited by default; physical character must come from the interaction itself |
+| Physical purpose | Damping ratio | Response | Behavior |
+|---|---:|---:|---|
+| Default UI physical movement | `1.0` | `0.4s` | Critically damped, calm, precise, with no visible overshoot |
+| Repositioning | `1.0` | `0.4s` | Smooth, retargetable movement without unnecessary overshoot |
+| Gesture-driven drawer or sheet settle | `0.8` | `0.3s` | Faster physical settle with subtle physical character and velocity continuity |
+| Momentum-driven gesture | `0.8` | `0.4s` | Limited, physically reasonable overshoot when flick, throw, or velocity handoff is present |
+| Decorative bounce | — | — | Prohibited by default; physical character must come from the interaction itself |
 
-Spring response controls how quickly motion approaches its target; it is not a
-fixed duration. Use a lower damping ratio only when overshoot communicates
-momentum, release velocity, or a physical boundary. “More premium” is not a
-spring justification.
+`response` describes the characteristic speed of the spring and is not a fixed
+animation duration. It must not be interpreted as
+`animation-duration: 400ms`. Spring settle time emerges from damping ratio,
+response, current value, and velocity; it can be interrupted and retargeted.
+The Motion System uses only damping ratio and response for spring semantics. Do
+not introduce mass, stiffness, damping coefficient, rest speed, rest delta,
+velocity thresholds, or named spring presets.
+
+Use a lower damping ratio only when overshoot communicates momentum, release
+velocity, or a physical boundary. “More premium” is not a spring
+justification.
 
 ### 14.13 Gesture Motion
 
