@@ -272,7 +272,9 @@ async function loadEvents(queryFilters: AlertFilters): Promise<void> {
     if (currentRequest !== eventsRequestId) return;
     const responsePageCount = Math.max(1, Math.ceil(data.total / (data.size || PAGE_SIZE)));
     if (queryFilters.page > responsePageCount) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: responsePageCount }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: responsePageCount }) });
+      }
       return;
     }
     eventsData.value = data;

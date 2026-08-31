@@ -27,7 +27,7 @@ def _months_before(value, months=3):
     return date(year, month, min(value.day, (next_month - timedelta(days=1)).day))
 
 
-def _overview_range(date_from=None, date_to=None, now=None):
+def _overview_range(date_from=None, date_to=None, now=None, max_days=None):
     today = (now or datetime.now(BEIJING)).date()
     try:
         end = date.fromisoformat(date_to) if date_to else today
@@ -36,6 +36,8 @@ def _overview_range(date_from=None, date_to=None, now=None):
         raise HTTPException(400, "日期格式必须为 YYYY-MM-DD") from error
     if start > end:
         raise HTTPException(400, "开始日期不能晚于结束日期")
+    if max_days is not None and (end - start).days + 1 > max_days:
+        raise HTTPException(400, f"统计日期范围不能超过{max_days}天")
     utc_start = datetime.combine(start, datetime.min.time(), BEIJING).astimezone(timezone.utc)
     utc_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(timezone.utc)
     return start, end, utc_start.isoformat().replace("+00:00", "Z"), utc_end.isoformat().replace("+00:00", "Z")

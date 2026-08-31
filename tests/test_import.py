@@ -66,8 +66,8 @@ class ImportTest(DatabaseTestCase):
         class Request:
             headers = {"x-filename": "orders.csv"}
 
-            async def body(self):
-                return ("订单号;发货号码;状态;SKU;数量\n"
+            async def stream(self):
+                yield ("订单号;发货号码;状态;SKU;数量\n"
                         "M-1;P-1;已签收;SKU-1;1\n").encode()
 
         runner = AsyncMock(return_value={"rows": 1})

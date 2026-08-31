@@ -9,10 +9,11 @@ from ..ozon.client import BEIJING
 from ..ozon.mappings import CANCEL_REASON_ZH
 from ..products import load_product_rules, resolve_product
 from .common import (_complaint_deadline, _overview_range, _paging,
-                     _with_compensation_conversion, _utc_text)
+                     _with_compensation_conversion, _utc_text, read_bounded_json)
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 64 * 1024
 
 
 def _compensation_pair(body, amount_key, time_key):
@@ -36,7 +37,7 @@ def _compensation_pair(body, amount_key, time_key):
 @router.post("/api/exception-complaints/shipping")
 @router.put("/api/exception-complaints/shipping")
 async def save_complaint(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "申诉")
     shop_id = int(body.get("shop_id") or 0)
     number = str(body.get("complaint_number") or "").strip()
     posting = str(body.get("posting_number") or "").strip()
@@ -216,7 +217,7 @@ def received_disputes(shop_id: int = 0, q: str = "", status: str = "", page: int
 @router.post("/api/exception-complaints/received")
 @router.put("/api/exception-complaints/received")
 async def save_received_dispute(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "申诉")
     shop_id = int(body.get("shop_id") or 0)
     return_number = str(body.get("return_number") or "").strip()
     if shop_id not in (1, 2) or not return_number:

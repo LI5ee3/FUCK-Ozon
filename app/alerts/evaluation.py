@@ -1,15 +1,18 @@
+import logging
 import threading
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from ..db import connect
 from ..dingtalk import configured as dingtalk_configured, send_text
 from ..inventory import get_stock
 from ..products import load_product_rules, resolve_product
+from ..routers.common import _utc_text
 from .config import RULE_KEYS, RULE_LABELS, RULE_SEVERITIES, _number, get_alert_rules
 from .freshness import BEIJING, MOSCOW, _fresh_ad_data, _fresh_inventory, _fresh_orders, _now_utc
 from .store import _mark_notification_failed, _mark_notification_sent, _record_rule_state
 
 
+logger = logging.getLogger(__name__)
 _alert_lock = threading.Lock()
 
 
@@ -213,6 +216,7 @@ def _inventory_risk(db, shop_id, config, now):
                 break
             page += 1
     except Exception:
+        logger.exception("Alert detector failed: shop_id=%s rule_key=inventory_risk", shop_id)
         return [], "库存预测读取失败", set()
     result = []
     for row in rows:
@@ -250,8 +254,8 @@ def _sales_drop(db, shop_id, config, now):
       WHERE o.shop_id=? AND o.channel IN ('FBP','realFBS')
         AND NOT (o.status_raw='已取消' AND o.shipped=0)
         AND o.created_at>=? AND o.created_at<? GROUP BY stat_date""",
-                     (shop_id, f"{start.isoformat()}T00:00:00+08:00",
-                      f"{(target + timedelta(days=1)).isoformat()}T00:00:00+08:00")).fetchall()
+                     (shop_id, _utc_text(datetime.combine(start, datetime.min.time(), BEIJING)),
+                      _utc_text(datetime.combine(target + timedelta(days=1), datetime.min.time(), BEIJING)))).fetchall()
     by_date = {row["stat_date"]: _number(row["units"]) or 0 for row in rows}
     baseline = [by_date.get((target - timedelta(days=offset)).isoformat(), 0) for offset in range(1, days + 1)]
     baseline_days = len(baseline)
@@ -302,6 +306,7 @@ def evaluate_alerts(shop_id=0, rule_keys=None, now=None):
                         items, reason, resolvable_ids = DETECTORS[rule_key](
                             db, current_shop, rule["config"], now)
                 except Exception:
+                    logger.exception("Alert detector failed: shop_id=%s rule_key=%s", current_shop, rule_key)
                     items, reason, resolvable_ids = [], "规则检查失败", set()
                 if reason:
                     summary["skipped"].append({"shop_id": current_shop, "rule_key": rule_key, "reason": reason})

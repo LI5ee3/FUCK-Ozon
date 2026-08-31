@@ -3,10 +3,10 @@ import hmac
 import os
 import secrets
 import time
-from collections import defaultdict, deque
+from collections import deque
 from pathlib import Path
 
-_failures = defaultdict(deque)
+_failures = {}
 
 
 def password_hash(password, salt=None):
@@ -43,15 +43,18 @@ def migrate_env_password(path):
 
 
 def login_limited(key, now=None):
-    now = now or time.time()
-    attempts = _failures[key]
-    while attempts and attempts[0] < now - 300:
-        attempts.popleft()
-    return len(attempts) >= 5
+    now = time.time() if now is None else now
+    # ponytail: scan the small login failure map; use timed eviction if login volume grows.
+    for address, attempts in list(_failures.items()):
+        while attempts and attempts[0] < now - 300:
+            attempts.popleft()
+        if not attempts:
+            _failures.pop(address, None)
+    return len(_failures.get(key, ())) >= 5
 
 
 def record_login_failure(key, now=None):
-    _failures[key].append(now or time.time())
+    _failures.setdefault(key, deque()).append(time.time() if now is None else now)
 
 
 def clear_login_failures(key):

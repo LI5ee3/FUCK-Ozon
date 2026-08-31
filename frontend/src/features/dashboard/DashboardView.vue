@@ -232,6 +232,7 @@ const timelinessInsights = computed<Insight[]>(() => {
 
 const topProductsInsights = computed<Insight[]>(() => {
   const products = summary.value?.top_products ?? [];
+  if (!products.length) return [];
   const totalPieces = summary.value?.totals.pieces ?? 0;
   const top5Pieces = products.reduce((total, product) => total + product.pieces, 0);
   const top5CancelPieces = products.reduce((total, product) => total + Math.round(product.pieces * product.cancel_rate), 0);

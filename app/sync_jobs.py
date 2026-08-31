@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -8,6 +9,9 @@ from .ozon.client import BEIJING
 from .ozon.sync import sync_module
 from .performance import sync_performance_campaigns, sync_performance_statistics
 from .routers.common import _utc_text
+
+
+logger = logging.getLogger(__name__)
 
 
 SYNC_MODULES = {"orders", "returns", "stock"}
@@ -67,7 +71,7 @@ def _evaluate_alerts_after_sync(shop_id, module):
         evaluate_alerts(shop_id, rule_keys=rule_keys)
     except Exception:
         # Alert delivery is best effort; a sync that succeeded must stay successful.
-        pass
+        logger.exception("Alert evaluation failed after sync: shop_id=%s module=%s", shop_id, module)
 
 
 def _run_performance_statistics_sync(shop_id, start, end, module="all"):

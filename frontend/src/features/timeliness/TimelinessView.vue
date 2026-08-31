@@ -206,7 +206,9 @@ async function loadTimeliness(queryFilters: TimelinessFilters): Promise<void> {
     if (currentRequest !== requestId) return;
     const pages = Math.max(1, Math.ceil(response.total / (response.size || PAGE_SIZE)));
     if (queryFilters.page > pages) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      }
       return;
     }
     data.value = response;

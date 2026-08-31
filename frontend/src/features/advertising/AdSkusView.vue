@@ -163,7 +163,9 @@ async function loadSkuStats(queryFilters: AdSkuFilters): Promise<void> {
     if (currentRequest !== requestId) return;
     const nextPageCount = Math.max(1, Math.ceil(data.total / (data.size || PAGE_SIZE)));
     if (queryFilters.page > nextPageCount) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: nextPageCount }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: nextPageCount }) });
+      }
       return;
     }
     rows.value = data.items;

@@ -4,10 +4,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..db import connect, transaction
 from ..products import clean_product_name, load_product_rules, resolve_product
-from .common import _utc_text
+from .common import _utc_text, read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 256 * 1024
 
 
 @router.get("/api/product-rules")
@@ -46,8 +47,17 @@ def product_rules(q: str = ""):
 
 @router.put("/api/product-rules")
 async def save_product_rule(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "商品规则")
     kind = body.get("kind")
+    group_id = 0
+    if kind in ("merge", "dissolve"):
+        value = body.get("id")
+        try:
+            if value is not None and type(value) not in (int, str):
+                raise ValueError("invalid ID type")
+            group_id = int(value or 0)
+        except (TypeError, ValueError) as error:
+            raise HTTPException(400, "合并关系ID无效") from error
     now = _utc_text(datetime.now(timezone.utc))
     with transaction() as db:
         if kind == "short_name":
@@ -63,7 +73,6 @@ async def save_product_rule(request: Request):
             if not sku: raise HTTPException(400, "SKU不能为空")
             db.execute("DELETE FROM product_short_names WHERE key_type='sku' AND key_value=?", (sku,))
         elif kind == "merge":
-            group_id = int(body.get("id") or 0)
             primary_offer = str(body.get("primary_offer_id") or "").strip()
             members = [(str(row.get("key_type") or ""), str(row.get("key_value") or "").strip())
                        for row in body.get("members") or []]
@@ -114,7 +123,7 @@ async def save_product_rule(request: Request):
             db.executemany("INSERT INTO product_group_members VALUES(?,?,?)",
                            [(group_id, key_type, value) for key_type, value in members])
         elif kind == "dissolve":
-            db.execute("DELETE FROM product_groups WHERE id=?", (int(body.get("id") or 0),))
+            db.execute("DELETE FROM product_groups WHERE id=?", (group_id,))
         else:
             raise HTTPException(400, "未知规则类型")
     return {"ok": True}

@@ -1,7 +1,8 @@
 import hashlib
 import json
+import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from . import client
 from ..db import connect, transaction
@@ -10,6 +11,9 @@ from .mappings import (PUSH_CANCEL_TYPES, PUSH_ORDER_TYPES, PUSH_POSTING_TYPES,
 
 _PENDING_TYPES = ("TYPE_NEW_POSTING", "TYPE_FBO_POSTING_NEW")
 _WORKER_RETRY_SECONDS = 30
+_RETRY_WINDOW = timedelta(hours=24)
+_RETRY_STOPPED = "自动重试已停止（超过24小时）: "
+logger = logging.getLogger(__name__)
 _worker_stop = threading.Event()
 _worker_wake = threading.Event()
 _worker_thread = None
@@ -352,17 +356,26 @@ def complete_webhook_posting(shop_id, event_key):
 
 def process_pending_webhook_postings(limit=100, stop_event=None):
     with connect() as db:
-        rows = db.execute("""SELECT shop_id,event_key FROM ozon_webhook_events
+        rows = db.execute("""SELECT shop_id,event_key,received_at,error FROM ozon_webhook_events
           WHERE applied_at IS NULL AND message_type IN (?,?)
+            AND (error IS NULL OR error NOT LIKE ?)
           ORDER BY occurred_at IS NULL,occurred_at,received_at,shop_id,event_key LIMIT ?""",
-                          (*_PENDING_TYPES, limit)).fetchall()
+                          (*_PENDING_TYPES, _RETRY_STOPPED + "%", limit)).fetchall()
     for row in rows:
         if stop_event and stop_event.is_set():
             break
+        if row["error"] and datetime.fromisoformat(row["received_at"].replace("Z", "+00:00")) <= datetime.now(timezone.utc) - _RETRY_WINDOW:
+            # Persist the terminal failure in the existing error field; applied_at stays NULL.
+            with transaction() as db:
+                db.execute("UPDATE ozon_webhook_events SET error=? WHERE shop_id=? AND event_key=? AND applied_at IS NULL",
+                           (_RETRY_STOPPED + row["error"], row["shop_id"], row["event_key"]))
+            logger.error("Webhook retry window exhausted: shop_id=%s event_key=%s error=%s",
+                         row["shop_id"], row["event_key"], row["error"])
+            continue
         try:
             complete_webhook_posting(row["shop_id"], row["event_key"])
         except Exception:
-            pass
+            logger.exception("Webhook retry failed: shop_id=%s event_key=%s", row["shop_id"], row["event_key"])
     return len(rows)
 
 
@@ -372,7 +385,7 @@ def _webhook_worker():
         try:
             process_pending_webhook_postings(stop_event=_worker_stop)
         except Exception:
-            pass
+            logger.exception("Webhook worker failed")
         _worker_wake.wait(_WORKER_RETRY_SECONDS)
 
 

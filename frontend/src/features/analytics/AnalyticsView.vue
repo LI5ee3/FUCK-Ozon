@@ -253,7 +253,9 @@ async function loadTraffic(queryFilters: AnalyticsFilters): Promise<void> {
     if (currentRequest !== requestId) return;
     const pages = pageCountFor(data);
     if (queryFilters.page > pages) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      }
       return;
     }
     traffic.value = data;
@@ -284,7 +286,9 @@ async function loadProductQueryRows(queryFilters: AnalyticsFilters): Promise<voi
     if (currentRequest !== requestId) return;
     const pages = pageCountFor(data);
     if (queryFilters.page > pages) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
+      }
       return;
     }
     productQueries.value = data;

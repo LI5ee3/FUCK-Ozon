@@ -3,9 +3,11 @@ from starlette.concurrency import run_in_threadpool
 
 from ..alerts import (acknowledge_alert, alert_summary, evaluate_alerts, get_alert_rules,
                       list_alert_events, update_alert_rule)
+from .common import read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 16 * 1024
 
 
 def _alert_shop_id(value=0):
@@ -37,7 +39,7 @@ def alerts_summary(shop_id: int = 0):
 
 @router.post("/api/alerts/evaluate")
 async def alerts_evaluate(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "告警")
     try:
         shop_id = _alert_shop_id((body or {}).get("shop_id", 0))
         return await run_in_threadpool(evaluate_alerts, shop_id)
@@ -64,6 +66,6 @@ def alert_rules(shop_id: int = 0):
 @router.put("/api/alert-rules/{rule_key}")
 async def alert_rule_update(rule_key: str, request: Request):
     try:
-        return update_alert_rule(rule_key, await request.json())
+        return update_alert_rule(rule_key, await read_bounded_json(request, JSON_MAX_BODY_BYTES, "告警"))
     except ValueError as error:
         raise HTTPException(400, str(error)) from error

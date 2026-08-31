@@ -37,12 +37,16 @@ export function useTheme() {
 
   function setMode(next: ThemeMode): void {
     mode.value = next;
-    if (next === "system") {
-      localStorage.setItem("themeFollowSystem", "true");
-      localStorage.removeItem("theme");
-    } else {
-      localStorage.setItem("themeFollowSystem", "false");
-      localStorage.setItem("theme", next);
+    try {
+      if (next === "system") {
+        localStorage.setItem("themeFollowSystem", "true");
+        localStorage.removeItem("theme");
+      } else {
+        localStorage.setItem("themeFollowSystem", "false");
+        localStorage.setItem("theme", next);
+      }
+    } catch {
+      // Theme changes still apply when browser storage is unavailable.
     }
     applyDocumentTheme(isDark.value);
   }

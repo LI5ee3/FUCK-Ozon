@@ -75,5 +75,10 @@ class MockRequest:
     def __init__(self, value):
         self.value = value
 
+    headers = {}
+
+    async def stream(self):
+        yield json.dumps(self.value).encode()
+
     async def json(self):
         return self.value

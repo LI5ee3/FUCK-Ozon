@@ -3,9 +3,11 @@ from starlette.concurrency import run_in_threadpool
 
 from ..db import connect, transaction
 from ..ozon.client import probe_shop
+from .common import read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 8 * 1024
 
 
 @router.get("/api/shops")
@@ -16,7 +18,7 @@ def shops():
 
 @router.put("/api/shops")
 async def update_shops(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "店铺")
     names = [str(body.get(str(i), "")).strip() for i in (1, 2)]
     if not all(names):
         raise HTTPException(400, "店铺名称不能为空")

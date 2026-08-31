@@ -128,7 +128,7 @@ def summary(shop_id: int = 0,
         raise HTTPException(400, "未知店铺")
     if granularity not in ("day", "week", "month"):
         raise HTTPException(400, "granularity 必须为 day、week 或 month")
-    start, end, utc_start, utc_end = _overview_range(date_from, date_to)
+    start, end, utc_start, utc_end = _overview_range(date_from, date_to, max_days=3660)
     clause, shop_args = _shop_clause(shop_id)
     args = [utc_start, utc_end] + shop_args
     with connect() as db:

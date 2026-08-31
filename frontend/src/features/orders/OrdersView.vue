@@ -167,7 +167,7 @@ function updateRoute(next: OrderFilters, replace = false): void {
 }
 
 function currentFilters(): OrderFilters {
-  const next = { ...filters, search: searchDraft.value };
+  const next = { ...filters, search: searchDraft.value.trim() };
   if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
     [next.from, next.to] = beijingThreeMonthRange();
   }
@@ -200,7 +200,9 @@ async function loadOrders(queryFilters: OrderFilters): Promise<void> {
     if (currentRequest !== requestId) return;
     const responsePageCount = Math.max(1, Math.ceil(data.total / (data.size || PAGE_SIZE)));
     if (queryFilters.page > responsePageCount) {
-      await router.replace({ query: queryFor({ ...queryFilters, page: responsePageCount }) });
+      if (queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: responsePageCount }) });
+      }
       return;
     }
     orders.value = data.items;
@@ -222,7 +224,7 @@ function retry(): void {
 }
 
 function submitSearch(): void {
-  updateFilters({ page: 1, search: searchDraft.value });
+  updateFilters({ page: 1, search: searchDraft.value.trim() });
 }
 
 function handleChannelChange(value: string | number | null): void {

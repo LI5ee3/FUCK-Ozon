@@ -128,7 +128,11 @@ class SecurityTest(DatabaseTestCase):
             (Request({}, "192.0.2.9"), "192.0.2.9"),
             (Request({"CF-Connecting-IP": "not-an-ip"}), "127.0.0.1"),
             (Request({"X-Forwarded-For": "203.0.113.7"}), "203.0.113.7"),
-            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "1.2.3.4, 10.0.0.1, 10.0.0.2"}), "1.2.3.4"),
+            (Request({"X-Forwarded-For": "1.2.3.4"}, "192.0.2.8"), "192.0.2.8"),
+            (Request({"CF-Connecting-IP": "198.51.100.7", "X-Forwarded-For": "1.2.3.4, 10.0.0.1"}), "198.51.100.7"),
+            (Request({"X-Forwarded-For": "bad, 10.0.0.1"}), "127.0.0.1"),
+            (Request({"X-Forwarded-For": "1.2.3.4, bad"}), "127.0.0.1"),
         ]
         self.assertEqual([_client_ip(request) for request, _ in requests], [expected for _, expected in requests])
         with patch("app.routers.auth._env", return_value={"ADMIN_PASSWORD_SALT": "00", "ADMIN_PASSWORD_HASH": "hash"}), \

@@ -186,6 +186,7 @@ def get_stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
     page, size = _paging(page, size)
     today = datetime.now(BEIJING).date()
     sales_end = today - timedelta(days=1)
+    sales_start = today - timedelta(days=30)
     bounds = [_forecast_bounds(today, days) for days in FORECAST_WINDOWS]
     shop_clause, shop_args = _shop_clause(shop_id)
     with connect() as db:
@@ -217,7 +218,7 @@ def get_stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
                       SUM(CASE WHEN stat_date BETWEEN ? AND ? THEN COALESCE(orders,0) ELSE 0 END) ad_orders,
                       MAX(CASE WHEN stat_date BETWEEN ? AND ? THEN 1 ELSE 0 END) has_rows
                       FROM ad_sku_daily WHERE (?=0 OR shop_id=?) GROUP BY shop_id,sku""",
-                                         (bounds[2][0][:10], sales_end.isoformat(), bounds[2][0][:10],
+                                         (sales_start.isoformat(), sales_end.isoformat(), sales_start.isoformat(),
                                           sales_end.isoformat(), shop_id, shop_id))}
         shop_names = {row["id"]: row["name"] for row in db.execute("SELECT id,name FROM shops")}
         rules = load_product_rules(db)
@@ -227,7 +228,7 @@ def get_stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
             sales_through = db.execute(f"""SELECT MAX(o.created_at) FROM orders o
               WHERE o.channel IN ('FBP','realFBS'){shop_clause}""", shop_args).fetchone()[0]
     grouped = {}
-    channel_names = {"fbp": "FBP", "rfbs": "realFBS", "fbo": "WHD"}
+    channel_names = {"fbp": "FBP", "fbs": "realFBS", "rfbs": "realFBS", "fbo": "WHD"}
 
     def empty_group(item_shop, item_sku):
         return {"shop_id": item_shop, "shop_name": shop_names.get(item_shop, f"店铺{item_shop}"),

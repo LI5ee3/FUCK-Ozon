@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -17,11 +18,16 @@ async def upload(kind: str, request: Request, shop_id: int):
     if kind not in CHANNELS: raise HTTPException(400, "未知渠道")
     filename = unquote(request.headers.get("x-filename", kind))
     if Path(filename).suffix.lower() != ".csv": raise HTTPException(400, "仅支持CSV文件")
-    content = await request.body()
-    if len(content) > 50 * 1024 * 1024: raise HTTPException(413, "文件超过50MB")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > 50 * 1024 * 1024:
+            raise HTTPException(413, "文件超过50MB")
+        chunks.append(chunk)
+    content = b"".join(chunks)
     try:
         return await run_in_threadpool(import_csv, shop_id, kind, filename, content)
-    except (ValueError, UnicodeError) as error:
+    except (csv.Error, ValueError, UnicodeError) as error:
         raise HTTPException(400, str(error)) from error
 
 

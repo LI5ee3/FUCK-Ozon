@@ -63,7 +63,7 @@ def _authenticated(request):
         expected = hmac.new(_secret(), f"{expires}.{csrf}.{generation}".encode(), hashlib.sha256).hexdigest()
         return (int(expires) > time.time() and generation == str(_generation())
                 and hmac.compare_digest(signature, expected))
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return False
 
 
@@ -88,10 +88,12 @@ def _client_ip(request):
     values = [headers.get("cf-connecting-ip"), headers.get("x-forwarded-for")]
     for index, value in enumerate(values):
         value = str(value or "").strip()
-        if not value or (index == 1 and "," in value):
+        if not value:
             continue
         try:
-            return str(ipaddress.ip_address(value))
+            addresses = value.split(",") if index == 1 else [value]
+            parsed = [ipaddress.ip_address(address.strip()) for address in addresses]
+            return str(parsed[0])
         except ValueError:
             continue
     return peer

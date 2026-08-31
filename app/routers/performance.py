@@ -10,10 +10,11 @@ from starlette.concurrency import run_in_threadpool
 from ..db import connect
 from ..performance import PerformanceConfigurationError, list_campaigns
 from ..sync_jobs import _run_performance_campaign_sync, _run_performance_statistics_sync
-from .common import _paging
+from .common import _paging, read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 8 * 1024
 
 
 def _performance_shop_id(value):
@@ -25,7 +26,7 @@ def _performance_shop_id(value):
     raise HTTPException(400, "请选择有效店铺")
 @router.post("/api/performance/test")
 async def performance_test(request: Request):
-    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
+    shop_id = _performance_shop_id((await read_bounded_json(request, JSON_MAX_BODY_BYTES, "广告同步")).get("shop_id"))
     try:
         campaigns = await run_in_threadpool(list_campaigns, shop_id)
     except PerformanceConfigurationError as error:
@@ -37,7 +38,7 @@ async def performance_test(request: Request):
 
 @router.post("/api/performance/campaigns/sync")
 async def performance_campaign_sync(request: Request):
-    shop_id = _performance_shop_id((await request.json()).get("shop_id"))
+    shop_id = _performance_shop_id((await read_bounded_json(request, JSON_MAX_BODY_BYTES, "广告同步")).get("shop_id"))
     try:
         return await run_in_threadpool(_run_performance_campaign_sync, shop_id)
     except sqlite3.IntegrityError as error:
@@ -261,7 +262,7 @@ def performance_sku_stats(shop_id: str = "0", q: str = "", sort: str = "spend_ru
 
 @router.post("/api/performance/statistics/sync")
 async def performance_statistics_sync(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "广告同步")
     shop_id = _performance_shop_id(body.get("shop_id"))
     try:
         start, end = _performance_range(body.get("date_from") or body.get("from"),

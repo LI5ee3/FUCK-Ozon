@@ -6,9 +6,11 @@ from fastapi import APIRouter, HTTPException, Request
 from ..db import connect
 from ..ozon.sync import default_range
 from ..sync_jobs import SYNC_MODULES, _create_sync_job, save_auto_sync_settings
+from .common import read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 8 * 1024
 
 
 @router.get("/api/sync")
@@ -40,7 +42,7 @@ def auto_sync_settings():
 @router.put("/api/auto-sync-settings")
 async def update_auto_sync_settings(request: Request):
     try:
-        save_auto_sync_settings(await request.json())
+        save_auto_sync_settings(await read_bounded_json(request, JSON_MAX_BODY_BYTES, "同步"))
     except ValueError as error:
         raise HTTPException(400, str(error)) from error
     return {"ok": True}
@@ -50,14 +52,17 @@ async def update_auto_sync_settings(request: Request):
 async def sync(module: str, request: Request, shop_id: int):
     if module not in SYNC_MODULES: raise HTTPException(404, "未知模块")
     if shop_id not in (1, 2): raise HTTPException(400, "请选择店铺")
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "同步")
     start, end = default_range()
     try:
+        for field in ("from", "to"):
+            if body.get(field) is not None and not isinstance(body[field], str):
+                raise ValueError("invalid date type")
         if body.get("from"):
             start = datetime.fromisoformat(body["from"]).replace(tzinfo=ZoneInfo("Asia/Shanghai"))
         if body.get("to"):
             end = datetime.fromisoformat(body["to"]).replace(hour=23, minute=59, second=59, tzinfo=ZoneInfo("Asia/Shanghai"))
-    except ValueError as error:
+    except (TypeError, ValueError) as error:
         raise HTTPException(400, "日期格式无效") from error
     if start >= end:
         raise HTTPException(400, "开始日期必须早于结束日期")

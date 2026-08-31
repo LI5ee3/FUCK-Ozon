@@ -115,9 +115,11 @@ def _cutoff(db, module, fallback_sql):
 def daily_values(stats_date):
     with connect() as db:
         shops = db.execute("SELECT id,name FROM shops ORDER BY id").fetchall()
+        # CSV exports lack cancellation timestamps: count these cancelled orders by creation day.
+        # API orders continue to use only the actual status-change day.
         cancellations = db.execute("""SELECT o.shop_id,o.channel,o.posting_number,o.cancel_reason_raw
           FROM orders o WHERE o.status_raw='已取消' AND o.shipped=1
-          AND date(datetime(o.status_changed_at),'+8 hours')=?
+          AND date(datetime(COALESCE(o.status_changed_at, CASE WHEN o.source='csv' THEN o.created_at END)),'+8 hours')=?
         """, (stats_date,)).fetchall()
         legacy = db.execute("""SELECT r.shop_id,r.record_key,r.posting_number,r.payload,o.channel
           FROM return_records r LEFT JOIN orders o

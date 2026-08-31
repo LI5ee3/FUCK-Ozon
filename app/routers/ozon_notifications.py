@@ -4,9 +4,11 @@ from starlette.concurrency import run_in_threadpool
 from ..ozon.client import (notification_check, notification_delete, notification_enable,
                            notification_list, notification_set, push_type_list)
 from ..ozon.mappings import PUSH_EVENT_TYPES
+from .common import read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 16 * 1024
 
 
 def _admin_shop(body):
@@ -35,7 +37,7 @@ async def ozon_push_types(shop_id: int):
 
 @router.post("/api/ozon/notifications/check")
 async def ozon_notification_check(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
     url = str(body.get("url") or "").strip()
     if not url:
@@ -45,7 +47,7 @@ async def ozon_notification_check(request: Request):
 
 @router.post("/api/ozon/notifications/set")
 async def ozon_notification_set(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
     url = str(body.get("url") or "").strip()
     types = body.get("types") or PUSH_EVENT_TYPES
@@ -56,12 +58,12 @@ async def ozon_notification_set(request: Request):
 
 @router.post("/api/ozon/notifications/list")
 async def ozon_notification_list(request: Request):
-    return await _ozon_management_call(notification_list, _admin_shop(await request.json()))
+    return await _ozon_management_call(notification_list, _admin_shop(await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")))
 
 
 @router.post("/api/ozon/notifications/enable")
 async def ozon_notification_enable(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
     try:
         notification_id = int(body.get("id"))
@@ -75,7 +77,7 @@ async def ozon_notification_enable(request: Request):
 
 @router.post("/api/ozon/notifications/delete")
 async def ozon_notification_delete(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
     try:
         notification_id = int(body.get("id"))

@@ -266,7 +266,7 @@ async function loadReturns(queryFilters: ReturnsFilters): Promise<void> {
     const pages = pageCountFor(data);
     if (queryFilters.page > pages) {
       tabPages.cancel = pages;
-      if (filters.tab === "cancel") {
+      if (filters.tab === "cancel" && queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
         await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
       }
       return;
@@ -299,7 +299,7 @@ async function loadRfbsReturns(queryFilters: ReturnsFilters): Promise<void> {
     const pages = pageCountFor(data);
     if (queryFilters.page > pages) {
       tabPages.rfbs = pages;
-      if (filters.tab === "rfbs") {
+      if (filters.tab === "rfbs" && queryMatches(queryFor(currentFilters()), queryFor(queryFilters))) {
         await router.replace({ query: queryFor({ ...queryFilters, page: pages }) });
       }
       return;

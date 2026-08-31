@@ -4,9 +4,11 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..db import connect, transaction
 from ..dingtalk import configured as dingtalk_configured, next_push_time
+from .common import read_bounded_json
 
 
 router = APIRouter()
+JSON_MAX_BODY_BYTES = 64 * 1024
 
 
 def _dingtalk_settings():
@@ -30,7 +32,7 @@ def dingtalk_settings():
 
 @router.put("/api/dingtalk/settings")
 async def update_dingtalk_settings(request: Request):
-    body = await request.json()
+    body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "钉钉设置")
     updates, args = [], []
     schedule_keys = {"daily_enabled", "push_time", "weekdays"}
     if schedule_keys & body.keys():
