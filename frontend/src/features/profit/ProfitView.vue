@@ -367,13 +367,24 @@ const configuredCostNames = computed(() => PROFIT_COST_KEYS
     && (key !== "commission" || result.value.costs[key].status === "implemented"))
   .map((key) => profitCostLabels[key]));
 const profitNotice = computed(() => `当前已接入费用：${configuredCostNames.value.join("、") || "暂无"}；其他费用规则尚未接入。`);
-const summaryNote = computed(() => result.value.costs.commission.status === "data_unavailable"
-  ? `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`
-  : !selectedProduct.value && result.value.costs.commission.status === "missing_input"
-    ? `当前为纯手工阶段性测算，平台佣金未计入；选择商品后可自动获取 Ozon 当前佣金。`
-  : result.value.profit_cny === null
+const summaryNote = computed(() => {
+  const crossBorderShippingMissing = ["FBP", "realFBS_shenzhen"].includes(result.value.fulfillment_path)
+    && result.value.costs.cross_border_shipping.status === "missing_input";
+  if (result.value.costs.commission.status === "data_unavailable") {
+    return `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`;
+  }
+  if (!selectedProduct.value && result.value.costs.commission.status === "missing_input") {
+    return crossBorderShippingMissing
+      ? "当前为纯手工阶段性测算，平台佣金未计入；请输入有效的平台售价和包裹重量以计算跨境运费。"
+      : "当前为纯手工阶段性测算，平台佣金未计入；选择商品后可自动获取 Ozon 当前佣金。";
+  }
+  if (crossBorderShippingMissing) {
+    return `请输入有效的平台售价和包裹重量以计算跨境运费；${profitNotice.value}`;
+  }
+  return result.value.profit_cny === null
     ? `请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率；${profitNotice.value}`
-    : profitNotice.value);
+    : profitNotice.value;
+});
 
 type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
 

@@ -97,6 +97,60 @@ function commissionCost(price: ProfitPrice, percent: ProfitValue): ProfitCostIte
     : { value: null, status: "data_unavailable" };
 }
 
+export function calculateCrossBorderShippingCny(
+  shopId: ProfitShopId | number | string | null | undefined,
+  priceOriginal: ProfitValue,
+  weightGrams: ProfitValue,
+): ProfitCostItem {
+  const price = profitNumber(priceOriginal);
+  const weight = profitNumber(weightGrams);
+  if (price === null || weight === null || weight <= 0) {
+    return { value: null, status: "missing_input" };
+  }
+
+  const shopNumber = Number(shopId);
+  let threshold: number;
+  let lowBase: number;
+  let highBase: number;
+  if (shopNumber === 1) {
+    if (price < 20) {
+      threshold = 500;
+      lowBase = 3.37;
+      highBase = 25.83;
+    } else if (price <= 90) {
+      threshold = 2000;
+      lowBase = 17.97;
+      highBase = 40.44;
+    } else {
+      threshold = 5000;
+      lowBase = 24.71;
+      highBase = 69.64;
+    }
+  } else if (shopNumber === 2) {
+    if (price < 150) {
+      threshold = 500;
+      lowBase = 3.37;
+      highBase = 25.83;
+    } else if (price <= 650) {
+      threshold = 2000;
+      lowBase = 17.97;
+      highBase = 40.44;
+    } else {
+      threshold = 5000;
+      lowBase = 24.71;
+      highBase = 69.64;
+    }
+  } else {
+    return { value: null, status: "missing_input" };
+  }
+
+  const lowWeight = weight < threshold;
+  const value = (lowWeight ? lowBase : highBase) + (lowWeight ? 0.0505 : 0.0371) * weight;
+  return Number.isFinite(value)
+    ? { value, status: "implemented" }
+    : { value: null, status: "data_unavailable" };
+}
+
 export function normalizeProfitPrice(
   shopId: ProfitShopId | number | string | null | undefined,
   original: ProfitValue,
@@ -163,6 +217,7 @@ function acquiringFeeCost(price: ProfitPrice): ProfitCostItem {
 export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: 10, status: "implemented" };
+  costs.cross_border_shipping = calculateCrossBorderShippingCny(input.shopId, input.priceOriginal, input.weightGrams);
   costs.commission = commissionCost(price, input.salesPercentFbp);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
@@ -181,6 +236,7 @@ export function calculateRealFbsHongKongCosts(input: ProfitInput = {}, price: Pr
 export function calculateRealFbsShenzhenCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  costs.cross_border_shipping = calculateCrossBorderShippingCny(input.shopId, input.priceOriginal, input.weightGrams);
   costs.commission = commissionCost(price, input.salesPercentRfbs);
   costs.international_transport_contract_service = contractServiceCost(price);
   costs.bank_acquiring_fee = acquiringFeeCost(price);
@@ -205,7 +261,9 @@ export function calculateProfit(input: ProfitInput = {}): ProfitResult {
 
   const hasPurchaseCost = costs.purchase_cost.status === "implemented";
   const commissionBlocksProfit = costs.commission.status === "data_unavailable";
-  const totalCostCny = hasPurchaseCost && !commissionBlocksProfit
+  const crossBorderShippingBlocksProfit = (fulfillmentPath === "FBP" || fulfillmentPath === "realFBS_shenzhen")
+    && costs.cross_border_shipping.status !== "implemented";
+  const totalCostCny = hasPurchaseCost && !commissionBlocksProfit && !crossBorderShippingBlocksProfit
     ? PROFIT_COST_KEYS.reduce(
         (total, key) => total + (costs[key].status === "implemented" ? costs[key].value ?? 0 : 0),
         0,

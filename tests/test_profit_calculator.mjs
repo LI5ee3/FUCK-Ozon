@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   PROFIT_COST_KEYS,
+  calculateCrossBorderShippingCny,
   calculateProfit,
   normalizeProfitPrice,
 } from "../frontend/src/features/profit/calculator.ts";
@@ -28,6 +29,81 @@ test("店铺2将 CNY 售价标准化为 USD/CNY", () => {
   });
 });
 
+test("跨境运费按原始售价和重量分档并直接输出 CNY", () => {
+  const priceCases = [
+    [1, 19.99, 8.42], [1, 20, 23.02], [1, 90, 23.02], [1, 90.01, 29.76],
+    [2, 149.99, 8.42], [2, 150, 23.02], [2, 650, 23.02], [2, 650.01, 29.76],
+  ];
+  for (const [shopId, price, expected] of priceCases) {
+    const shipping = calculateCrossBorderShippingCny(shopId, price, 100);
+    assert.equal(shipping.status, "implemented");
+    assertClose(shipping.value, expected);
+  }
+
+  const weightCases = [
+    [1, 10, 499, 28.5695], [1, 10, 500, 44.38],
+    [1, 50, 1999, 118.9195], [1, 50, 2000, 114.64],
+    [1, 100, 4999, 277.1595], [1, 100, 5000, 255.14],
+  ];
+  for (const [shopId, price, weight, expected] of weightCases) {
+    assertClose(calculateCrossBorderShippingCny(shopId, price, weight).value, expected);
+  }
+
+  const withoutRate = calculateProfit({
+    shopId: 2, priceOriginal: 650, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: null,
+    weightGrams: 100, fulfillmentMode: "FBP",
+  });
+  const withRate = calculateProfit({
+    shopId: 2, priceOriginal: 650, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: 99,
+    weightGrams: 100, fulfillmentMode: "FBP",
+  });
+  assertClose(withRate.costs.cross_border_shipping.value, withoutRate.costs.cross_border_shipping.value);
+});
+
+test("FBP 与 realFBS 深圳共用跨境运费，香港保持未接入", () => {
+  const input = {
+    shopId: 2,
+    priceOriginal: 700,
+    purchaseCost: 0,
+    purchaseCurrency: "CNY",
+    usdCnyRate: null,
+    weightGrams: 100,
+  };
+  const fbp = calculateProfit({ ...input, fulfillmentMode: "FBP" });
+  const shenzhen = calculateProfit({ ...input, fulfillmentMode: "realFBS", realFbsChannel: "shenzhen" });
+  const hongKong = calculateProfit({ ...input, fulfillmentMode: "realFBS", realFbsChannel: "hongkong" });
+  assert.deepEqual(shenzhen.costs.cross_border_shipping, fbp.costs.cross_border_shipping);
+  assert.equal(fbp.costs.hunchun_shipping.value, 10);
+  assert.equal(shenzhen.costs.hunchun_shipping.status, "not_applicable");
+  assert.equal(hongKong.costs.cross_border_shipping.value, null);
+  assert.equal(hongKong.costs.cross_border_shipping.status, "not_implemented");
+  assert.ok(hongKong.profit_cny !== null);
+});
+
+test("FBP 与 realFBS 深圳缺少有效售价或重量时阻止完整利润", () => {
+  const cases = [
+    { priceOriginal: null, weightGrams: 100 },
+    { priceOriginal: 700, weightGrams: null },
+    { priceOriginal: 700, weightGrams: 0 },
+    { priceOriginal: 700, weightGrams: -1 },
+    { priceOriginal: 700, weightGrams: Number.NaN },
+    { priceOriginal: 700, weightGrams: Number.POSITIVE_INFINITY },
+    { priceOriginal: 700, weightGrams: "" },
+  ];
+  for (const mode of ["FBP", "realFBS"]) {
+    for (const values of cases) {
+      const result = calculateProfit({
+        shopId: 2, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: null,
+        ...values, fulfillmentMode: mode, realFbsChannel: "shenzhen",
+      });
+      assert.equal(result.costs.cross_border_shipping.status, "missing_input");
+      assert.equal(result.total_cost_cny, null);
+      assert.equal(result.profit_cny, null);
+      assert.equal(result.net_margin, null);
+    }
+  }
+});
+
 test("费用 key 完整重命名", () => {
   assert.ok(PROFIT_COST_KEYS.includes("international_transport_contract_service"));
   assert.ok(PROFIT_COST_KEYS.includes("bank_acquiring_fee"));
@@ -41,6 +117,7 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
     purchaseCost: 40,
     purchaseCurrency: "USD",
     usdCnyRate: 7.2,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   assert.equal(fbp.costs.purchase_cost.value, 288);
@@ -51,10 +128,12 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
   assert.equal(fbp.costs.international_transport_contract_service.status, "implemented");
   assertClose(fbp.costs.bank_acquiring_fee.value, 7.2);
   assert.equal(fbp.costs.bank_acquiring_fee.status, "implemented");
-  assertClose(fbp.total_cost_cny, 307.576);
+  assertClose(fbp.costs.cross_border_shipping.value, 29.76);
+  assert.equal(fbp.costs.cross_border_shipping.status, "implemented");
+  assertClose(fbp.total_cost_cny, 337.336);
   assert.equal(fbp.fulfillment_path, "FBP");
-  assertClose(fbp.profit_cny, 412.424);
-  assertClose(fbp.net_margin, 412.424 / 720);
+  assertClose(fbp.profit_cny, 382.664);
+  assertClose(fbp.net_margin, 382.664 / 720);
 
   const realFbsInput = {
     shopId: 1,
@@ -62,6 +141,7 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
     purchaseCost: 40,
     purchaseCurrency: "USD",
     usdCnyRate: 7.2,
+    weightGrams: 100,
     fulfillmentMode: "realFBS",
   };
   const hongKong = calculateProfit({ ...realFbsInput, realFbsChannel: "hongkong" });
@@ -83,7 +163,9 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
   assert.equal(shenzhen.costs.international_transport_contract_service.status, "implemented");
   assertClose(shenzhen.costs.bank_acquiring_fee.value, 7.2);
   assert.equal(shenzhen.costs.bank_acquiring_fee.status, "implemented");
-  assertClose(shenzhen.total_cost_cny, 297.576);
+  assertClose(shenzhen.costs.cross_border_shipping.value, 29.76);
+  assert.equal(shenzhen.costs.cross_border_shipping.status, "implemented");
+  assertClose(shenzhen.total_cost_cny, 327.336);
 });
 
 test("店铺2使用 price_cny，缺少人民币售价时不返回 0", () => {
@@ -93,12 +175,14 @@ test("店铺2使用 price_cny，缺少人民币售价时不返回 0", () => {
     purchaseCost: 40,
     purchaseCurrency: "USD",
     usdCnyRate: 7.2,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   assert.equal(shop2.price_cny, 720);
   assertClose(shop2.costs.international_transport_contract_service.value, 2.376);
   assertClose(shop2.costs.bank_acquiring_fee.value, 7.2);
-  assertClose(shop2.total_cost_cny, 307.576);
+  assertClose(shop2.costs.cross_border_shipping.value, 29.76);
+  assertClose(shop2.total_cost_cny, 337.336);
 
   const missingPrice = calculateProfit({ shopId: 1, usdCnyRate: 7.2, fulfillmentMode: "FBP" });
   const missingRate = calculateProfit({ shopId: 1, priceOriginal: 100, usdCnyRate: 0, fulfillmentMode: "FBP" });
@@ -119,6 +203,7 @@ test("CNY 采购成本不乘汇率，店铺2无汇率仍可计算", () => {
     usdCnyRate: null,
     packingCostCny: 0,
     otherCostCny: 0,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   assert.equal(result.price_cny, 700);
@@ -128,8 +213,9 @@ test("CNY 采购成本不乘汇率，店铺2无汇率仍可计算", () => {
   assert.equal(result.costs.packing.status, "implemented");
   assert.equal(result.costs.other_cost.value, 0);
   assert.equal(result.costs.other_cost.status, "implemented");
-  assertClose(result.total_cost_cny, 419.31);
-  assertClose(result.profit_cny, 280.69);
+  assertClose(result.costs.cross_border_shipping.value, 29.76);
+  assertClose(result.total_cost_cny, 449.07);
+  assertClose(result.profit_cny, 250.93);
 });
 
 test("USD 采购成本缺少有效汇率时为 missing_input", () => {
@@ -185,13 +271,14 @@ test("packing 和 other_cost 接收有效金额，零值仍为已接入", () => 
     usdCnyRate: null,
     packingCostCny: 2.5,
     otherCostCny: 1.5,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   assert.equal(result.costs.packing.value, 2.5);
   assert.equal(result.costs.packing.status, "implemented");
   assert.equal(result.costs.other_cost.value, 1.5);
   assert.equal(result.costs.other_cost.status, "implemented");
-  assertClose(result.total_cost_cny, 423.31);
+  assertClose(result.total_cost_cny, 453.07);
 });
 
 test("负数、NaN、Infinity 不参与计算", () => {
@@ -203,6 +290,7 @@ test("负数、NaN、Infinity 不参与计算", () => {
     usdCnyRate: null,
     packingCostCny: NaN,
     otherCostCny: -1,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   const infinite = calculateProfit({
@@ -211,6 +299,7 @@ test("负数、NaN、Infinity 不参与计算", () => {
     purchaseCost: 400,
     purchaseCurrency: "CNY",
     usdCnyRate: Infinity,
+    weightGrams: 100,
     fulfillmentMode: "FBP",
   });
   assert.equal(result.costs.packing.value, null);
@@ -223,6 +312,7 @@ test("负数、NaN、Infinity 不参与计算", () => {
 test("FBP 和 realFBS 分别使用当前 Ozon 佣金率", () => {
   const fbp = calculateProfit({
     shopId: 1, priceOriginal: 100, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: 7.2,
+    weightGrams: 100,
     salesPercentFbp: 15, salesPercentRfbs: 12, fulfillmentMode: "FBP",
   });
   assert.equal(fbp.price_cny, 720);
@@ -232,6 +322,7 @@ test("FBP 和 realFBS 分别使用当前 Ozon 佣金率", () => {
   for (const channel of ["hongkong", "shenzhen"]) {
     const realFbs = calculateProfit({
       shopId: 2, priceOriginal: 700, purchaseCost: 0, purchaseCurrency: "CNY", usdCnyRate: null,
+      weightGrams: 100,
       salesPercentFbp: 15, salesPercentRfbs: 12, fulfillmentMode: "realFBS", realFbsChannel: channel,
     });
     assert.equal(realFbs.costs.commission.value, 84);
@@ -242,7 +333,7 @@ test("FBP 和 realFBS 分别使用当前 Ozon 佣金率", () => {
 test("佣金 0% 是已接入的零成本，缺失或非法佣金不会当作 0", () => {
   const zero = calculateProfit({
     shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
-    salesPercentFbp: 0, packingCostCny: 0, otherCostCny: 0, fulfillmentMode: "FBP",
+    salesPercentFbp: 0, packingCostCny: 0, otherCostCny: 0, weightGrams: 100, fulfillmentMode: "FBP",
   });
   assert.equal(zero.costs.commission.value, 0);
   assert.equal(zero.costs.commission.status, "implemented");
@@ -250,17 +341,17 @@ test("佣金 0% 是已接入的零成本，缺失或非法佣金不会当作 0",
 
   const missing = calculateProfit({
     shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
-    fulfillmentMode: "FBP",
+    weightGrams: 100, fulfillmentMode: "FBP",
   });
   assert.equal(missing.costs.commission.value, null);
   assert.equal(missing.costs.commission.status, "missing_input");
-  assertClose(missing.total_cost_cny, 419.31);
-  assertClose(missing.profit_cny, 280.69);
-  assertClose(missing.net_margin, 280.69 / 700);
+  assertClose(missing.total_cost_cny, 449.07);
+  assertClose(missing.profit_cny, 250.93);
+  assertClose(missing.net_margin, 250.93 / 700);
 
   const unavailable = calculateProfit({
     shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
-    salesPercentFbp: null, fulfillmentMode: "FBP",
+    salesPercentFbp: null, weightGrams: 100, fulfillmentMode: "FBP",
   });
   assert.equal(unavailable.costs.commission.status, "data_unavailable");
   assert.equal(unavailable.profit_cny, null);
@@ -268,7 +359,7 @@ test("佣金 0% 是已接入的零成本，缺失或非法佣金不会当作 0",
   for (const value of [-1, 101, NaN, Infinity, true]) {
     const invalid = calculateProfit({
       shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
-      salesPercentFbp: value, fulfillmentMode: "FBP",
+      salesPercentFbp: value, weightGrams: 100, fulfillmentMode: "FBP",
     });
     assert.equal(invalid.costs.commission.value, null);
     assert.equal(invalid.costs.commission.status, "data_unavailable");
