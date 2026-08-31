@@ -13,12 +13,23 @@ JSON_MAX_BODY_BYTES = 16 * 1024
 
 def _admin_shop(body):
     try:
+        if type(body.get("shop_id")) not in (int, str):
+            raise HTTPException(400, "shop_id无效")
         shop_id = int(body.get("shop_id"))
     except (AttributeError, TypeError, ValueError, OverflowError) as error:
         raise HTTPException(400, "shop_id无效") from error
     if shop_id not in (1, 2):
         raise HTTPException(400, "未知店铺")
     return shop_id
+
+
+def _notification_id(value):
+    if type(value) not in (int, str):
+        raise HTTPException(400, "通知ID无效")
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError) as error:
+        raise HTTPException(400, "通知ID无效") from error
 
 
 async def _ozon_management_call(function, *args):
@@ -65,22 +76,18 @@ async def ozon_notification_list(request: Request):
 async def ozon_notification_enable(request: Request):
     body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
-    try:
-        notification_id = int(body.get("id"))
-    except (TypeError, ValueError, OverflowError) as error:
-        raise HTTPException(400, "通知ID无效") from error
+    notification_id = _notification_id(body.get("id"))
     if "enabled" not in body and "enable" not in body:
         raise HTTPException(400, "缺少 enabled")
-    return await _ozon_management_call(notification_enable, shop_id, notification_id,
-                                       bool(body.get("enabled", body.get("enable"))))
+    enabled = body.get("enabled", body.get("enable"))
+    if type(enabled) is not bool:
+        raise HTTPException(400, "enabled必须是布尔值")
+    return await _ozon_management_call(notification_enable, shop_id, notification_id, enabled)
 
 
 @router.post("/api/ozon/notifications/delete")
 async def ozon_notification_delete(request: Request):
     body = await read_bounded_json(request, JSON_MAX_BODY_BYTES, "通知订阅")
     shop_id = _admin_shop(body)
-    try:
-        notification_id = int(body.get("id"))
-    except (TypeError, ValueError, OverflowError) as error:
-        raise HTTPException(400, "通知ID无效") from error
+    notification_id = _notification_id(body.get("id"))
     return await _ozon_management_call(notification_delete, shop_id, notification_id)

@@ -11,6 +11,8 @@ JSON_MAX_BODY_BYTES = 16 * 1024
 
 
 def _alert_shop_id(value=0):
+    if type(value) not in (int, str):
+        raise HTTPException(400, "shop_id无效")
     try:
         shop_id = int(value)
     except (TypeError, ValueError, OverflowError) as error:

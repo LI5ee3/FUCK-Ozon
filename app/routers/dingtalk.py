@@ -38,15 +38,20 @@ async def update_dingtalk_settings(request: Request):
     if schedule_keys & body.keys():
         if not schedule_keys <= body.keys():
             raise HTTPException(400, "请完整提交汇总开关、时间和星期")
+        enabled = body["daily_enabled"]
+        if type(enabled) is not bool:
+            raise HTTPException(400, "汇总开关必须是布尔值")
+        weekdays = body["weekdays"]
+        if type(weekdays) is not list or any(type(value) is not int for value in weekdays):
+            raise HTTPException(400, "钉钉推送星期必须是整数数组")
         push_time = str(body.get("push_time", "")).strip()
         try:
             push_time = datetime.strptime(push_time, "%H:%M").strftime("%H:%M")
-            weekdays = sorted({int(value) for value in body.get("weekdays", [])})
+            weekdays = sorted(set(weekdays))
         except (TypeError, ValueError, OverflowError) as error:
             raise HTTPException(400, "钉钉推送时间或星期无效") from error
         if any(value not in range(1, 8) for value in weekdays):
             raise HTTPException(400, "钉钉推送星期无效")
-        enabled = bool(body.get("daily_enabled"))
         if enabled and not weekdays:
             raise HTTPException(400, "启用昨日汇总时至少选择一天")
         updates.extend(("daily_enabled=?", "push_time=?", "weekdays=?"))
