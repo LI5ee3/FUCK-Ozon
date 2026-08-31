@@ -17,7 +17,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             shops = [tuple(row) for row in connection.execute("SELECT * FROM shops ORDER BY id")]
             settings = tuple(connection.execute("SELECT * FROM notification_settings").fetchone())
             auto = connection.execute("SELECT COUNT(*) FROM shop_auto_sync_settings").fetchone()[0]
-            exchange_columns = {row[1] for row in connection.execute("PRAGMA table_info(exchange_rates)")}
+            exchange_info = {row[1]: row for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             item_pk = [row[1] for row in sorted(
                 connection.execute("PRAGMA table_info(order_items)"), key=lambda row: row[5]) if row[5]]
         self.assertIn("idx_auto_sync_once", indexes)
@@ -25,9 +25,11 @@ class DatabaseSchemaTest(DatabaseTestCase):
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
         self.assertEqual(settings, (1, 0, "09:00", "1,2,3,4,5,6,7", DEFAULT_DAILY_TEMPLATE))
         self.assertEqual(auto, 10)
-        self.assertTrue({"service_penalty_exchange_rate", "sales_exchange_rate"} <= exchange_columns)
-        self.assertNotIn("base_rate", exchange_columns)
-        self.assertNotIn("rate_with_adjustment", exchange_columns)
+        self.assertTrue({"service_penalty_exchange_rate", "sales_exchange_rate"} <= set(exchange_info))
+        self.assertEqual(exchange_info["service_penalty_exchange_rate"][3], 1)
+        self.assertEqual(exchange_info["sales_exchange_rate"][3], 0)
+        self.assertNotIn("base_rate", exchange_info)
+        self.assertNotIn("rate_with_adjustment", exchange_info)
         self.assertEqual(item_pk, ["shop_id", "posting_number", "sku"])
 
     def test_repeated_init_keeps_version_and_schema(self):
@@ -94,12 +96,12 @@ class DatabaseSchemaTest(DatabaseTestCase):
         self.assertIn("数据库升级", rows[0]["error"])
         self.assertEqual(version, SCHEMA_VERSION)
 
-    def test_v8_exchange_rate_migration_renames_columns_and_preserves_history(self):
+    def test_v8_exchange_rate_migration_preserves_missing_sales_rate(self):
         with db.transaction() as connection:
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("""INSERT INTO exchange_rates VALUES(
-              'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90','88',
+              'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90',NULL,
               'ozon_xapi','2026-08-22T22:00:00Z')""")
             connection.execute("PRAGMA user_version=8")
 
@@ -109,7 +111,45 @@ class DatabaseSchemaTest(DatabaseTestCase):
             columns = {row[1] for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             row = connection.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate
               FROM exchange_rates WHERE from_currency='USD'""").fetchone()
-        self.assertEqual((SCHEMA_VERSION, version), (9, 9))
-        self.assertEqual(tuple(row), ("90", "88"))
+        self.assertEqual((SCHEMA_VERSION, version), (10, 10))
+        self.assertEqual(tuple(row), ("90", None))
         self.assertNotIn("base_rate", columns)
         self.assertNotIn("rate_with_adjustment", columns)
+
+        with db.connect() as connection:
+            sales_info = next(row for row in connection.execute("PRAGMA table_info(exchange_rates)")
+                              if row[1] == "sales_exchange_rate")
+        self.assertEqual(sales_info[3], 0)
+
+    def test_v9_not_null_exchange_rate_migration_rebuilds_nullable_column(self):
+        with db.transaction() as connection:
+            connection.execute("""CREATE TABLE exchange_rates_v9 (
+              from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
+              to_currency TEXT NOT NULL CHECK(to_currency='RUB'), valid_from_utc TEXT NOT NULL,
+              valid_to_utc TEXT NOT NULL, service_penalty_exchange_rate TEXT NOT NULL,
+              sales_exchange_rate TEXT NOT NULL,
+              source TEXT NOT NULL DEFAULT 'ozon_xapi' CHECK(source='ozon_xapi'), fetched_at TEXT NOT NULL,
+              PRIMARY KEY(from_currency,to_currency,valid_from_utc,valid_to_utc));""")
+            connection.execute("""INSERT INTO exchange_rates_v9(
+              from_currency,to_currency,valid_from_utc,valid_to_utc,
+              service_penalty_exchange_rate,sales_exchange_rate,source,fetched_at)
+              SELECT from_currency,to_currency,valid_from_utc,valid_to_utc,
+                service_penalty_exchange_rate,sales_exchange_rate,source,fetched_at
+              FROM exchange_rates""")
+            connection.execute("DROP TABLE exchange_rates")
+            connection.execute("ALTER TABLE exchange_rates_v9 RENAME TO exchange_rates")
+            connection.execute("""INSERT INTO exchange_rates VALUES(
+              'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90','88',
+              'ozon_xapi','2026-08-22T22:00:00Z')""")
+            connection.execute("PRAGMA user_version=9")
+
+        init_db()
+        with db.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            sales_info = next(row for row in connection.execute("PRAGMA table_info(exchange_rates)")
+                              if row[1] == "sales_exchange_rate")
+            row = connection.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate
+              FROM exchange_rates WHERE from_currency='USD'""").fetchone()
+        self.assertEqual((SCHEMA_VERSION, version), (10, 10))
+        self.assertEqual(tuple(row), ("90", "88"))
+        self.assertEqual(sales_info[3], 0)

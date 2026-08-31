@@ -50,4 +50,34 @@ describe("Sync exchange rate contract", () => {
     expect(wrapper.text()).toContain("11");
     expect(wrapper.text()).not.toContain("基础汇率");
   });
+
+  it("renders a missing sales rate as unavailable instead of zero", async () => {
+    api.getSyncRuns.mockResolvedValue([]);
+    api.getAutoSyncSettings.mockResolvedValue([]);
+    api.getExchangeRateStatus.mockResolvedValue({
+      source: "ozon_xapi",
+      last_success_at: null,
+      data_through: null,
+      rates: {
+        USD: {
+          service_penalty_exchange_rate: "90",
+          sales_exchange_rate: null,
+          valid_from_utc: "2026-08-21T21:00:00Z",
+          valid_to_utc: "2026-08-22T21:00:00Z",
+        },
+        CNY: {
+          service_penalty_exchange_rate: "12",
+          sales_exchange_rate: null,
+          valid_from_utc: "2026-08-21T21:00:00Z",
+          valid_to_utc: "2026-08-22T21:00:00Z",
+        },
+      },
+    });
+
+    const wrapper = shallowMount(SyncView);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("暂无");
+    expect(wrapper.text()).not.toContain("0.0000");
+  });
 });

@@ -71,7 +71,7 @@ export type AutoSyncSettingsPayload = Record<"1" | "2", Record<AutoSyncModule, A
 
 export interface ExchangeRate {
   service_penalty_exchange_rate: string;
-  sales_exchange_rate: string;
+  sales_exchange_rate: string | null;
   valid_from_utc: string;
   valid_to_utc: string;
   from_currency?: string;

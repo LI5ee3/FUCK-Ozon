@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _create_webhook_events(db):
@@ -195,6 +195,25 @@ def _migrate_v8_to_v9(db):
     db.execute("PRAGMA user_version=9")
 
 
+def _migrate_v9_to_v10(db):
+    db.execute("""CREATE TABLE exchange_rates_v10 (
+      from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
+      to_currency TEXT NOT NULL CHECK(to_currency='RUB'), valid_from_utc TEXT NOT NULL,
+      valid_to_utc TEXT NOT NULL, service_penalty_exchange_rate TEXT NOT NULL,
+      sales_exchange_rate TEXT,
+      source TEXT NOT NULL DEFAULT 'ozon_xapi' CHECK(source='ozon_xapi'), fetched_at TEXT NOT NULL,
+      PRIMARY KEY(from_currency,to_currency,valid_from_utc,valid_to_utc));""")
+    db.execute("""INSERT INTO exchange_rates_v10(
+      from_currency,to_currency,valid_from_utc,valid_to_utc,
+      service_penalty_exchange_rate,sales_exchange_rate,source,fetched_at)
+      SELECT from_currency,to_currency,valid_from_utc,valid_to_utc,
+        service_penalty_exchange_rate,sales_exchange_rate,source,fetched_at
+      FROM exchange_rates""")
+    db.execute("DROP TABLE exchange_rates")
+    db.execute("ALTER TABLE exchange_rates_v10 RENAME TO exchange_rates")
+    db.execute("PRAGMA user_version=10")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -225,6 +244,9 @@ def init_db():
             if version == 8:
                 _migrate_v8_to_v9(db)
                 version = 9
+            if version == 9:
+                _migrate_v9_to_v10(db)
+                version = 10
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -239,7 +261,7 @@ def init_db():
           from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
           to_currency TEXT NOT NULL CHECK(to_currency='RUB'), valid_from_utc TEXT NOT NULL,
           valid_to_utc TEXT NOT NULL, service_penalty_exchange_rate TEXT NOT NULL,
-          sales_exchange_rate TEXT NOT NULL,
+          sales_exchange_rate TEXT,
           source TEXT NOT NULL DEFAULT 'ozon_xapi' CHECK(source='ozon_xapi'), fetched_at TEXT NOT NULL,
           PRIMARY KEY(from_currency,to_currency,valid_from_utc,valid_to_utc));
         CREATE TABLE import_batches (

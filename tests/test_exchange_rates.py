@@ -88,9 +88,9 @@ class ExchangeRateTest(DatabaseTestCase):
 
     def test_combined_gmv_uses_sales_rate_and_order_created_at(self):
         with db.transaction() as connection:
-            connection.execute("""INSERT INTO exchange_rates VALUES(
-              'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90','88',
-              'ozon_xapi','2026-08-22T22:00:00Z')""")
+            connection.executemany("""INSERT INTO exchange_rates VALUES(
+              ?,'RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z',?,?,'ozon_xapi','2026-08-22T22:00:00Z')""", [
+                ("USD", "90", None), ("CNY", "12", "11")])
             connection.executemany("""INSERT INTO orders(
               shop_id,posting_number,channel,created_at,status_raw,shipped,
               amount_original,amount_currency,source) VALUES(?,?,?,?,?,?,?,?,'api')""", [
@@ -101,9 +101,8 @@ class ExchangeRateTest(DatabaseTestCase):
         self.assertEqual(summary(1, "2026-08-22", "2026-08-22", "day")["gmv"]["amount"], 100)
 
         with db.transaction() as connection:
-            connection.execute("""INSERT INTO exchange_rates VALUES(
-              'CNY','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','12','11',
-              'ozon_xapi','2026-08-22T22:01:00Z')""")
+            connection.execute("""UPDATE exchange_rates SET sales_exchange_rate='88'
+              WHERE from_currency='USD' AND valid_from_utc='2026-08-21T21:00:00Z'""")
         combined = summary(0, "2026-08-22", "2026-08-22", "day")
         self.assertEqual(combined["gmv"], {"amount": 800.0, "currency": "CNY", "missing_rate_orders": 0})
         self.assertEqual(combined["buckets"][0]["gmv"], combined["gmv"])
@@ -146,6 +145,15 @@ class ExchangeRateTest(DatabaseTestCase):
         self.assertTrue(boundary["missing_rate"])
         self.assertEqual(platform_usd["service_penalty_exchange_rates"], {"USD_RUB": "90"})
         self.assertNotIn("base_rates", platform_usd)
+
+    def test_exchange_rate_status_preserves_missing_historical_sales_rate(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO exchange_rates VALUES(
+              'USD','RUB','2026-08-21T21:00:00Z','2026-08-22T21:00:00Z','90',NULL,
+              'ozon_xapi','2026-08-22T22:00:00Z')""")
+        status = exchange_rate_status()
+        self.assertEqual(status["rates"]["USD"]["service_penalty_exchange_rate"], "90")
+        self.assertIsNone(status["rates"]["USD"]["sales_exchange_rate"])
 
     def test_each_ozon_rate_is_required_positive_and_finite(self):
         for field in ("rate", "rateWithAdjustment"):

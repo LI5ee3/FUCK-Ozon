@@ -267,8 +267,10 @@ function rateValue(
   currency: "USD" | "CNY",
   kind: "service_penalty_exchange_rate" | "sales_exchange_rate" = "sales_exchange_rate",
 ): string {
-  const value = Number(exchange.value?.rates[currency]?.[kind]);
-  return Number.isFinite(value) ? formatNumber(value, 4) : "暂无";
+  const raw = exchange.value?.rates[currency]?.[kind];
+  if (raw == null || raw === "") return "暂无";
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? formatNumber(value, 4) : "暂无";
 }
 
 function successDetail(row: SyncRun): string {
