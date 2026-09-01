@@ -396,18 +396,31 @@ const servicePenaltyRateNote = computed(() => {
   return `Ozon 服务和罚款汇率 · ${servicePenaltyRateCurrency.value}/RUB ${formatNumber(Number(servicePenaltyRateValue.value), 4)} · 当前有效`;
 });
 const summaryNote = computed(() => {
-  const crossBorderShippingMissing = ["FBP", "realFBS_shenzhen"].includes(result.value.fulfillment_path)
-    && result.value.costs.cross_border_shipping.status === "missing_input";
+  const crossBorderShippingStatus = result.value.costs.cross_border_shipping.status;
+  const isHongKongPath = result.value.fulfillment_path === "realFBS_hongkong";
+  const crossBorderShippingMissing = !isHongKongPath
+    && crossBorderShippingStatus === "missing_input";
+  const hongKongCrossBorderShippingMissing = isHongKongPath
+    && crossBorderShippingStatus === "missing_input";
   if (result.value.costs.commission.status === "data_unavailable") {
     return `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`;
   }
   if (result.value.costs.ozon_logistics_platform_electronic_service.status === "data_unavailable") {
     return `当前 Ozon 服务和罚款汇率不可用，暂时无法完成利润测算；${profitNotice.value}`;
   }
+  if (isHongKongPath && crossBorderShippingStatus === "data_unavailable") {
+    return `当前包裹超过香港渠道运输限制（实际重量 ≤ 25000g、最长边 ≤ 150cm、边长总和 < 310cm），无法计算完整预计利润；${profitNotice.value}`;
+  }
   if (!selectedProduct.value && result.value.costs.commission.status === "missing_input") {
+    if (hongKongCrossBorderShippingMissing) {
+      return "当前为纯手工阶段性测算，平台佣金未计入；香港跨境运费需要 SKU 成本中的完整长宽高和包裹重量，请先选择已配置 SKU。";
+    }
     return crossBorderShippingMissing
       ? "当前为纯手工阶段性测算，平台佣金未计入；请输入有效的平台售价和包裹重量以计算跨境运费。"
       : "当前为纯手工阶段性测算，平台佣金未计入；选择商品后可自动获取 Ozon 当前佣金。";
+  }
+  if (hongKongCrossBorderShippingMissing) {
+    return `请输入有效的包裹重量，并确保 SKU 成本已配置完整长宽高，以计算香港跨境运费；${profitNotice.value}`;
   }
   if (crossBorderShippingMissing) {
     return `请输入有效的平台售价和包裹重量以计算跨境运费；${profitNotice.value}`;

@@ -458,9 +458,39 @@ describe("ProfitView forecast-cost integration", () => {
     expect(wrapper.text()).toContain("跨境运费");
     expect(wrapper.text()).toContain("待输入");
     expect(wrapper.text()).toContain("预计利润—");
+    expect(wrapper.text()).toContain("确保 SKU 成本已配置完整长宽高");
+    expect(wrapper.text()).not.toContain("请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率");
     expect(wrapper.text()).not.toContain("跨境运费未接入规则");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
     expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains Hong Kong transport-limit failures without blaming price or exchange-rate inputs", async () => {
+    const oversizedRow: ProductCostRow = {
+      ...usdRow,
+      product_identity: "OFFER-HK-OVERSIZED",
+      display_name: "香港超限商品",
+      forecast_cost: {
+        ...usdCost,
+        id: 5,
+        product_identity: "OFFER-HK-OVERSIZED",
+        weight_grams: 25000.01,
+      },
+    };
+    api.listProductCosts.mockResolvedValueOnce({ items: [oversizedRow], total: 1, page: 1, size: 50 });
+    const wrapper = await mountProfit();
+    await search(wrapper, "香港超限商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HK-OVERSIZED");
+    await nextTick();
+    await flushPromises();
+    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
+    await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
+    await nextTick();
+    const crossBorderRow = wrapper.findAll(".profit-cost-row").find((row) => row.text().includes("跨境运费"));
+    expect(crossBorderRow?.text()).toContain("数据不可用");
+    expect(wrapper.text()).toContain("预计利润—");
+    expect(wrapper.text()).toContain("超过香港渠道运输限制");
+    expect(wrapper.text()).not.toContain("请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率");
   });
 
   it("keeps the page usable but blocks a complete result when Ozon commission fetching fails", async () => {
