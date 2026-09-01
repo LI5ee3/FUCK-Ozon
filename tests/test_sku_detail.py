@@ -123,6 +123,24 @@ class SkuDetailTest(DatabaseTestCase):
         self.assertEqual(after_sales["return_rate"], 1)
         self.assertEqual(after_sales["complaints"], 1)
         self.assertEqual(result["after_sales"]["complaint_rate"], 1)
+        self.assertLessEqual(after_sales["return_orders"], after_sales["orders"])
+
+    def test_after_sales_cohort_includes_future_returns_but_not_period_returns(self):
+        with db.transaction() as connection:
+            add_order(connection, 1, "FUTURE-RETURN", "FBP", timestamp("2026-08-02"), "已签收", 1)
+            add_item(connection, 1, "FUTURE-RETURN", "FBP", "SKU-FUTURE", 1, offer_id="O-F")
+            connection.execute("INSERT INTO return_records VALUES(1,'FUTURE-LEGACY',?,?,?,?,?)",
+                               (timestamp("2026-09-05"), "FUTURE-RETURN", "SKU-FUTURE", "{}", timestamp("2026-09-05")))
+            connection.executemany("""INSERT INTO rfbs_return_records(
+              shop_id,return_id,return_number,created_at,posting_number,offer_id,sku,product_name,payload,fetched_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?)""", [
+                (1, 10, "FUTURE-R1", timestamp("2026-09-05"), "FUTURE-RETURN", "O-F", "SKU-FUTURE", "商品", "{}", timestamp("2026-09-05")),
+                (1, 11, "FUTURE-R2", timestamp("2026-09-05"), "FUTURE-RETURN", "O-F", "SKU-FUTURE", "商品", "{}", timestamp("2026-09-05")),
+            ])
+
+        after_sales = get_sku_detail(1, "SKU-FUTURE", "2026-08-01", "2026-08-31")["after_sales"]
+        self.assertEqual((after_sales["orders"], after_sales["returns"], after_sales["return_orders"]), (1, 0, 1))
+        self.assertEqual(after_sales["return_rate"], 1)
 
         with db.transaction() as connection:
             connection.execute("""INSERT INTO ad_sku_daily(

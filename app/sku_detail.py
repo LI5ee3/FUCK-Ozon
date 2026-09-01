@@ -183,15 +183,38 @@ def _return_key(source, posting_number, fallback):
     return f"posting:{posting}" if posting else f"{source}:{fallback}"
 
 
-def _after_sales(order_rows, return_rows, rfbs_rows, complaint_rows):
-    orders = {str(row["posting_number"]) for row in order_rows}
+def _cohort_return_postings(db, shop_id, sku, order_rows):
+    postings = sorted({str(row["posting_number"]).strip() for row in order_rows
+                       if str(row["posting_number"] or "").strip()})
+    if not postings:
+        return set()
+    marks = ",".join("?" for _ in postings)
+    args = (shop_id, sku, *postings, shop_id, sku, *postings)
+    return {row["posting_number"] for row in db.execute(f"""
+      SELECT trim(posting_number) posting_number
+      FROM return_records
+      WHERE shop_id=? AND sku=? AND NULLIF(trim(posting_number),'') IS NOT NULL
+        AND trim(posting_number) IN ({marks})
+      UNION
+      SELECT trim(posting_number) posting_number
+      FROM rfbs_return_records
+      WHERE shop_id=? AND sku=? AND NULLIF(trim(posting_number),'') IS NOT NULL
+        AND trim(posting_number) IN ({marks})
+    """, args)}
+
+
+def _after_sales(order_rows, period_return_rows, period_rfbs_rows,
+                 cohort_return_postings, complaint_rows):
+    orders = {str(row["posting_number"]).strip() for row in order_rows}
     cancelled = [row for row in order_rows if row["status_raw"] == "已取消" and row["shipped"] == 0]
     reasons = Counter(CANCEL_REASON_ZH.get(row["cancel_reason_raw"], row["cancel_reason_raw"] or "未提供")
                       for row in cancelled)
-    return_keys = {_return_key("return", row["posting_number"], row["record_key"]) for row in return_rows}
-    return_keys.update(_return_key("rfbs", row["posting_number"], row["return_number"]) for row in rfbs_rows)
-    return_orders = {str(row["posting_number"]).strip() for row in (*return_rows, *rfbs_rows)
-                     if str(row["posting_number"] or "").strip() in orders}
+    return_keys = {_return_key("return", row["posting_number"], row["record_key"])
+                   for row in period_return_rows}
+    return_keys.update(_return_key("rfbs", row["posting_number"], row["return_number"])
+                       for row in period_rfbs_rows)
+    return_orders = {str(posting).strip() for posting in cohort_return_postings
+                     if str(posting or "").strip()} & orders
     complaint_keys = {(row["complaint_number"], row["posting_number"]) for row in complaint_rows}
     complaint_orders = {row["posting_number"] for row in complaint_rows}
     order_count = len(orders)
@@ -422,6 +445,7 @@ def get_sku_detail(shop_id, sku, date_from=None, date_to=None):
           SELECT return_number,posting_number FROM rfbs_return_records
           WHERE shop_id=? AND sku=? AND created_at>=? AND created_at<?
         """, (shop_id, sku, utc_start, utc_end))]
+        cohort_return_postings = _cohort_return_postings(db, shop_id, sku, order_rows)
         complaint_rows = [dict(row) for row in db.execute("""
           SELECT c.complaint_number,c.posting_number
           FROM complaints c JOIN order_items i
@@ -444,7 +468,8 @@ def get_sku_detail(shop_id, sku, date_from=None, date_to=None):
                 "group_id": resolved["group_id"], "primary_offer_id": resolved["primary_offer_id"]}
     sales = _sales(sales_rows, start, end, shop["settlement_currency"])
     advertising = _advertising(ad_rows, start, end, sales["summary"]["units"])
-    after_sales = _after_sales(order_rows, return_rows, rfbs_rows, complaint_rows)
+    after_sales = _after_sales(order_rows, return_rows, rfbs_rows,
+                               cohort_return_postings, complaint_rows)
     with connect() as db:
         freshness = _freshness(db, shop_id, sku, inventory, order_rows)
     signals = _signals(inventory, advertising, profit)
