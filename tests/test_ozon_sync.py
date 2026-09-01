@@ -291,6 +291,13 @@ class OzonSyncTest(DatabaseTestCase):
             result = client.probe_shop(1)
         self.assertEqual(result["permissions"]["product_pricing"], "缺少：/v5/product/info/prices")
 
+    def test_finance_permission_probe_reports_both_endpoints(self):
+        methods = ["/v3/finance/transaction/list", "/v3/finance/transaction/totals"]
+        with patch("app.ozon.client._post", side_effect=[{"roles": [{"methods": methods}]},
+                                                   {"result": {"name": "Shop"}}]):
+            result = client.probe_shop(1)
+        self.assertEqual(result["permissions"]["finance"], "可用")
+
     def test_order_sync_saves_shipping_time_and_tracking_number(self):
         content = ("订单号;发货号码;状态;SKU;数量;已创建;已转移配送\n"
                    "M-2;P-2;已签收;SKU-2;1;2026-08-01T00:00:00Z;2026-08-01T03:00:00Z\n").encode()

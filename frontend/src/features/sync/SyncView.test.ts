@@ -49,6 +49,7 @@ describe("Sync exchange rate contract", () => {
     expect(wrapper.text()).toContain("88");
     expect(wrapper.text()).toContain("12");
     expect(wrapper.text()).toContain("11");
+    expect(wrapper.text()).toContain("财务流水");
     expect(wrapper.text()).not.toContain("基础汇率");
   });
 

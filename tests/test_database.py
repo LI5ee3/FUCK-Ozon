@@ -17,6 +17,10 @@ class DatabaseSchemaTest(DatabaseTestCase):
             shops = [tuple(row) for row in connection.execute("SELECT * FROM shops ORDER BY id")]
             settings = tuple(connection.execute("SELECT * FROM notification_settings").fetchone())
             auto = connection.execute("SELECT COUNT(*) FROM shop_auto_sync_settings").fetchone()[0]
+            finance_setting = connection.execute(
+                "SELECT 1 FROM shop_auto_sync_settings WHERE shop_id=1 AND module='finance_transactions'").fetchone()
+            finance_columns = [row[1] for row in connection.execute(
+                "PRAGMA table_info(ozon_finance_transactions)")]
             exchange_info = {row[1]: row for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             item_pk = [row[1] for row in sorted(
                 connection.execute("PRAGMA table_info(order_items)"), key=lambda row: row[5]) if row[5]]
@@ -24,7 +28,14 @@ class DatabaseSchemaTest(DatabaseTestCase):
         self.assertIn("idx_sync_one_running", indexes)
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
         self.assertEqual(settings, (1, 0, "09:00", "1,2,3,4,5,6,7", DEFAULT_DAILY_TEMPLATE))
-        self.assertEqual(auto, 10)
+        self.assertEqual(auto, 12)
+        self.assertIsNotNone(finance_setting)
+        self.assertEqual(finance_columns, [
+            "shop_id", "operation_id", "operation_type", "operation_type_name", "transaction_type",
+            "operation_date", "posting_number", "order_date", "delivery_schema", "warehouse_id",
+            "amount", "accruals_for_sale", "sale_commission", "delivery_charge",
+            "return_delivery_charge", "currency", "payload_json", "fetched_at",
+        ])
         self.assertTrue({"service_penalty_exchange_rate", "sales_exchange_rate"} <= set(exchange_info))
         self.assertEqual(exchange_info["service_penalty_exchange_rate"][3], 1)
         self.assertEqual(exchange_info["sales_exchange_rate"][3], 0)
@@ -79,6 +90,37 @@ class DatabaseSchemaTest(DatabaseTestCase):
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_campaign_daily'").fetchone())
             self.assertIsNotNone(connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='ad_sku_daily'").fetchone())
+            for table in ("ozon_finance_transactions", "ozon_finance_transaction_items",
+                          "ozon_finance_transaction_services", "ozon_finance_reconciliations"):
+                self.assertIsNotNone(connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone())
+
+    def test_v10_database_migrates_finance_tables_and_module_without_losing_orders(self):
+        with db.transaction() as connection:
+            connection.execute("""INSERT INTO orders(
+              shop_id,posting_number,channel,status_raw,shipped,source)
+              VALUES(1,'V10-ORDER','realFBS','运输中',1,'test')""")
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='finance_transactions'")
+            connection.execute("DROP TABLE ozon_finance_transaction_items")
+            connection.execute("DROP TABLE ozon_finance_transaction_services")
+            connection.execute("DROP TABLE ozon_finance_reconciliations")
+            connection.execute("DROP TABLE ozon_finance_transactions")
+            connection.execute("PRAGMA user_version=10")
+
+        init_db()
+        with db.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            order = connection.execute(
+                "SELECT posting_number FROM orders WHERE posting_number='V10-ORDER'").fetchone()
+            finance_setting = connection.execute("""SELECT enabled,interval_hours,range_days
+              FROM shop_auto_sync_settings WHERE shop_id=1 AND module='finance_transactions'""").fetchone()
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'ozon_finance_%'")}
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(order[0], "V10-ORDER")
+        self.assertEqual(tuple(finance_setting), (0, 24, 31))
+        self.assertEqual(tables, {"ozon_finance_transactions", "ozon_finance_transaction_items",
+                                  "ozon_finance_transaction_services", "ozon_finance_reconciliations"})
 
     def test_v6_migration_keeps_duplicate_running_history_and_adds_unique_index(self):
         with db.transaction() as connection:
@@ -111,7 +153,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
             columns = {row[1] for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             row = connection.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate
               FROM exchange_rates WHERE from_currency='USD'""").fetchone()
-        self.assertEqual((SCHEMA_VERSION, version), (10, 10))
+        self.assertEqual((SCHEMA_VERSION, version), (11, 11))
         self.assertEqual(tuple(row), ("90", None))
         self.assertNotIn("base_rate", columns)
         self.assertNotIn("rate_with_adjustment", columns)
@@ -150,6 +192,6 @@ class DatabaseSchemaTest(DatabaseTestCase):
                               if row[1] == "sales_exchange_rate")
             row = connection.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate
               FROM exchange_rates WHERE from_currency='USD'""").fetchone()
-        self.assertEqual((SCHEMA_VERSION, version), (10, 10))
+        self.assertEqual((SCHEMA_VERSION, version), (11, 11))
         self.assertEqual(tuple(row), ("90", "88"))
         self.assertEqual(sales_info[3], 0)

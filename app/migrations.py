@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _create_webhook_events(db):
@@ -214,6 +214,76 @@ def _migrate_v9_to_v10(db):
     db.execute("PRAGMA user_version=10")
 
 
+def _create_finance_tables(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS ozon_finance_transactions (
+      shop_id INTEGER NOT NULL REFERENCES shops(id), operation_id TEXT NOT NULL,
+      operation_type TEXT NOT NULL, operation_type_name TEXT NOT NULL DEFAULT '',
+      transaction_type TEXT NOT NULL DEFAULT '', operation_date TEXT NOT NULL,
+      posting_number TEXT, order_date TEXT, delivery_schema TEXT NOT NULL DEFAULT '',
+      warehouse_id TEXT, amount REAL NOT NULL, accruals_for_sale REAL NOT NULL,
+      sale_commission REAL NOT NULL, delivery_charge REAL NOT NULL,
+      return_delivery_charge REAL NOT NULL,
+      currency TEXT NOT NULL CHECK(currency IN ('USD','CNY')),
+      payload_json TEXT NOT NULL, fetched_at TEXT NOT NULL,
+      PRIMARY KEY(shop_id,operation_id));
+    CREATE INDEX IF NOT EXISTS idx_finance_transactions_date
+      ON ozon_finance_transactions(shop_id,operation_date);
+    CREATE INDEX IF NOT EXISTS idx_finance_transactions_posting_date
+      ON ozon_finance_transactions(shop_id,posting_number,operation_date);
+    CREATE INDEX IF NOT EXISTS idx_finance_transactions_operation_type_date
+      ON ozon_finance_transactions(shop_id,operation_type,operation_date);
+    CREATE INDEX IF NOT EXISTS idx_finance_transactions_transaction_type_date
+      ON ozon_finance_transactions(shop_id,transaction_type,operation_date);
+
+    CREATE TABLE IF NOT EXISTS ozon_finance_transaction_items (
+      shop_id INTEGER NOT NULL, operation_id TEXT NOT NULL, line_no INTEGER NOT NULL,
+      sku TEXT, name TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY(shop_id,operation_id,line_no),
+      FOREIGN KEY(shop_id,operation_id)
+        REFERENCES ozon_finance_transactions(shop_id,operation_id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS ozon_finance_transaction_services (
+      shop_id INTEGER NOT NULL, operation_id TEXT NOT NULL, line_no INTEGER NOT NULL,
+      service_name TEXT NOT NULL DEFAULT '', price REAL NOT NULL,
+      PRIMARY KEY(shop_id,operation_id,line_no),
+      FOREIGN KEY(shop_id,operation_id)
+        REFERENCES ozon_finance_transactions(shop_id,operation_id) ON DELETE CASCADE);
+
+    CREATE TABLE IF NOT EXISTS ozon_finance_reconciliations (
+      shop_id INTEGER NOT NULL REFERENCES shops(id), period_from TEXT NOT NULL,
+      period_to TEXT NOT NULL, api_row_count INTEGER NOT NULL,
+      fetched_operation_count INTEGER NOT NULL, accruals_for_sale REAL NOT NULL,
+      sale_commission REAL NOT NULL, processing_and_delivery REAL NOT NULL,
+      refunds_and_cancellations REAL NOT NULL, services_amount REAL NOT NULL,
+      compensation_amount REAL NOT NULL, money_transfer REAL NOT NULL,
+      others_amount REAL NOT NULL, local_amount_total REAL NOT NULL,
+      remote_component_total REAL NOT NULL, difference REAL NOT NULL,
+      reconciliation_status TEXT NOT NULL CHECK(reconciliation_status IN ('matched','mismatch')),
+      fetched_at TEXT NOT NULL, PRIMARY KEY(shop_id,period_from,period_to));
+    """)
+
+
+def _migrate_v10_to_v11(db):
+    db.execute("ALTER TABLE shop_auto_sync_settings RENAME TO shop_auto_sync_settings_v10")
+    db.execute("""CREATE TABLE shop_auto_sync_settings (
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      module TEXT NOT NULL CHECK(module IN (
+        'orders','returns','stock','ad_campaign_daily','ad_sku_daily','finance_transactions')),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+      interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
+      range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module))""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      SELECT shop_id,module,enabled,interval_hours,range_days FROM shop_auto_sync_settings_v10""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      SELECT id,'finance_transactions',0,24,31 FROM shops
+      WHERE NOT EXISTS (SELECT 1 FROM shop_auto_sync_settings s
+                        WHERE s.shop_id=shops.id AND s.module='finance_transactions')""")
+    db.execute("DROP TABLE shop_auto_sync_settings_v10")
+    _create_finance_tables(db)
+    db.execute("PRAGMA user_version=11")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -247,6 +317,9 @@ def init_db():
             if version == 9:
                 _migrate_v9_to_v10(db)
                 version = 10
+            if version == 10:
+                _migrate_v10_to_v11(db)
+                version = 11
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -364,7 +437,8 @@ def init_db():
           note TEXT NOT NULL DEFAULT '');
         CREATE TABLE shop_auto_sync_settings (
           shop_id INTEGER NOT NULL REFERENCES shops(id),
-          module TEXT NOT NULL CHECK(module IN ('orders','returns','stock','ad_campaign_daily','ad_sku_daily')),
+          module TEXT NOT NULL CHECK(module IN (
+            'orders','returns','stock','ad_campaign_daily','ad_sku_daily','finance_transactions')),
           enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
           interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
           range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module));
@@ -372,7 +446,8 @@ def init_db():
           (1,'orders',0,24,3),(1,'returns',0,24,3),(1,'stock',0,24,1),
           (2,'orders',0,24,3),(2,'returns',0,24,3),(2,'stock',0,24,1),
           (1,'ad_campaign_daily',0,24,7),(1,'ad_sku_daily',0,24,7),
-          (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7);
+          (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7),
+          (1,'finance_transactions',0,24,31),(2,'finance_transactions',0,24,31);
         CREATE TABLE stock_history (
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
@@ -409,3 +484,4 @@ def init_db():
         _create_ad_statistics(db)
         _create_alert_tables(db)
         _create_product_forecast_costs(db)
+        _create_finance_tables(db)

@@ -163,6 +163,7 @@ def probe_shop(shop_id):
         "returns": {"/v1/returns/list", "/v2/returns/rfbs/list", "/v2/returns/rfbs/get"},
         "stock": {"/v4/product/info/stocks"},
         "product_pricing": {"/v3/product/info/list", "/v5/product/info/prices"},
+        "finance": {"/v3/finance/transaction/list", "/v3/finance/transaction/totals"},
     }
     permissions = {module: ("可用" if paths <= methods else "缺少：" + "、".join(sorted(paths - methods)))
                    for module, paths in required.items()}

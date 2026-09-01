@@ -7,6 +7,7 @@ from .db import connect, transaction
 from .dingtalk import send_sync_failure
 from .exchange import MOSCOW, current_exchange_rate_entries, sync_exchange_rates
 from .ozon.client import BEIJING
+from .ozon.finance import sync_finance_transactions
 from .ozon.sync import sync_module
 from .performance import sync_performance_campaigns, sync_performance_statistics
 from .routers.common import _utc_text
@@ -15,8 +16,10 @@ from .routers.common import _utc_text
 logger = logging.getLogger(__name__)
 
 
-SYNC_MODULES = {"orders", "returns", "stock"}
+SYNC_MODULES = {"orders", "returns", "stock", "finance_transactions"}
+LEGACY_SYNC_MODULES = {"orders", "returns", "stock"}
 AD_SYNC_MODULES = {"ad_campaign_daily", "ad_sku_daily"}
+LEGACY_AUTO_SYNC_MODULES = LEGACY_SYNC_MODULES | AD_SYNC_MODULES
 AUTO_SYNC_MODULES = SYNC_MODULES | AD_SYNC_MODULES
 PERFORMANCE_SYNC_MODULE = "ad_campaigns"
 AUTO_SYNC_INTERVALS = {1, 2, 3, 4, 6, 8, 12, 24}
@@ -107,24 +110,24 @@ def _run_performance_statistics_sync(shop_id, start, end, module="all"):
 
 
 def save_auto_sync_settings(values):
-    if set(values) == SYNC_MODULES:
+    if set(values) in (SYNC_MODULES, LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
         values = {str(shop_id): values for shop_id in (1, 2)}
     if set(values) != {"1", "2"}:
         raise ValueError("必须分别提交两个店铺的自动拉取设置")
     with connect() as db:
-        current_ads = {shop_id: {row["module"]: dict(row) for row in db.execute(
-            "SELECT * FROM shop_auto_sync_settings WHERE shop_id=? AND module IN ('ad_campaign_daily','ad_sku_daily')",
+        current_optional = {shop_id: {row["module"]: dict(row) for row in db.execute(
+            "SELECT * FROM shop_auto_sync_settings WHERE shop_id=? AND module IN ('ad_campaign_daily','ad_sku_daily','finance_transactions')",
             (shop_id,))} for shop_id in (1, 2)}
     settings = []
     for shop_id in (1, 2):
         submitted = dict(values[str(shop_id)])
-        if set(submitted) == SYNC_MODULES:
+        if set(submitted) in (SYNC_MODULES, LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
             submitted.update({module: {"enabled": row["enabled"], "interval_hours": row["interval_hours"],
                                        "range_days": row["range_days"]}
-                              for module, row in current_ads[shop_id].items()})
+                              for module, row in current_optional[shop_id].items() if module not in submitted})
         if set(submitted) != AUTO_SYNC_MODULES:
-            raise ValueError("必须分别提交两个店铺的五个模块设置")
-        for module in ("orders", "returns", "stock", "ad_campaign_daily", "ad_sku_daily"):
+            raise ValueError("必须分别提交两个店铺的六个模块设置")
+        for module in ("orders", "returns", "stock", "finance_transactions", "ad_campaign_daily", "ad_sku_daily"):
             value = submitted[module]
             if "run_time" in value:
                 raise ValueError("run_time 已停用，请提交 interval_hours")
@@ -173,6 +176,9 @@ def _run_sync_job(run_id, module, shop_id, ranges):
                 end_date = end.date() if isinstance(end, datetime) else end
                 result = sync_performance_statistics(shop_id, start_date.isoformat(), end_date.isoformat(), module)
                 records += int(result.get("inserted_or_updated") or 0)
+            elif module == "finance_transactions":
+                result = sync_finance_transactions(shop_id, start, end)
+                records += int(result.get("records") or 0)
             else:
                 result = sync_module(module, shop_id, start, end, include_existing_missing=run_source != "auto")
                 records += int(result.get("records") or 0)

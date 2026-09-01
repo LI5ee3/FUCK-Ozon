@@ -15,7 +15,7 @@ from app.sync_jobs import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_
 from tests.support import DatabaseTestCase, MockRequest
 
 
-MODULES = ("orders", "returns", "stock")
+MODULES = ("orders", "returns", "stock", "finance_transactions")
 
 
 def settings(enabled=(), interval=6, days=7):
@@ -143,6 +143,7 @@ class AutoSyncTest(DatabaseTestCase):
         self.assertEqual({row["module"]: (row["interval_hours"], row["range_days"])
                           for row in rows},
                          {"orders": (6, 7), "returns": (6, 7), "stock": (6, 1),
+                          "finance_transactions": (6, 7),
                           "ad_campaign_daily": (24, 7), "ad_sku_daily": (24, 7)})
         for invalid in (0, 5, 7, 25):
             with self.assertRaisesRegex(ValueError, "只允许"):
@@ -208,6 +209,20 @@ class SyncProgressTest(DatabaseTestCase):
         with db.connect() as connection:
             row = connection.execute("SELECT status,progress_done,progress_total,records FROM sync_runs").fetchone()
         self.assertEqual(tuple(row), ("success", 1, 1, 3))
+
+    def test_finance_sync_job_uses_finance_dispatcher(self):
+        start = datetime(2026, 8, 1, tzinfo=BEIJING)
+        end = datetime(2026, 8, 2, tzinfo=BEIJING)
+        with db.transaction() as connection:
+            run_id = connection.execute("""INSERT INTO sync_runs(
+              shop_id,module,range_from,range_to,status,progress_total)
+              VALUES(1,'finance_transactions','','','running',1)""").lastrowid
+        with patch("app.sync_jobs.sync_finance_transactions", return_value={"records": 4}) as sync:
+            _run_sync_job(run_id, "finance_transactions", 1, [(start, end)])
+        sync.assert_called_once_with(1, start, end)
+        with db.connect() as connection:
+            row = connection.execute("SELECT status,progress_done,records FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 1, 4))
 
     def test_old_sync_logs_are_deleted_without_touching_pulled_data(self):
         with db.transaction() as connection:
