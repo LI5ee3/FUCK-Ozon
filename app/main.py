@@ -18,6 +18,7 @@ from .routers.auth import _authenticated, router as auth_router
 from .routers.complaints import router as complaints_router
 from .routers.dashboard import router as dashboard_router
 from .routers.dingtalk import router as dingtalk_router
+from .routers.erp_costs import router as erp_costs_router
 from .routers.exchange import router as exchange_router
 from .routers.export import router as export_router
 from .routers.imports import router as imports_router
@@ -96,6 +97,7 @@ app.include_router(returns_router)
 app.include_router(inventory_router)
 app.include_router(products_router)
 app.include_router(imports_router)
+app.include_router(erp_costs_router)
 app.include_router(exchange_router)
 
 
