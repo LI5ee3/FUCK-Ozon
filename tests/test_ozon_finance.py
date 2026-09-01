@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 import unittest
 from unittest.mock import patch
 
 from app import db
-from app.ozon.finance import TOTAL_FIELDS, fetch_finance_transactions, sync_finance_transactions
+from app.ozon.finance import (_month_ranges, TOTAL_FIELDS, fetch_finance_transactions,
+                              sync_finance_transactions)
 from tests.support import DatabaseTestCase
 
 
@@ -172,17 +173,53 @@ class FinanceSyncTest(DatabaseTestCase):
 
         start = datetime(2026, 7, 15, tzinfo=timezone.utc)
         end = datetime(2026, 10, 10, tzinfo=timezone.utc)
+        expected_ranges = [
+            (datetime(2026, 7, 15, tzinfo=timezone.utc), datetime(2026, 8, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 10, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 10, tzinfo=timezone.utc)),
+        ]
+        self.assertEqual(list(_month_ranges(start, end)), expected_ranges)
+        self.assertEqual(list(_month_ranges(expected_ranges[0][0], expected_ranges[0][1])), expected_ranges[:1])
+        for previous, current in zip(expected_ranges, expected_ranges[1:]):
+            self.assertEqual(previous[1], current[0])
         with patch("app.ozon.finance.client._post", side_effect=post):
             result = sync_finance_transactions(1, start, end)
         list_requests = [payload for path, payload in requests if path == LIST_PATH]
         self.assertEqual((result["chunks"], len(list_requests)), (4, 4))
-        for payload in list_requests:
-            date_range = payload["filter"]["date"]
-            from_value = datetime.fromisoformat(date_range["from"].replace("Z", "+00:00"))
-            to_value = datetime.fromisoformat(date_range["to"].replace("Z", "+00:00"))
-            self.assertLessEqual(to_value - from_value, timedelta(days=31))
-        self.assertEqual(list_requests[0]["filter"]["date"]["from"], "2026-07-15T00:00:00Z")
-        self.assertEqual(list_requests[-1]["filter"]["date"]["to"], "2026-10-10T00:00:00Z")
+        self.assertEqual(
+            [(request["filter"]["date"]["from"], request["filter"]["date"]["to"])
+             for request in list_requests],
+            [("2026-07-15T00:00:00Z", "2026-08-01T00:00:00Z"),
+             ("2026-08-01T00:00:00Z", "2026-09-01T00:00:00Z"),
+             ("2026-09-01T00:00:00Z", "2026-10-01T00:00:00Z"),
+             ("2026-10-01T00:00:00Z", "2026-10-10T00:00:00Z")],
+        )
+
+    def test_signed_totals_are_added_without_reversing_components(self):
+        row = operation("signed", 59260.73)
+        signed_totals = totals(
+            accruals_for_sale=96647.58,
+            sale_commission=-11456.65,
+            processing_and_delivery=-24405.68,
+            refunds_and_cancellations=-330,
+            services_amount=-1307.57,
+            compensation_amount=0,
+            money_transfer=0,
+            others_amount=113.05,
+        )
+
+        def post(_shop_id, path, _payload):
+            if path == LIST_PATH:
+                return {"result": {"operations": [row], "page_count": 1, "row_count": 1}}
+            return {"result": signed_totals}
+
+        with patch("app.ozon.finance.client._post", side_effect=post):
+            sync_finance_transactions(1, self.start, self.end)
+        with db.connect() as connection:
+            reconciliation = connection.execute("""SELECT local_amount_total,remote_component_total,
+              difference,reconciliation_status FROM ozon_finance_reconciliations""").fetchone()
+        self.assertEqual(tuple(reconciliation), (59260.73, 59260.73, 0.0, "matched"))
 
     def test_totals_mismatch_is_saved_without_changing_transaction_amount(self):
         row = operation("mismatch", 10)

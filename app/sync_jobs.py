@@ -151,6 +151,18 @@ def save_auto_sync_settings(values):
 def _sync_ranges(module, start, end):
     if module == "stock" or module in AD_SYNC_MODULES:
         return [(start, end)]
+    if module == "finance_transactions":
+        ranges, current = [], start
+        while current <= end:
+            next_month = (current.replace(day=1, year=current.year + 1, month=1)
+                          if current.month == 12 else current.replace(day=1, month=current.month + 1))
+            next_month = next_month.replace(hour=0, minute=0, second=0, microsecond=0)
+            chunk_end = min(end, next_month)
+            ranges.append((current, chunk_end))
+            if chunk_end >= end:
+                break
+            current = next_month
+        return ranges
     ranges, current = [], start
     while current <= end:
         next_month = (current.replace(day=1, year=current.year + 1, month=1)

@@ -1,6 +1,6 @@
 import json
 import math
-from datetime import timedelta, timezone
+from datetime import timezone
 from decimal import Decimal, InvalidOperation
 
 from . import client
@@ -32,9 +32,12 @@ def _month_ranges(start, end):
     if start > end:
         raise ValueError("Finance 日期范围无效")
     current = start
-    while current <= end:
+    while True:
         boundary = _next_month(current)
-        yield current, min(end, boundary - timedelta(seconds=1))
+        chunk_end = min(end, boundary)
+        yield current, chunk_end
+        if chunk_end >= end:
+            break
         current = boundary
 
 
@@ -211,15 +214,9 @@ def fetch_finance_totals(shop_id, start, end):
 
 def _reconciliation(operations, row_count, totals):
     local_amount_total = sum((operation["amounts"]["amount"][0] for operation in operations), Decimal("0"))
-    remote_component_total = (
-        Decimal(str(totals["accruals_for_sale"]))
-        - Decimal(str(totals["sale_commission"]))
-        - Decimal(str(totals["processing_and_delivery"]))
-        - Decimal(str(totals["refunds_and_cancellations"]))
-        - Decimal(str(totals["services_amount"]))
-        - Decimal(str(totals["compensation_amount"]))
-        - Decimal(str(totals["money_transfer"]))
-        - Decimal(str(totals["others_amount"]))
+    remote_component_total = sum(
+        (Decimal(str(totals[field])) for field in TOTAL_FIELDS),
+        Decimal("0"),
     )
     difference = local_amount_total - remote_component_total
     return {

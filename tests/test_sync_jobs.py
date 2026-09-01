@@ -180,6 +180,21 @@ class SyncProgressTest(DatabaseTestCase):
             row = connection.execute("SELECT status,progress_done,progress_total,records FROM sync_runs").fetchone()
         self.assertEqual(tuple(row), ("success", 3, 3, 12))
 
+    def test_finance_month_ranges_are_contiguous(self):
+        start = datetime(2026, 7, 15, tzinfo=timezone.utc)
+        end = datetime(2026, 10, 10, tzinfo=timezone.utc)
+        ranges = _sync_ranges("finance_transactions", start, end)
+        expected = [
+            (datetime(2026, 7, 15, tzinfo=timezone.utc), datetime(2026, 8, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 10, 1, tzinfo=timezone.utc)),
+            (datetime(2026, 10, 1, tzinfo=timezone.utc), datetime(2026, 10, 10, tzinfo=timezone.utc)),
+        ]
+        self.assertEqual(ranges, expected)
+        self.assertEqual(_sync_ranges("finance_transactions", expected[0][0], expected[0][1]), expected[:1])
+        for previous, current in zip(ranges, ranges[1:]):
+            self.assertEqual(previous[1], current[0])
+
     def test_failure_stops_remaining_ranges_and_stock_is_one_step(self):
         timezone = ZoneInfo("Asia/Shanghai")
         start, end = datetime(2026, 1, 1, tzinfo=timezone), datetime(2026, 3, 31, tzinfo=timezone)
