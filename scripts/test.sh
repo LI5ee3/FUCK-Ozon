@@ -23,6 +23,6 @@ cd "$ROOT"
 cd "$ROOT/frontend"
 npm run type-check
 npm run test:unit
-npm run test:profit
+npm run test:shipping
 
 printf '%s\n' 'oPanel 测试与类型检查通过。'

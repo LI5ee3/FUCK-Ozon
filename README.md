@@ -59,7 +59,7 @@ docs/             部署与业务口径文档
 - Returns / 异常订单明细
 - Complaints / 异常订单投诉
 - Alerts / 异常预警
-- Profit / 利润测算
+- Profit / 实际利润
 - Transfer / 数据导入导出
 - Sync / 数据同步中心
 - Rules / 商品匹配规则
@@ -83,7 +83,7 @@ npm run dev
 ./scripts/check.sh
 ```
 
-该脚本依次运行仓库 unittest、Vue type-check、Vue unit tests、Profit Node test 和 staged production build；不会启动生产服务、操作真实数据库或读取 Ozon 店铺数据。
+该脚本依次运行仓库 unittest、Vue type-check、Vue unit tests、跨境运费规则 Node test 和 staged production build；不会启动生产服务、操作真实数据库或读取 Ozon 店铺数据。
 
 ## macOS + Apple Silicon 部署
 

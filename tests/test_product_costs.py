@@ -418,6 +418,27 @@ class ProductForecastCostsTest(DatabaseTestCase):
         self.assertEqual((first["total"], len(first["items"]), len(second["items"]), beyond["items"]),
                          (3, 2, 1, []))
 
+    def test_canonical_product_listings_preserve_shop_sku_and_deduplicate_historical_offers(self):
+        with db.transaction() as connection:
+            self._add_product(connection, "P-A", "SKU-A", "OFFER-A", "同一商品")
+            self._add_product(connection, "P-A-OLD", "SKU-A", "OFFER-A-OLD", "同一商品")
+            add_order(connection, 2, "P-B", "FBP", "2026-08-03T00:00:00Z", "已签收", 1)
+            add_item(connection, 2, "P-B", "FBP", "SKU-B", offer_id="OFFER-B", product_name_raw="同一商品")
+        asyncio.run(save_product_rule(MockRequest({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-A",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-B"}],
+        })))
+        result = list_product_forecast_costs("同一商品")
+        rows = [row for row in result["items"] if row["product_identity"] == "OFFER-A"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["listings"], [
+            {"shop_id": 1, "sku": "SKU-A", "offer_id": None, "offer_ids": ["OFFER-A", "OFFER-A-OLD"]},
+            {"shop_id": 2, "sku": "SKU-B", "offer_id": "OFFER-B", "offer_ids": ["OFFER-B"]},
+        ])
+        self.assertTrue(set(rows[0]) - {"listings"} >= {
+            "product_identity", "display_name", "ozon_skus", "offer_ids", "forecast_cost", "configured",
+        })
+
 
 if __name__ == "__main__":
     unittest.main()
