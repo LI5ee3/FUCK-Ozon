@@ -31,7 +31,7 @@ function percent(value: number | null): string { return value == null ? "—" : 
       <span><small>ROAS</small><b>{{ summary.roas == null ? "—" : formatNumber(summary.roas) }}</b></span>
       <span><small>Campaign</small><b>{{ formatInteger(summary.campaign_count) }}</b></span>
     </div>
-    <div v-if="props.data.trend.length" class="sku-detail-ad-chart"><AdsTrendChart :data="props.data.trend" :show-orders="true" /></div>
+    <div v-if="props.data.trend.length" class="sku-detail-ad-chart"><AdsTrendChart :data="props.data.trend" /></div>
     </template>
     <p class="sku-detail-disclaimer">广告订单与订单数据库统计口径可能存在差异，该指标仅用于经营趋势分析，不作为财务结算依据。</p>
   </NCard>

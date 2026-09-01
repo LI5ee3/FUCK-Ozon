@@ -297,16 +297,17 @@ function renderTag(label: string, type: TagType, className = "", icon: IconName 
   });
 }
 
-function renderCopyButton(value: string, title: string, className = ""): VNodeChild {
+function renderCopyButton(value: string, title: string, className = "", iconOnly = false): VNodeChild {
   return h("button", {
     type: "button",
     class: `orders-copy-value ${className}`,
     title,
+    "aria-label": title,
     onClick: (event: MouseEvent) => {
       event.stopPropagation();
       void copyValue(value);
     },
-  }, value);
+  }, iconOnly ? h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }) : value);
 }
 
 function renderSkuLink(value: string, shopId: ShopId): VNodeChild {
@@ -316,7 +317,7 @@ function renderSkuLink(value: string, shopId: ShopId): VNodeChild {
       class: "orders-sku-detail-link",
       title: "打开 SKU 经营详情",
     }, value),
-    renderCopyButton(value, "点击复制 SKU", "orders-copy-icon"),
+    renderCopyButton(value, "点击复制 SKU", "orders-copy-icon", true),
   ]);
 }
 

@@ -184,20 +184,22 @@ def _return_key(source, posting_number, fallback):
 
 
 def _after_sales(order_rows, return_rows, rfbs_rows, complaint_rows):
-    orders = {row["posting_number"] for row in order_rows}
+    orders = {str(row["posting_number"]) for row in order_rows}
     cancelled = [row for row in order_rows if row["status_raw"] == "已取消" and row["shipped"] == 0]
     reasons = Counter(CANCEL_REASON_ZH.get(row["cancel_reason_raw"], row["cancel_reason_raw"] or "未提供")
                       for row in cancelled)
     return_keys = {_return_key("return", row["posting_number"], row["record_key"]) for row in return_rows}
     return_keys.update(_return_key("rfbs", row["posting_number"], row["return_number"]) for row in rfbs_rows)
+    return_orders = {str(row["posting_number"]).strip() for row in (*return_rows, *rfbs_rows)
+                     if str(row["posting_number"] or "").strip() in orders}
     complaint_keys = {(row["complaint_number"], row["posting_number"]) for row in complaint_rows}
     complaint_orders = {row["posting_number"] for row in complaint_rows}
     order_count = len(orders)
     return {"status": "available" if order_rows or return_keys or complaint_keys else "empty",
             "orders": order_count, "cancelled_before_ship": len(cancelled),
             "cancel_rate": len(cancelled) / order_count if order_count else None,
-            "returns": len(return_keys), "return_orders": len(return_keys),
-            "return_rate": len(return_keys) / order_count if order_count else None,
+            "returns": len(return_keys), "return_orders": len(return_orders),
+            "return_rate": len(return_orders) / order_count if order_count else None,
             "complaints": len(complaint_keys), "complaint_orders": len(complaint_orders),
             "complaint_rate": len(complaint_orders) / order_count if order_count else None,
             "cancel_reasons": [{"reason": reason, "count": count}
@@ -305,11 +307,17 @@ def _signals(inventory, advertising, profit):
             message = f"当前 FBP 无可售库存，建议补货 {recommended or 0} 件。"
             severity = "critical"
             title = "FBP 已缺货"
+        elif risk == "urgent_replenishment":
+            display_days = f"{days:.1f}" if isinstance(days, (int, float)) and math.isfinite(days) else "暂无"
+            message = f"当前 FBP 预计可售 {display_days} 天，不高于 {lead} 天采购交期，存在到货前缺货风险，建议补货 {recommended or 0} 件。"
+            severity = "critical"
+            title = "FBP 到货前缺货风险"
         else:
             display_days = f"{days:.1f}" if isinstance(days, (int, float)) and math.isfinite(days) else "暂无"
-            message = f"当前 FBP 预计可售 {display_days} 天，低于 {lead} 天采购交期，建议补货 {recommended or 0} 件。"
-            severity = "critical" if risk == "urgent_replenishment" else "warning"
-            title = "FBP 库存风险"
+            target = inventory.get("target_cover_days")
+            message = f"当前 FBP 预计可售 {display_days} 天，可覆盖采购交期，但尚未达到 {target} 天目标库存水平，建议补货 {recommended or 0} 件。"
+            severity = "warning"
+            title = "FBP 需要补货"
         signals.append({"code": f"inventory_{risk}", "severity": severity, "title": title,
                         "message": message, "metrics": {"days_cover": days,
                         "lead_time_days": lead, "recommended_replenishment": recommended}})

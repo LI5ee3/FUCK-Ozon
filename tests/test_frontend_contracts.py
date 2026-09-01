@@ -92,6 +92,23 @@ class FrontendContractsTest(unittest.TestCase):
             self.assertRegex(source, r"name:\s*['\"]sku-detail['\"]", relative)
             self.assertIn("shop_id: String(", source, relative)
 
+    def test_sku_detail_bugfix_contracts(self):
+        detail = (FRONTEND / "features/sku-detail/SkuDetailView.vue").read_text()
+        orders = (FRONTEND / "features/orders/OrdersView.vue").read_text()
+        after_sales = (FRONTEND / "features/sku-detail/components/AfterSalesPanel.vue").read_text()
+        ads_chart = (FRONTEND / "features/advertising/components/AdsTrendChart.vue").read_text()
+        ads_panel = (FRONTEND / "features/sku-detail/components/AdvertisingPanel.vue").read_text()
+        self.assertIn("const availableTo = shiftDays(beijingToday(), -3);", detail)
+        self.assertIn("function analyticsRequestFor", detail)
+        self.assertIn("if (!request)", detail)
+        self.assertIn("return null;", detail)
+        self.assertNotIn('if (value === "2") return 2;\n  return 1;', detail)
+        self.assertIn('renderCopyButton(value, "点击复制 SKU", "orders-copy-icon", true)', orders)
+        self.assertIn('icon: "copy"', orders)
+        self.assertIn("退货率 / 投诉率均以当前周期创建且包含该 SKU 的订单为分母", after_sales)
+        self.assertNotIn("showOrders", ads_chart)
+        self.assertNotIn("show-orders", ads_panel)
+
 
 if __name__ == "__main__":
     unittest.main()

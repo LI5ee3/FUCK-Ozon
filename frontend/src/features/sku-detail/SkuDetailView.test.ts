@@ -1,8 +1,9 @@
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import SkuDetailView from "./SkuDetailView.vue";
 import type { SkuDetailResponse } from "./types";
+import { beijingToday, shiftDays } from "../../shared/utils/date";
 
 const api = vi.hoisted(() => ({
   getSkuDetail: vi.fn(),
@@ -70,22 +71,65 @@ function coreResponse(): SkuDetailResponse {
 }
 
 describe("SkuDetailView", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("loads Core with an explicit shop and isolates Analytics failures", async () => {
     api.getSkuDetail.mockResolvedValue(coreResponse());
     api.getSkuTraffic.mockRejectedValue(new Error("Analytics unavailable"));
     api.getSkuQueryDetails.mockResolvedValue({ items: [], total: 0, page: 1, size: 20, data_through: "2026-08-27" });
+    const analyticsTo = shiftDays(beijingToday(), -3);
+    const coreTo = shiftDays(analyticsTo, 2);
+    const coreFrom = shiftDays(coreTo, -29);
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [{ path: "/sku/:sku", name: "sku-detail", component: SkuDetailView }],
     });
-    await router.push("/sku/SKU-1?shop_id=1&from=2026-08-01&to=2026-08-30");
+    await router.push(`/sku/SKU-1?shop_id=1&from=${coreFrom}&to=${coreTo}`);
     await router.isReady();
     const wrapper = shallowMount(SkuDetailView, { global: { plugins: [router] } });
     await flushPromises();
 
-    expect(api.getSkuDetail).toHaveBeenCalledWith({ shopId: 1, sku: "SKU-1", from: "2026-08-01", to: "2026-08-30" });
+    expect(api.getSkuDetail).toHaveBeenCalledWith({ shopId: 1, sku: "SKU-1", from: coreFrom, to: coreTo });
+    expect(api.getSkuTraffic).toHaveBeenCalledWith({ shopId: 1, sku: "SKU-1", from: coreFrom, to: analyticsTo });
+    expect(api.getSkuQueryDetails).toHaveBeenCalledWith({ shopId: 1, sku: "SKU-1", from: coreFrom, to: analyticsTo }, 1, 20);
     expect(wrapper.text()).toContain("周期销量");
     expect(wrapper.text()).toContain("Analytics unavailable");
     expect(wrapper.text()).not.toContain("SKU 经营详情加载失败");
+  });
+
+  it("does not request Analytics when the selected period is entirely newer than T-3", async () => {
+    api.getSkuDetail.mockResolvedValue(coreResponse());
+    const analyticsTo = shiftDays(beijingToday(), -3);
+    const from = shiftDays(analyticsTo, 1);
+    const to = shiftDays(analyticsTo, 2);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: "/sku/:sku", name: "sku-detail", component: SkuDetailView }],
+    });
+    await router.push(`/sku/SKU-1?shop_id=1&from=${from}&to=${to}`);
+    await router.isReady();
+    const wrapper = shallowMount(SkuDetailView, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(api.getSkuDetail).toHaveBeenCalledWith({ shopId: 1, sku: "SKU-1", from, to });
+    expect(api.getSkuTraffic).not.toHaveBeenCalled();
+    expect(api.getSkuQueryDetails).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("该经营周期暂无可用数据");
+  });
+
+  it("does not request Core without an explicit valid shop", async () => {
+    for (const query of ["", "?shop_id=0", "?shop_id=abc"]) {
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [{ path: "/sku/:sku", name: "sku-detail", component: SkuDetailView }],
+      });
+      await router.push(`/sku/SKU-1${query}`);
+      await router.isReady();
+      const wrapper = shallowMount(SkuDetailView, { global: { plugins: [router] } });
+      await flushPromises();
+      expect(api.getSkuDetail).not.toHaveBeenCalled();
+      expect(wrapper.text()).toContain("请选择具体店铺后查看 SKU 经营详情");
+      wrapper.unmount();
+    }
   });
 });

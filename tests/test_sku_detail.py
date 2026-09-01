@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from app import db
 from app.inventory import get_stock
 from app.routers.sku_detail import sku_detail
-from app.sku_detail import SkuDetailNotFound, get_sku_detail
+from app.sku_detail import SkuDetailNotFound, _signals, get_sku_detail
 from tests.support import DatabaseTestCase, add_item, add_order, add_stock_snapshot
 
 
@@ -92,17 +92,24 @@ class SkuDetailTest(DatabaseTestCase):
         self.assertEqual((result["actual_profit_cny"], result["avg_profit_per_unit_cny"]), ("40.0", "40.0"))
         self.assertEqual(result["incomplete_reasons"], {"multi_sku_order": 1})
 
-    def test_after_sales_deduplicates_postings_and_zero_sales_ratio_is_null(self):
+    def test_after_sales_uses_order_cohort_and_deduplicates_postings(self):
         with db.transaction() as connection:
             add_order(connection, 1, "RETURNED", "FBP", timestamp("2026-08-02"), "已签收", 1)
             add_item(connection, 1, "RETURNED", "FBP", "SKU-R", 1, offer_id="O-R")
+            add_order(connection, 1, "HISTORIC", "FBP", timestamp("2026-07-02"), "已签收", 1)
+            add_item(connection, 1, "HISTORIC", "FBP", "SKU-R", 1, offer_id="O-R")
             connection.execute("INSERT INTO return_records VALUES(1,'LEGACY-1',?,?,?,?,?)",
                                (timestamp("2026-08-02"), "RETURNED", "SKU-R", "{}", timestamp("2026-08-02")))
+            connection.execute("INSERT INTO return_records VALUES(1,'LEGACY-HISTORIC',?,?,?,?,?)",
+                               (timestamp("2026-08-02"), "HISTORIC", "SKU-R", "{}", timestamp("2026-08-02")))
+            connection.execute("INSERT INTO return_records VALUES(1,'LEGACY-MISSING',?,?,?,?,?)",
+                               (timestamp("2026-08-02"), None, "SKU-R", "{}", timestamp("2026-08-02")))
             connection.executemany("""INSERT INTO rfbs_return_records(
               shop_id,return_id,return_number,created_at,posting_number,offer_id,sku,product_name,payload,fetched_at)
               VALUES(?,?,?,?,?,?,?,?,?,?)""", [
                 (1, 1, "R-1", timestamp("2026-08-02"), "RETURNED", "O-R", "SKU-R", "商品", "{}", timestamp("2026-08-02")),
                 (1, 2, "R-2", timestamp("2026-08-02"), "RETURNED", "O-R", "SKU-R", "商品", "{}", timestamp("2026-08-02")),
+                (1, 3, "R-H", timestamp("2026-08-02"), "HISTORIC", "O-R", "SKU-R", "商品", "{}", timestamp("2026-08-02")),
             ])
             connection.execute("""INSERT INTO complaints(
               shop_id,complaint_number,posting_number,complaint_at,channel,created_at,updated_at)
@@ -111,7 +118,10 @@ class SkuDetailTest(DatabaseTestCase):
             connection.execute("""INSERT INTO ad_sku_daily(
               shop_id,stat_date,campaign_id,sku,orders,revenue_rub) VALUES(1,'2026-08-02','C-1','SKU-R',0,0)""")
         result = get_sku_detail(1, "SKU-R", "2026-08-01", "2026-08-03")
-        self.assertEqual((result["after_sales"]["returns"], result["after_sales"]["complaints"]), (1, 1))
+        after_sales = result["after_sales"]
+        self.assertEqual((after_sales["orders"], after_sales["returns"], after_sales["return_orders"]), (1, 3, 1))
+        self.assertEqual(after_sales["return_rate"], 1)
+        self.assertEqual(after_sales["complaints"], 1)
         self.assertEqual(result["after_sales"]["complaint_rate"], 1)
 
         with db.transaction() as connection:
@@ -119,6 +129,24 @@ class SkuDetailTest(DatabaseTestCase):
               shop_id,stat_date,campaign_id,sku,orders,revenue_rub) VALUES(1,'2026-08-02','C-2','AD-ONLY',3,30)""")
         result = get_sku_detail(1, "AD-ONLY", "2026-08-01", "2026-08-03")
         self.assertIsNone(result["advertising"]["ad_order_share"])
+
+    def test_replenishment_signals_distinguish_urgent_and_normal_replenishment(self):
+        advertising = {"ad_order_share": None, "summary": {"drr": None}}
+        profit = {}
+        normal = _signals({"risk_code": "replenish", "days_cover": 40,
+                           "lead_time_days": 25, "target_cover_days": 60,
+                           "recommended_replenishment": 20, "trend": None}, advertising, profit)[0]
+        self.assertEqual(normal["severity"], "warning")
+        self.assertNotIn("低于", normal["message"])
+        self.assertIn("可覆盖采购交期", normal["message"])
+        self.assertIn("目标库存", normal["message"])
+
+        urgent = _signals({"risk_code": "urgent_replenishment", "days_cover": 7.8,
+                           "lead_time_days": 25, "target_cover_days": 60,
+                           "recommended_replenishment": 139, "trend": None}, advertising, profit)[0]
+        self.assertEqual(urgent["severity"], "critical")
+        self.assertIn("不高于 25 天采购交期", urgent["message"])
+        self.assertIn("到货前缺货风险", urgent["message"])
 
     def test_unknown_sku_is_not_an_empty_success(self):
         with self.assertRaises(SkuDetailNotFound):

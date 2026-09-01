@@ -37,7 +37,7 @@ import type { SkuDetailResponse } from "./types";
 import "./sku-detail.css";
 
 type SkuDatePreset = "7" | "15" | "30";
-type SkuRouteState = { shopId: 1 | 2; from: string; to: string };
+type SkuRouteState = { shopId: 1 | 2 | null; from: string; to: string };
 
 const PAGE_SIZE = 20;
 const datePresets: ReadonlyArray<{ key: SkuDatePreset; label: string }> = [
@@ -68,11 +68,11 @@ function defaultDateRange(): DateRange {
   return [shiftDays(to, -29), to];
 }
 
-function shopIdFromQuery(): 1 | 2 {
+function shopIdFromQuery(): 1 | 2 | null {
   const value = queryValue(route.query, "shop_id");
   if (value === "1") return 1;
   if (value === "2") return 2;
-  return 1;
+  return null;
 }
 
 function skuFromRoute(): string {
@@ -90,15 +90,36 @@ function routeState(): SkuRouteState {
 }
 
 function queryFor(value: SkuRouteState): Record<string, string> {
-  return { shop_id: String(value.shopId), from: value.from, to: value.to };
+  const query: Record<string, string> = { from: value.from, to: value.to };
+  if (value.shopId !== null) query.shop_id = String(value.shopId);
+  return query;
 }
 
-function requestFor(value: SkuRouteState): SkuDetailQuery {
+function requestFor(value: SkuRouteState): SkuDetailQuery | null {
+  if (value.shopId === null) return null;
   return { shopId: value.shopId, sku: skuFromRoute(), from: value.from, to: value.to };
+}
+
+function analyticsRangeFor(value: SkuRouteState): DateRange | null {
+  const availableTo = shiftDays(beijingToday(), -3);
+  const to = value.to <= availableTo ? value.to : availableTo;
+  return value.from <= to ? [value.from, to] : null;
+}
+
+function analyticsRequestFor(value: SkuRouteState): SkuDetailQuery | null {
+  if (value.shopId === null) return null;
+  const range = analyticsRangeFor(value);
+  if (!range) return null;
+  return { shopId: value.shopId, sku: skuFromRoute(), from: range[0], to: range[1] };
 }
 
 const state = computed(routeState);
 const dateRange = computed<DateRange>(() => [state.value.from, state.value.to]);
+const invalidShopContext = computed(() => state.value.shopId === null);
+const analyticsRange = computed(() => analyticsRangeFor(state.value));
+const analyticsRangeText = computed(() => analyticsRange.value
+  ? `${analyticsRange.value[0]} 至 ${analyticsRange.value[1]}`
+  : "该经营周期暂无可用数据");
 const activePreset = computed<SkuDatePreset | "">(() => {
   for (const key of ["7", "15", "30"] as const) {
     if (state.value.from === shiftDays(state.value.to, -Number(key) + 1)) return key;
@@ -133,7 +154,11 @@ const queryColumns: DataTableColumns<AnalyticsProductQueryDetailRow> = [
 
 function goBack(): void {
   if (window.history.length > 1) router.back();
-  else void router.push({ name: "inventory" });
+  else goInventory();
+}
+
+function goInventory(): void {
+  void router.push({ name: "inventory" });
 }
 
 function updateRoute(next: Partial<SkuRouteState>): void {
@@ -157,8 +182,13 @@ async function loadCore(): Promise<void> {
   coreLoading.value = true;
   coreError.value = "";
   core.value = null;
+  const request = requestFor(state.value);
+  if (!request) {
+    coreLoading.value = false;
+    return;
+  }
   try {
-    const result = await getSkuDetail(requestFor(state.value));
+    const result = await getSkuDetail(request);
     if (requestId === coreRequestId) core.value = result;
   } catch (error) {
     if (requestId === coreRequestId) coreError.value = getErrorMessage(error);
@@ -169,11 +199,16 @@ async function loadCore(): Promise<void> {
 
 async function loadTraffic(): Promise<void> {
   const requestId = ++trafficRequestId;
-  trafficLoading.value = true;
   trafficError.value = "";
   traffic.value = null;
+  const request = analyticsRequestFor(state.value);
+  if (!request) {
+    trafficLoading.value = false;
+    return;
+  }
+  trafficLoading.value = true;
   try {
-    const result = await getSkuTraffic(requestFor(state.value));
+    const result = await getSkuTraffic(request);
     if (requestId === trafficRequestId) traffic.value = result;
   } catch (error) {
     if (requestId === trafficRequestId) trafficError.value = getErrorMessage(error);
@@ -185,11 +220,16 @@ async function loadTraffic(): Promise<void> {
 async function loadQueryDetails(page = 1): Promise<void> {
   const requestId = ++queryRequestId;
   queryPage.value = page;
-  queryLoading.value = true;
   queryError.value = "";
   queryDetails.value = null;
+  const request = analyticsRequestFor(state.value);
+  if (!request) {
+    queryLoading.value = false;
+    return;
+  }
+  queryLoading.value = true;
   try {
-    const result = await getSkuQueryDetails(requestFor(state.value), page, PAGE_SIZE);
+    const result = await getSkuQueryDetails(request, page, PAGE_SIZE);
     if (requestId === queryRequestId) queryDetails.value = result;
   } catch (error) {
     if (requestId === queryRequestId) queryError.value = getErrorMessage(error);
@@ -248,9 +288,13 @@ onBeforeUnmount(() => {
         <DatePresetPills :options="datePresets" :active-key="activePreset" aria-label="SKU 详情日期快捷范围" @select="selectPreset" />
       </div>
       <span class="sku-detail-toolbar-through">Core 周期 {{ state.from }} 至 {{ state.to }}</span>
+      <span class="sku-detail-toolbar-through">Analytics 区间 {{ analyticsRangeText }}</span>
     </div>
 
-    <div v-if="coreLoading" class="sku-detail-loading" aria-live="polite">
+    <NAlert v-if="invalidShopContext" type="warning" title="无法打开 SKU 经营详情" class="sku-detail-error">
+      <div class="sku-detail-error-content"><span>请选择具体店铺后查看 SKU 经营详情。</span><NButton size="small" @click="goInventory">返回 Inventory</NButton></div>
+    </NAlert>
+    <div v-else-if="coreLoading" class="sku-detail-loading" aria-live="polite">
       <NCard v-for="i in 3" :key="i" :bordered="false" class="sku-detail-loading-card"><NSkeleton text :repeat="3" /><NSkeleton text width="68%" /></NCard>
     </div>
     <NAlert v-else-if="coreError" type="error" title="SKU 经营详情加载失败" class="sku-detail-error">
@@ -280,7 +324,7 @@ onBeforeUnmount(() => {
       </NCard>
 
       <NCard :bordered="false" class="sku-detail-panel sku-detail-analytics-panel">
-        <template #header><div class="sku-detail-panel-heading"><div><h2><MorphIcon icon="activity" size="18" stroke-width="1.8" />流量与转化</h2><span>独立请求 Analytics，时效和失败状态不影响 Core 数据</span></div><span class="sku-detail-panel-status">{{ traffic?.data_through ? `数据截止 ${dateValue(traffic.data_through)}` : "Analytics T-3" }}</span></div></template>
+        <template #header><div class="sku-detail-panel-heading"><div><h2><MorphIcon icon="activity" size="18" stroke-width="1.8" />流量与转化</h2><span>独立请求 Analytics，统计区间 {{ analyticsRangeText }}；时效和失败状态不影响 Core 数据</span></div><span class="sku-detail-panel-status">{{ traffic?.data_through ? `数据截止 ${dateValue(traffic.data_through)}` : analyticsRangeText }}</span></div></template>
         <div v-if="trafficLoading" class="sku-detail-module-loading"><NSkeleton text :repeat="4" /></div>
         <NAlert v-else-if="trafficError" type="error" title="流量数据加载失败"><div class="sku-detail-error-content"><span>{{ trafficError }}</span><NButton size="small" @click="retryTraffic">重试</NButton></div></NAlert>
         <TrafficFunnel v-else-if="trafficRow" :data="trafficRow" />
@@ -288,7 +332,7 @@ onBeforeUnmount(() => {
       </NCard>
 
       <NCard :bordered="false" class="sku-detail-panel sku-detail-query-panel">
-        <template #header><div class="sku-detail-panel-heading"><div><h2><MorphIcon icon="search" size="18" stroke-width="1.8" />搜索关键词</h2><span>复用 product query details；不进入 SKU Core API</span></div></div></template>
+        <template #header><div class="sku-detail-panel-heading"><div><h2><MorphIcon icon="search" size="18" stroke-width="1.8" />搜索关键词</h2><span>复用 product query details；统计区间 {{ analyticsRangeText }}；不进入 SKU Core API</span></div></div></template>
         <div v-if="queryLoading" class="sku-detail-module-loading"><NSkeleton text :repeat="5" /></div>
         <NAlert v-else-if="queryError" type="error" title="搜索关键词加载失败"><div class="sku-detail-error-content"><span>{{ queryError }}</span><NButton size="small" @click="retryQueries">重试</NButton></div></NAlert>
         <template v-else-if="queryDetails?.items.length">
