@@ -148,6 +148,28 @@
   padding-top: 6px;
 }
 
+.transfer-erp-import-card {
+  margin-bottom: 20px;
+}
+
+.transfer-erp-import-note,
+.transfer-erp-fields-note {
+  margin: 0;
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.transfer-erp-import-note {
+  margin-bottom: 16px;
+}
+
+.transfer-erp-import-steps {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  align-items: end;
+}
+
 .transfer-import-status {
   min-width: 0;
   color: var(--opanel-muted);
@@ -301,6 +323,27 @@
   margin-bottom: 0;
 }
 
+.transfer-history-section + .transfer-history-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--opanel-line);
+}
+
+.transfer-history-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.transfer-history-section-heading h3 {
+  margin: 0;
+  color: var(--opanel-text);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
 .transfer-history-refresh {
   display: inline-flex;
   align-items: center;
@@ -330,6 +373,10 @@
   min-width: 680px;
   border-collapse: collapse;
   color: var(--opanel-text);
+}
+
+.transfer-erp-history-table {
+  min-width: 860px;
 }
 
 .transfer-history-table th,
@@ -424,6 +471,7 @@
   .transfer-file-meta { flex-basis: calc(100% - 60px); }
   .transfer-file-panel > .n-button { margin-left: 58px; }
   .transfer-import-actions { align-items: flex-start; flex-direction: column; }
+  .transfer-erp-import-steps { grid-template-columns: 1fr; }
   .transfer-date-controls { align-items: stretch; flex-direction: column; }
   .transfer-date-picker { width: 100%; min-width: 0; }
   .transfer-date-presets { width: 100%; }
