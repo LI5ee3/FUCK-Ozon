@@ -78,9 +78,11 @@ def _quantity(value):
 def _ozon_sku(platform_link):
     try:
         parsed = urlparse(platform_link.strip())
+        hostname = (parsed.hostname or "").lower()
     except ValueError:
         return None
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+    if (parsed.scheme not in ("http", "https")
+            or (hostname != "ozon.ru" and not hostname.endswith(".ozon.ru"))):
         return None
     segment = parsed.path.rstrip("/").rsplit("/", 1)[-1]
     match = re.search(r"(\d+)$", segment)

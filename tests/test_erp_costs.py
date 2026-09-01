@@ -67,6 +67,48 @@ class ErpCostImportTest(DatabaseTestCase):
             self.assertEqual(connection.execute(
                 "SELECT source_batch_id FROM erp_order_item_costs").fetchone()[0], 2)
 
+    def test_only_ozon_root_domain_and_subdomains_supply_ozon_sku(self):
+        allowed = [
+            "https://www.ozon.ru/product/test-1936515175/",
+            "https://ozon.ru/product/test-1936515175/",
+            "https://seller.ozon.ru:443/product/test-1936515175/?sku=999#fragment",
+            "https://WWW.OZON.RU:8443/product/test-1936515175/",
+        ]
+        for index, link in enumerate(allowed):
+            with self.subTest(link=link):
+                order = f"ALLOWED-{index}"
+                import_erp_costs(1, f"allowed-{index}.xlsx", workbook_bytes([
+                    row(order=order, link=link)
+                ]))
+                with db.connect() as connection:
+                    saved = connection.execute(
+                        "SELECT ozon_sku FROM erp_order_item_costs WHERE erp_order_number=?", (order,)
+                    ).fetchone()
+                self.assertEqual(saved[0], "1936515175")
+
+        rejected = [
+            "https://example.com/product/test-1936515175/",
+            "https://ozon.ru.example.com/product/test-1936515175/",
+            "https://fakeozon.ru/product/test-1936515175/",
+        ]
+        for index, link in enumerate(rejected):
+            with self.subTest(link=link):
+                with db.connect() as connection:
+                    before = tuple(connection.execute("""
+                      SELECT (SELECT COUNT(*) FROM erp_order_item_costs),
+                             (SELECT COUNT(*) FROM erp_cost_import_batches)
+                    """).fetchone())
+                with self.assertRaisesRegex(ValueError, "平台链接无法解析 Ozon SKU"):
+                    import_erp_costs(1, f"rejected-{index}.xlsx", workbook_bytes([
+                        row(order=f"REJECTED-{index}", link=link)
+                    ]))
+                with db.connect() as connection:
+                    after = tuple(connection.execute("""
+                      SELECT (SELECT COUNT(*) FROM erp_order_item_costs),
+                             (SELECT COUNT(*) FROM erp_cost_import_batches)
+                    """).fetchone())
+                self.assertEqual(after, before)
+
     def test_later_erp_correction_updates_current_fact(self):
         import_erp_costs(1, "first.xlsx", workbook_bytes([row()]))
         result = import_erp_costs(1, "correction.xlsx", workbook_bytes([row(cost="1500.125")]))
