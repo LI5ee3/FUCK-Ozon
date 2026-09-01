@@ -136,7 +136,7 @@ def _profit_row(order, item_rows, finance_rows):
     if finance["status"] == "available" and finance["currency_consistent"]:
         if order["settlement_currency"] == "CNY":
             finance_net_cny = finance["net"]
-        elif erp["rate_for_finance"] is not None:
+        elif erp["status"] == "complete" and erp["rate_for_finance"] is not None:
             finance_net_cny = finance["net"] * erp["rate_for_finance"]
     finance["net_cny"] = _decimal_text(finance_net_cny) if finance_net_cny is not None else None
 

@@ -110,7 +110,28 @@ class ActualProfitTest(DatabaseTestCase):
         item = self.profits(2)["items"][0]
         self.assertIsNone(item["actual_profit_cny"])
         self.assertEqual(item["incomplete_reasons"], ["missing_erp_cost"])
+        self.assertEqual(decimal(item["finance"]["net_cny"]), Decimal("100"))
         self.assertIsNone(item["erp_cost"]["total_cost_cny"])
+
+    def test_shop_one_partial_erp_does_not_convert_finance_net(self):
+        with db.transaction() as connection:
+            add_order(connection, 1, "PARTIAL-ERP", "FBP", "2026-04-10T00:00:00Z")
+            add_item(connection, 1, "PARTIAL-ERP", "FBP", "SKU-A")
+            add_item(connection, 1, "PARTIAL-ERP", "FBP", "SKU-B")
+            add_erp_fact(connection, 1, "PARTIAL-ERP", "SKU-A",
+                         total_cost="100", exchange_rate="6.75")
+            add_finance(connection, 1, "partial-erp", 100, "PARTIAL-ERP")
+
+        item = self.profits(1)["items"][0]
+        self.assertEqual(item["profit_status"], "incomplete")
+        self.assertEqual(item["incomplete_reasons"], ["missing_erp_cost"])
+        self.assertEqual(item["finance"]["status"], "available")
+        self.assertEqual(decimal(item["finance"]["net_amount"]), Decimal("100"))
+        self.assertEqual(item["finance"]["currency"], "USD")
+        self.assertIsNone(item["finance"]["net_cny"])
+        self.assertIsNone(item["erp_cost"]["exchange_rate_original"])
+        self.assertIsNone(item["erp_cost"]["total_cost_cny"])
+        self.assertIsNone(item["actual_profit_cny"])
 
     def test_quantity_mismatch_blocks_profit(self):
         with db.transaction() as connection:
