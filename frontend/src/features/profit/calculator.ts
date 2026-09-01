@@ -26,6 +26,9 @@ export interface ProfitInput {
   purchaseCost?: ProfitValue;
   purchaseCurrency?: ProfitPurchaseCurrency;
   weightGrams?: ProfitValue;
+  lengthCm?: ProfitValue;
+  widthCm?: ProfitValue;
+  heightCm?: ProfitValue;
   packingCostCny?: ProfitValue;
   otherCostCny?: ProfitValue;
   servicePenaltyExchangeRateRub?: ProfitValue;
@@ -152,6 +155,35 @@ export function calculateCrossBorderShippingCny(
     : { value: null, status: "data_unavailable" };
 }
 
+export function calculateHongKongCrossBorderShippingCny(
+  weightGrams: ProfitValue,
+  lengthCm: ProfitValue,
+  widthCm: ProfitValue,
+  heightCm: ProfitValue,
+): ProfitCostItem {
+  const actualWeight = profitNumber(weightGrams);
+  const length = profitNumber(lengthCm);
+  const width = profitNumber(widthCm);
+  const height = profitNumber(heightCm);
+  if (actualWeight === null || actualWeight <= 0
+    || length === null || length <= 0
+    || width === null || width <= 0
+    || height === null || height <= 0) {
+    return { value: null, status: "missing_input" };
+  }
+
+  const dimensionSum = length + width + height;
+  if (actualWeight > 25000 || Math.max(length, width, height) > 150 || dimensionSum >= 310) {
+    return { value: null, status: "data_unavailable" };
+  }
+
+  const billableWeight = dimensionSum <= 60 ? actualWeight : length * width * height / 6;
+  const value = 19 + Math.ceil(billableWeight / 100) * 9.6;
+  return Number.isFinite(value)
+    ? { value, status: "implemented" }
+    : { value: null, status: "data_unavailable" };
+}
+
 export function calculateOzonLogisticsPlatformElectronicServiceCny(
   shopId: ProfitShopId | number | string | null | undefined,
   priceOriginal: ProfitValue,
@@ -262,6 +294,9 @@ export function calculateFbpCosts(input: ProfitInput = {}, price: ProfitPrice): 
 export function calculateRealFbsHongKongCosts(input: ProfitInput = {}, price: ProfitPrice): ProfitCosts {
   const costs = emptyProfitCosts(input);
   costs.hunchun_shipping = { value: null, status: "not_applicable" };
+  costs.cross_border_shipping = calculateHongKongCrossBorderShippingCny(
+    input.weightGrams, input.lengthCm, input.widthCm, input.heightCm,
+  );
   costs.ozon_logistics_platform_electronic_service = calculateOzonLogisticsPlatformElectronicServiceCny(
     input.shopId, input.priceOriginal, input.servicePenaltyExchangeRateRub, input.usdCnyRate,
   );
@@ -302,8 +337,7 @@ export function calculateProfit(input: ProfitInput = {}): ProfitResult {
 
   const hasPurchaseCost = costs.purchase_cost.status === "implemented";
   const commissionBlocksProfit = costs.commission.status === "data_unavailable";
-  const crossBorderShippingBlocksProfit = (fulfillmentPath === "FBP" || fulfillmentPath === "realFBS_shenzhen")
-    && costs.cross_border_shipping.status !== "implemented";
+  const crossBorderShippingBlocksProfit = costs.cross_border_shipping.status !== "implemented";
   const ozonServiceBlocksProfit = costs.ozon_logistics_platform_electronic_service.status !== "implemented";
   const totalCostCny = hasPurchaseCost && !commissionBlocksProfit && !crossBorderShippingBlocksProfit
     && !ozonServiceBlocksProfit

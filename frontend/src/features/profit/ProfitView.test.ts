@@ -262,11 +262,14 @@ describe("ProfitView forecast-cost integration", () => {
     await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
     await nextTick();
     expect(wrapper.text()).toContain("¥86.40");
+    expect(wrapper.text()).toContain("¥38.20");
+    expect(wrapper.text()).not.toContain("跨境运费未接入规则");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
 
     await selectInput(wrapper, "realFBS 发货渠道").vm.$emit("update:value", "shenzhen");
     await nextTick();
     expect(wrapper.text()).toContain("¥86.40");
+    expect(wrapper.text()).toContain("¥34.81");
     expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
 
     await numberInput(wrapper, "平台售价").vm.$emit("update:value", 92);
@@ -426,6 +429,38 @@ describe("ProfitView forecast-cost integration", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("当前店铺未找到该商品的 Ozon listing，无法自动获取平台佣金");
     expect(commissionApi.getProductCommission).not.toHaveBeenCalled();
+  });
+
+  it("uses SKU cost dimensions for Hong Kong shipping and blocks when dimensions are missing", async () => {
+    const rowWithoutDimensions: ProductCostRow = {
+      ...usdRow,
+      product_identity: "OFFER-HK-NO-DIMENSIONS",
+      display_name: "香港尺寸缺失商品",
+      forecast_cost: {
+        ...usdCost,
+        id: 4,
+        product_identity: "OFFER-HK-NO-DIMENSIONS",
+        length_cm: null,
+        width_cm: null,
+        height_cm: null,
+      },
+    };
+    api.listProductCosts.mockResolvedValueOnce({ items: [rowWithoutDimensions], total: 1, page: 1, size: 50 });
+    const wrapper = await mountProfit();
+    await search(wrapper, "香港尺寸缺失商品");
+    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HK-NO-DIMENSIONS");
+    await nextTick();
+    await flushPromises();
+    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
+    await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
+    await nextTick();
+    expect(wrapper.text()).toContain("尺寸未配置");
+    expect(wrapper.text()).toContain("跨境运费");
+    expect(wrapper.text()).toContain("待输入");
+    expect(wrapper.text()).toContain("预计利润—");
+    expect(wrapper.text()).not.toContain("跨境运费未接入规则");
+    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
+    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the page usable but blocks a complete result when Ozon commission fetching fails", async () => {

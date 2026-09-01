@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   PROFIT_COST_KEYS,
   calculateCrossBorderShippingCny,
+  calculateHongKongCrossBorderShippingCny,
   calculateOzonLogisticsPlatformElectronicServiceCny,
   calculateProfit,
   normalizeProfitPrice,
@@ -61,7 +62,7 @@ test("跨境运费按原始售价和重量分档并直接输出 CNY", () => {
   assertClose(withRate.costs.cross_border_shipping.value, withoutRate.costs.cross_border_shipping.value);
 });
 
-test("FBP 与 realFBS 深圳共用跨境运费，香港保持未接入", () => {
+test("FBP 与 realFBS 深圳共用原规则，香港使用独立正向跨境运费", () => {
   const input = {
     shopId: 2,
     priceOriginal: 700,
@@ -70,6 +71,9 @@ test("FBP 与 realFBS 深圳共用跨境运费，香港保持未接入", () => {
     usdCnyRate: null,
     servicePenaltyExchangeRateRub: 12,
     weightGrams: 100,
+    lengthCm: 20,
+    widthCm: 20,
+    heightCm: 20,
   };
   const fbp = calculateProfit({ ...input, fulfillmentMode: "FBP" });
   const shenzhen = calculateProfit({ ...input, fulfillmentMode: "realFBS", realFbsChannel: "shenzhen" });
@@ -77,9 +81,56 @@ test("FBP 与 realFBS 深圳共用跨境运费，香港保持未接入", () => {
   assert.deepEqual(shenzhen.costs.cross_border_shipping, fbp.costs.cross_border_shipping);
   assert.equal(fbp.costs.hunchun_shipping.value, 10);
   assert.equal(shenzhen.costs.hunchun_shipping.status, "not_applicable");
-  assert.equal(hongKong.costs.cross_border_shipping.value, null);
-  assert.equal(hongKong.costs.cross_border_shipping.status, "not_implemented");
+  assertClose(hongKong.costs.cross_border_shipping.value, 28.6);
+  assert.equal(hongKong.costs.cross_border_shipping.status, "implemented");
   assert.ok(hongKong.profit_cny !== null);
+});
+
+test("香港跨境运费按实重/体积重和 100g 计费单位计算", () => {
+  for (const [weight, expected] of [[400, 57.4], [401, 67], [500, 67], [501, 76.6]]) {
+    const shipping = calculateHongKongCrossBorderShippingCny(weight, 20, 20, 20);
+    assert.equal(shipping.status, "implemented");
+    assertClose(shipping.value, expected);
+  }
+
+  const volumetric = calculateHongKongCrossBorderShippingCny(100, 20, 20, 21);
+  const heavierActual = calculateHongKongCrossBorderShippingCny(5000, 20, 20, 21);
+  assert.equal(volumetric.status, "implemented");
+  assertClose(volumetric.value, 153.4);
+  assert.deepEqual(heavierActual, volumetric);
+
+  const atSixty = calculateHongKongCrossBorderShippingCny(400, 20, 20, 20);
+  assertClose(atSixty.value, 57.4);
+});
+
+test("香港跨境运费严格执行包裹限制并区分缺失输入", () => {
+  assert.equal(calculateHongKongCrossBorderShippingCny(400, 150, 100, 50).status, "implemented");
+  assert.equal(calculateHongKongCrossBorderShippingCny(400, 150.01, 100, 49).status, "data_unavailable");
+  assert.equal(calculateHongKongCrossBorderShippingCny(400, 150, 100, 59.999).status, "implemented");
+  assert.equal(calculateHongKongCrossBorderShippingCny(400, 150, 100, 60).status, "data_unavailable");
+  assert.equal(calculateHongKongCrossBorderShippingCny(25000, 20, 20, 20).status, "implemented");
+  assert.equal(calculateHongKongCrossBorderShippingCny(25000.01, 20, 20, 20).status, "data_unavailable");
+
+  const volumetricOverLimit = calculateHongKongCrossBorderShippingCny(400, 150, 100, 50);
+  assert.equal(volumetricOverLimit.status, "implemented");
+
+  for (const values of [
+    [null, 20, 20, 20], [400, null, 20, 20], [400, 20, null, 20], [400, 20, 20, null],
+    [0, 20, 20, 20], [-1, 20, 20, 20], [400, 0, 20, 20], [400, 20, 20, "invalid"],
+    [400, 20, 20, Number.NaN], [400, 20, 20, Number.POSITIVE_INFINITY],
+  ]) {
+    assert.equal(calculateHongKongCrossBorderShippingCny(...values).status, "missing_input");
+  }
+
+  const missing = calculateProfit({
+    shopId: 2, priceOriginal: 700, purchaseCost: 400, purchaseCurrency: "CNY", usdCnyRate: null,
+    servicePenaltyExchangeRateRub: 12, salesPercentRfbs: 0, weightGrams: 400,
+    fulfillmentMode: "realFBS", realFbsChannel: "hongkong",
+  });
+  assert.equal(missing.costs.cross_border_shipping.status, "missing_input");
+  assert.equal(missing.total_cost_cny, null);
+  assert.equal(missing.profit_cny, null);
+  assert.equal(missing.net_margin, null);
 });
 
 test("FBP 与 realFBS 深圳缺少有效售价或重量时阻止完整利润", () => {
@@ -126,6 +177,9 @@ test("Ozon 物流平台电子服务费三条履约路径共用计算，且缺失
     usdCnyRate: null,
     servicePenaltyExchangeRateRub: 12,
     weightGrams: 100,
+    lengthCm: 20,
+    widthCm: 20,
+    heightCm: 20,
     salesPercentFbp: 0,
     salesPercentRfbs: 0,
   };
@@ -137,7 +191,8 @@ test("Ozon 物流平台电子服务费三条履约路径共用计算，且缺失
     assertClose(result.costs.ozon_logistics_platform_electronic_service.value, 14);
     assert.ok(Number.isFinite(result.total_cost_cny));
   }
-  assert.equal(hongKong.costs.cross_border_shipping.status, "not_implemented");
+  assertClose(hongKong.costs.cross_border_shipping.value, 28.6);
+  assert.equal(hongKong.costs.cross_border_shipping.status, "implemented");
 
   for (const rate of [null, undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY, "invalid"]) {
     const result = calculateProfit({ ...input, servicePenaltyExchangeRateRub: rate, fulfillmentMode: "FBP" });
@@ -197,6 +252,9 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
     usdCnyRate: 7.2,
     servicePenaltyExchangeRateRub: 80,
     weightGrams: 100,
+    lengthCm: 10,
+    widthCm: 5,
+    heightCm: 3,
     fulfillmentMode: "realFBS",
   };
   const hongKong = calculateProfit({ ...realFbsInput, realFbsChannel: "hongkong" });
@@ -205,11 +263,12 @@ test("采购成本使用 USD 成本乘测算汇率，并按履约路径分流", 
   assert.equal(hongKong.costs.hunchun_shipping.value, null);
   assert.equal(hongKong.costs.hunchun_shipping.status, "not_applicable");
   assert.equal(Object.prototype.hasOwnProperty.call(hongKong.costs, ["insur", "ance"].join("")), false);
+  assertClose(hongKong.costs.cross_border_shipping.value, 28.6);
   assertClose(hongKong.costs.international_transport_contract_service.value, 2.376);
   assert.equal(hongKong.costs.international_transport_contract_service.status, "implemented");
   assertClose(hongKong.costs.bank_acquiring_fee.value, 7.2);
   assert.equal(hongKong.costs.bank_acquiring_fee.status, "implemented");
-  assertClose(hongKong.total_cost_cny, 311.976);
+  assertClose(hongKong.total_cost_cny, 340.576);
   assert.equal(shenzhen.fulfillment_path, "realFBS_shenzhen");
   assert.equal(shenzhen.costs.hunchun_shipping.value, null);
   assert.equal(shenzhen.costs.hunchun_shipping.status, "not_applicable");

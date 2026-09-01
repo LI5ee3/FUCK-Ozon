@@ -356,6 +356,9 @@ const result = computed(() => calculateProfit({
   purchaseCost: purchaseCost.value,
   purchaseCurrency: purchaseCurrency.value,
   weightGrams: weightGrams.value,
+  lengthCm: selectedForecastCost.value?.length_cm ?? null,
+  widthCm: selectedForecastCost.value?.width_cm ?? null,
+  heightCm: selectedForecastCost.value?.height_cm ?? null,
   packingCostCny: packingCostCny.value,
   otherCostCny: otherCostCny.value,
   servicePenaltyExchangeRateRub: profitShopId.value === 1
