@@ -52,6 +52,12 @@ const routes: RouteRecordRaw[] = [
           description: "系统设置的 Vue 页面入口。",
         },
       },
+      {
+        path: "sku/:sku",
+        name: "sku-detail",
+        component: () => import("../../features/sku-detail/SkuDetailView.vue"),
+        meta: { title: "SKU 360°", icon: "tag", description: "单店铺 SKU 的统一经营详情。" },
+      },
     ],
   },
   { path: "/:pathMatch(.*)*", redirect: "/" },

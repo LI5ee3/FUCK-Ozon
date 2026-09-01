@@ -1,4 +1,3 @@
-import math
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Annotated
@@ -8,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
 from ..db import connect
-from ..performance import PerformanceConfigurationError, list_campaigns
+from ..performance import (AD_BASE_FIELDS, PerformanceConfigurationError, ad_add, ad_summary,
+                           list_campaigns)
 from ..sync_jobs import _run_performance_campaign_sync, _run_performance_statistics_sync
 from .common import _paging, read_bounded_json
 
@@ -81,35 +81,12 @@ def _performance_filter_shop(value):
     return 0 if text in ("", "0", "all") else _performance_shop_id(text)
 
 
-AD_BASE_FIELDS = ("impressions", "clicks", "cart_adds", "spend_rub", "orders", "revenue_rub")
-
-
-def _ad_number(value):
-    try:
-        value = float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
-    return value if math.isfinite(value) else 0.0
-
-
 def _ad_summary(row):
-    values = {field: _ad_number(row.get(field)) for field in AD_BASE_FIELDS}
-    values["impressions"] = int(values["impressions"])
-    values["clicks"] = int(values["clicks"])
-    values["cart_adds"] = int(values["cart_adds"])
-    values["orders"] = int(values["orders"])
-    values["spend_rub"] = round(values["spend_rub"], 2)
-    values["revenue_rub"] = round(values["revenue_rub"], 2)
-    values["ctr"] = round(values["clicks"] / values["impressions"] * 100, 4) if values["impressions"] else None
-    values["avg_cpc_rub"] = round(values["spend_rub"] / values["clicks"], 4) if values["clicks"] else None
-    values["drr"] = round(values["spend_rub"] / values["revenue_rub"] * 100, 4) if values["revenue_rub"] else None
-    values["roas"] = round(values["revenue_rub"] / values["spend_rub"], 4) if values["spend_rub"] else None
-    return values
+    return ad_summary(row)
 
 
 def _ad_add(target, row):
-    for field in AD_BASE_FIELDS:
-        target[field] = target.get(field, 0) + _ad_number(row.get(field))
+    ad_add(target, row)
 
 
 def _ad_sort(rows, sort, order):

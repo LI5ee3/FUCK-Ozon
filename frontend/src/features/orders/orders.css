@@ -214,6 +214,11 @@
   text-decoration: underline;
 }
 
+.orders-sku-detail-wrap { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.orders-sku-detail-link { overflow: hidden; color: var(--opanel-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.orders-sku-detail-link:hover { color: var(--opanel-primary); text-decoration: underline; }
+.orders-copy-icon { display: inline-flex; color: var(--opanel-muted); }
+
 .orders-order-tags,
 .orders-product-meta,
 .orders-tag-content {

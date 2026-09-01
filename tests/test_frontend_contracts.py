@@ -71,6 +71,27 @@ class FrontendContractsTest(unittest.TestCase):
         ):
             self.assertIn(path, api)
 
+    def test_sku_detail_route_and_links_preserve_shop_context(self):
+        detail = (FRONTEND / "features/sku-detail/SkuDetailView.vue").read_text()
+        api = (FRONTEND / "features/sku-detail/api.ts").read_text()
+        self.assertIn('path: "sku/:sku"', self.router)
+        self.assertIn('name: "sku-detail"', self.router)
+        self.assertNotIn('name: "sku-detail"', (FRONTEND / "app/router/navigation.ts").read_text())
+        self.assertIn("/api/sku-detail/", api)
+        self.assertIn("/api/analytics/data", api)
+        self.assertIn("getSkuTraffic", detail)
+        self.assertIn("trafficError", detail)
+        for relative in (
+            "features/inventory/InventoryView.vue",
+            "features/advertising/AdSkusView.vue",
+            "features/analytics/AnalyticsView.vue",
+            "features/orders/OrdersView.vue",
+            "features/orders/components/OrderDetailPanel.vue",
+        ):
+            source = (FRONTEND / relative).read_text()
+            self.assertRegex(source, r"name:\s*['\"]sku-detail['\"]", relative)
+            self.assertIn("shop_id: String(", source, relative)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,7 @@ from .routers.products import router as products_router
 from .routers.returns import router as returns_router
 from .routers.risk import router as risk_router
 from .routers.shops import router as shops_router
+from .routers.sku_detail import router as sku_detail_router
 from .routers.sync import router as sync_router
 from .routers.timeliness import router as timeliness_router
 from .security import migrate_env_password
@@ -97,6 +98,7 @@ app.include_router(imports_router)
 app.include_router(erp_costs_router)
 app.include_router(actual_profit_router)
 app.include_router(exchange_router)
+app.include_router(sku_detail_router)
 
 
 def _is_ozon_webhook_path(path):

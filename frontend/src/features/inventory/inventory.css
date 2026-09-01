@@ -123,6 +123,10 @@
 
 .inventory-copy-value:hover { color: var(--opanel-primary); text-decoration: underline; }
 .inventory-null { color: var(--opanel-muted); font-weight: 500; }
+.inventory-sku-detail-wrap { display: inline-flex; min-width: 0; align-items: center; gap: 4px; }
+.inventory-sku-detail-link { max-width: 126px; overflow: hidden; color: var(--opanel-text); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.inventory-sku-detail-link:hover { color: var(--opanel-primary); text-decoration: underline; }
+.inventory-copy-icon { display: inline-flex; max-width: none; color: var(--opanel-muted); }
 
 .inventory-forecast-details {
   color: var(--opanel-muted);

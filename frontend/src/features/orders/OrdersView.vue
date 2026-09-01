@@ -7,7 +7,7 @@ import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNo
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
 import type { LocationQuery } from "vue-router";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   NAlert,
   NButton,
@@ -30,7 +30,7 @@ import type {
   OrderStatusCounts,
   OrderStatusFilter,
 } from "./types";
-import type { Channel, ShopSelection } from "../../shared/types/common";
+import type { Channel, ShopId, ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger, formatMoney, formatNumber } from "../../shared/utils/format";
 import { beijingThreeMonthRange, parseValidDateRange, standardDatePresetRange, type DateRange, type StandardDatePreset } from "../../shared/utils/date";
 import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
@@ -309,10 +309,23 @@ function renderCopyButton(value: string, title: string, className = ""): VNodeCh
   }, value);
 }
 
-function renderMetaChip(label: string, value: string | null | undefined): VNodeChild {
+function renderSkuLink(value: string, shopId: ShopId): VNodeChild {
+  return h("span", { class: "orders-sku-detail-wrap" }, [
+    h(RouterLink, {
+      to: { name: "sku-detail", params: { sku: value }, query: { shop_id: String(shopId) } },
+      class: "orders-sku-detail-link",
+      title: "打开 SKU 经营详情",
+    }, value),
+    renderCopyButton(value, "点击复制 SKU", "orders-copy-icon"),
+  ]);
+}
+
+function renderMetaChip(label: string, value: string | null | undefined, shopId?: ShopId): VNodeChild {
   return h("span", { class: "orders-meta-chip" }, [
     `${label} `,
-    value ? renderCopyButton(value, `点击复制${label}`) : h("b", { class: "orders-null" }, "暂无"),
+    value
+      ? label === "SKU" && shopId ? renderSkuLink(value, shopId) : renderCopyButton(value, `点击复制${label}`)
+      : h("b", { class: "orders-null" }, "暂无"),
   ]);
 }
 
@@ -340,7 +353,7 @@ function renderProductCell(order: Order): VNodeChild {
         : null,
     ]),
     h("div", { class: "orders-product-meta" }, [
-      renderMetaChip("SKU", first.sku),
+      renderMetaChip("SKU", first.sku, order.shop_id),
       renderMetaChip("货号", first.offer_id),
       h("span", { class: "orders-meta-chip orders-meta-chip--quantity" }, `× ${formatInteger(first.quantity)}`),
       extra > 0 ? h("span", { class: "orders-meta-extra" }, `+${extra} 种其他商品`) : null,

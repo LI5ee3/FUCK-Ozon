@@ -273,6 +273,9 @@
   font-size: 13px;
 }
 
+.analytics-sku-link { text-decoration: none; }
+.analytics-sku-link:hover { color: var(--opanel-primary); text-decoration: underline; }
+
 .analytics-product-name {
   display: block;
   max-width: 100%;

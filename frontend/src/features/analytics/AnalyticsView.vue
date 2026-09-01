@@ -7,7 +7,7 @@ import AnalyticsKpiCards from "./components/AnalyticsKpiCards.vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
 import type { LocationQuery } from "vue-router";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   NAlert,
   NButton,
@@ -56,7 +56,7 @@ type AnalyticsKpi = {
   note?: string;
   tone: "azure" | "lavender" | "mint" | "peach" | "butter";
 };
-type AnalyticsIdentity = Pick<AnalyticsTrafficRow, "shop_name" | "sku">;
+type AnalyticsIdentity = Pick<AnalyticsTrafficRow, "shop_id" | "shop_name" | "sku">;
 
 const PAGE_SIZE = 50;
 const route = useRoute();
@@ -402,7 +402,13 @@ function formatAnalyticsMoney(value: number | null | undefined, currency: string
 function renderShopSku(row: AnalyticsIdentity): VNodeChild {
   return h("div", { class: "analytics-identity-cell" }, [
     h("span", { class: "analytics-shop-badge" }, row.shop_name),
-    h("strong", { class: "analytics-sku" }, row.sku || "—"),
+    row.sku
+      ? h(RouterLink, {
+          to: { name: "sku-detail", params: { sku: row.sku }, query: { shop_id: String(row.shop_id) } },
+          class: "analytics-sku analytics-sku-link",
+          title: "打开 SKU 经营详情",
+        }, row.sku)
+      : h("strong", { class: "analytics-sku" }, "—"),
   ]);
 }
 

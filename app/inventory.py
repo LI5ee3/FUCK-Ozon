@@ -166,7 +166,7 @@ def _forecast_risk(effective_stock, forecast_daily, days_cover, recommended):
 
 def get_stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
           offer_id: str = "", product_name: str = "", sort_by: str = "",
-          sort_order: str = "desc", channel: str = "", risk: str = "", q: str = ""):
+          sort_order: str = "desc", channel: str = "", risk: str = "", q: str = "", _rules=None):
     if shop_id not in (0, 1, 2):
         raise ValueError("未知店铺")
     channel = {"all": "", "fbp": "FBP", "realfbs": "realFBS", "whd": "WHD"}.get(channel, channel)
@@ -221,7 +221,7 @@ def get_stock(shop_id: int = 0, page: int = 1, size: int = 50, sku: str = "",
                                          (sales_start.isoformat(), sales_end.isoformat(), sales_start.isoformat(),
                                           sales_end.isoformat(), shop_id, shop_id))}
         shop_names = {row["id"]: row["name"] for row in db.execute("SELECT id,name FROM shops")}
-        rules = load_product_rules(db)
+        rules = _rules if _rules is not None else load_product_rules(db)
         sales_through = db.execute(f"""SELECT MAX(data_through) FROM sync_runs o
           WHERE module='orders' AND status='success'{shop_clause}""", shop_args).fetchone()[0]
         if not sales_through:

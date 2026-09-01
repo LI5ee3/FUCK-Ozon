@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MorphIcon from "../../../shared/components/MorphIcon.vue";
 import type { Order } from "../types";
+import { RouterLink } from "vue-router";
 import { formatBeijingDateTime, formatHours, formatInteger, formatMoney } from "../../../shared/utils/format";
 
 const props = defineProps<{
@@ -109,7 +110,7 @@ function formatUnitPrice(value: number | null, currency: string | null): string 
             原始名称：{{ item.product_name_original }}
           </small>
           <div class="orders-product-meta-chips">
-            <span class="orders-meta-chip">SKU <button v-if="item.sku" type="button" class="orders-copy-value" title="点击复制 SKU" @click.stop="copy(item.sku)">{{ item.sku }}</button><b v-else>暂无</b></span>
+            <span class="orders-meta-chip">SKU <template v-if="item.sku"><RouterLink class="orders-sku-detail-link" :to="{ name: 'sku-detail', params: { sku: item.sku }, query: { shop_id: String(order.shop_id) } }" title="打开 SKU 经营详情" @click.stop>{{ item.sku }}</RouterLink><button type="button" class="orders-copy-value orders-copy-icon" title="点击复制 SKU" :aria-label="`点击复制 SKU ${item.sku}`" @click.stop="copy(item.sku)"><MorphIcon icon="copy" size="12" stroke-width="2" /></button></template><b v-else>暂无</b></span>
             <span class="orders-meta-chip">货号 <button v-if="item.offer_id" type="button" class="orders-copy-value" title="点击复制货号" @click.stop="copy(item.offer_id)">{{ item.offer_id }}</button><b v-else>暂无</b></span>
           </div>
         </div>

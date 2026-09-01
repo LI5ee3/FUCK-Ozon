@@ -694,6 +694,11 @@
   text-decoration: underline;
 }
 
+.ad-skus-detail-link-wrap { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.ad-skus-detail-link { overflow: hidden; color: var(--opanel-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.ad-skus-detail-link:hover { color: var(--opanel-primary); text-decoration: underline; }
+.ad-skus-copy-icon { color: var(--opanel-muted); }
+
 .ad-skus-product-name {
   display: block;
   overflow: hidden;

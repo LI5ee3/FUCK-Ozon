@@ -24,6 +24,40 @@ _token_cache = {}
 _token_lock = threading.Lock()
 MOSCOW = ZoneInfo("Europe/Moscow")
 
+AD_BASE_FIELDS = ("impressions", "clicks", "cart_adds", "spend_rub", "orders", "revenue_rub")
+
+
+def ad_number(value):
+    try:
+        value = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if isfinite(value) else 0.0
+
+
+def _ad_ratio(value):
+    return round(value, 4) if isfinite(value) else None
+
+
+def ad_summary(row):
+    values = {field: ad_number(row.get(field)) for field in AD_BASE_FIELDS}
+    values["impressions"] = int(values["impressions"])
+    values["clicks"] = int(values["clicks"])
+    values["cart_adds"] = int(values["cart_adds"])
+    values["orders"] = int(values["orders"])
+    values["spend_rub"] = round(values["spend_rub"], 2)
+    values["revenue_rub"] = round(values["revenue_rub"], 2)
+    values["ctr"] = _ad_ratio(values["clicks"] / values["impressions"] * 100) if values["impressions"] else None
+    values["avg_cpc_rub"] = _ad_ratio(values["spend_rub"] / values["clicks"]) if values["clicks"] else None
+    values["drr"] = _ad_ratio(values["spend_rub"] / values["revenue_rub"] * 100) if values["revenue_rub"] else None
+    values["roas"] = _ad_ratio(values["revenue_rub"] / values["spend_rub"]) if values["spend_rub"] else None
+    return values
+
+
+def ad_add(target, row):
+    for field in AD_BASE_FIELDS:
+        target[field] = target.get(field, 0) + ad_number(row.get(field))
+
 
 class PerformanceConfigurationError(ValueError):
     pass

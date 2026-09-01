@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { BarChart } from "echarts/charts";
+import { BarChart, LineChart } from "echarts/charts";
 import { init, use, type ECharts } from "echarts/core";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
@@ -9,9 +9,9 @@ import { useTheme } from "../../../shared/composables/useTheme";
 import { macaronTokens } from "../../../theme/tokens";
 import { formatNumber } from "../../../shared/utils/format";
 
-use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
-const props = defineProps<{ data: AdsTrendPoint[] }>();
+const props = withDefaults(defineProps<{ data: AdsTrendPoint[]; showOrders?: boolean }>(), { showOrders: false });
 const chartElement = ref<HTMLDivElement | null>(null);
 const { isDark } = useTheme();
 const palette = computed(() => (isDark.value ? macaronTokens.dark : macaronTokens.light));
@@ -46,12 +46,39 @@ function tooltipFormatter(params: unknown): string {
   const index = dataIndexOf(params);
   const point = index == null ? undefined : props.data[index];
   if (!point) return "";
-  return `<div class="ads-chart-tooltip"><strong>${escapeHtml(point.date)}</strong><div><span>广告花费</span><b>${formatAdsMoney(point.spend_rub)}</b></div><div><span>广告销售额</span><b>${formatAdsMoney(point.revenue_rub)}</b></div></div>`;
+  return `<div class="ads-chart-tooltip"><strong>${escapeHtml(point.date)}</strong><div><span>广告花费</span><b>${formatAdsMoney(point.spend_rub)}</b></div><div><span>广告销售额</span><b>${formatAdsMoney(point.revenue_rub)}</b></div>${props.showOrders ? `<div><span>广告订单</span><b>${formatNumber(point.orders, 0)}</b></div>` : ""}</div>`;
 }
 
 function chartOption() {
   const colors = palette.value;
   const ink = (hue: keyof typeof macaronTokens.tones) => macaronTokens.tones[hue][isDark.value ? "dark" : "light"].text;
+  const series: Array<Record<string, unknown>> = [
+    {
+      type: "bar",
+      name: "广告花费",
+      data: props.data.map((point) => point.spend_rub),
+      barMaxWidth: 22,
+      itemStyle: { color: ink("butter"), borderRadius: [5, 5, 0, 0] },
+      emphasis: { focus: "series" },
+    },
+    {
+      type: "bar",
+      name: "广告销售额",
+      data: props.data.map((point) => point.revenue_rub),
+      barMaxWidth: 22,
+      itemStyle: { color: ink("azure"), borderRadius: [5, 5, 0, 0] },
+      emphasis: { focus: "series" },
+    },
+  ];
+  if (props.showOrders) {
+    series.push({
+      type: "line",
+      name: "广告订单",
+      data: props.data.map((point) => point.orders),
+      symbol: "none",
+      lineStyle: { width: 2, type: "dashed", color: ink("lavender") },
+    });
+  }
   return {
     animationDuration: 280,
     grid: { left: 12, right: 18, top: 32, bottom: 24, containLabel: true },
@@ -88,24 +115,7 @@ function chartOption() {
       axisLabel: { color: colors.muted, formatter: (value: number) => formatNumber(value) },
       splitLine: { lineStyle: { color: colors.line, type: "dashed" } },
     },
-    series: [
-      {
-        type: "bar",
-        name: "广告花费",
-        data: props.data.map((point) => point.spend_rub),
-        barMaxWidth: 22,
-        itemStyle: { color: ink("butter"), borderRadius: [5, 5, 0, 0] },
-        emphasis: { focus: "series" },
-      },
-      {
-        type: "bar",
-        name: "广告销售额",
-        data: props.data.map((point) => point.revenue_rub),
-        barMaxWidth: 22,
-        itemStyle: { color: ink("azure"), borderRadius: [5, 5, 0, 0] },
-        emphasis: { focus: "series" },
-      },
-    ],
+    series,
   };
 }
 

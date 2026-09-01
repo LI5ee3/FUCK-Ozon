@@ -5,7 +5,7 @@ import "./advertising.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { LocationQuery } from "vue-router";
-import { useRoute, useRouter } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   NAlert,
   NButton,
@@ -237,16 +237,23 @@ function ratio(value: number | null | undefined): string {
 function renderSku(row: AdSkuItem): VNodeChild {
   return h("div", { class: "ad-skus-identity-cell" }, [
     h("span", { class: "ad-skus-shop-badge" }, row.shop_name || "—"),
-    h("button", {
-      type: "button",
-      class: "ad-skus-copy-value",
-      title: "点击复制 SKU",
-      "aria-label": `点击复制 SKU ${row.sku}`,
-      onClick: (event: MouseEvent) => {
-        event.stopPropagation();
-        void copyValue(row.sku);
-      },
-    }, [h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" }), `SKU ${row.sku}`]),
+    h("span", { class: "ad-skus-detail-link-wrap" }, [
+      h(RouterLink, {
+        to: { name: "sku-detail", params: { sku: row.sku }, query: { shop_id: String(row.shop_id) } },
+        class: "ad-skus-detail-link",
+        title: "打开 SKU 经营详情",
+      }, `SKU ${row.sku}`),
+      h("button", {
+        type: "button",
+        class: "ad-skus-copy-value ad-skus-copy-icon",
+        title: "点击复制 SKU",
+        "aria-label": `点击复制 SKU ${row.sku}`,
+        onClick: (event: MouseEvent) => {
+          event.stopPropagation();
+          void copyValue(row.sku);
+        },
+      }, h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" })),
+    ]),
   ]);
 }
 

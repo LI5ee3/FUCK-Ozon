@@ -6,6 +6,7 @@ import "./inventory.css";
 import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
 import MorphIcon from "../../shared/components/MorphIcon.vue";
 import type { IconName } from "../../shared/icons/tabler";
+import { RouterLink } from "vue-router";
 import {
   NAlert,
   NButton,
@@ -252,6 +253,27 @@ function renderCopyValue(value: string, label: string): VNodeChild {
     : h("b", { class: "inventory-null" }, "暂无");
 }
 
+function renderSkuValue(row: InventoryRow): VNodeChild {
+  if (!row.sku) return h("b", { class: "inventory-null" }, "暂无");
+  return h("span", { class: "inventory-sku-detail-wrap" }, [
+    h(RouterLink, {
+      to: { name: "sku-detail", params: { sku: row.sku }, query: { shop_id: String(row.shop_id) } },
+      class: "inventory-sku-detail-link",
+      title: "打开 SKU 经营详情",
+    }, row.sku),
+    h("button", {
+      type: "button",
+      class: "inventory-copy-value inventory-copy-icon",
+      title: "点击复制 SKU",
+      "aria-label": `点击复制 SKU ${row.sku}`,
+      onClick: (event: MouseEvent) => {
+        event.stopPropagation();
+        void copyValue(row.sku);
+      },
+    }, h(MorphIcon, { icon: "copy", size: "12", strokeWidth: "2" })),
+  ]);
+}
+
 function renderProductCell(row: InventoryRow): VNodeChild {
   return h("div", { class: "inventory-product-cell" }, [
     h("strong", { class: "inventory-product-name", title: row.display_name }, row.display_name),
@@ -260,7 +282,7 @@ function renderProductCell(row: InventoryRow): VNodeChild {
       : null,
     h("div", { class: "inventory-meta-chips" }, [
       h("span", { class: "analytics-shop-badge" }, row.shop_name),
-      h("span", { class: "inventory-meta-chip" }, [h("span", { class: "inventory-meta-label" }, "SKU"), renderCopyValue(row.sku, "SKU")]),
+      h("span", { class: "inventory-meta-chip" }, [h("span", { class: "inventory-meta-label" }, "SKU"), renderSkuValue(row)]),
       h("span", { class: "inventory-meta-chip" }, [h("span", { class: "inventory-meta-label" }, "货号"), renderCopyValue(row.offer_id, "货号")]),
     ]),
     h("details", { class: "inventory-forecast-details" }, [
