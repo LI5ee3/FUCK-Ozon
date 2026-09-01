@@ -55,5 +55,12 @@ class ProductRulesTest(DatabaseTestCase):
         result = product_rules()
         self.assertEqual(result["summary"], {"short_names": 1, "merges": 1})
         group_id = result["groups"][0]["id"]
+        with db.connect() as connection:
+            self.assertEqual(tuple(connection.execute(
+                "SELECT primary_offer_id,primary_sku,status FROM product_group_config WHERE group_id=?",
+                (group_id,)).fetchone()), ("OFFER-1", "SKU-1", "active"))
+            self.assertEqual([tuple(row) for row in connection.execute(
+                "SELECT key_type,key_value FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value",
+                (group_id,))], [("offer_id", "OFFER-1"), ("offer_id", "OFFER-2")])
         asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
         self.assertEqual(product_rules()["groups"], [])

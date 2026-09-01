@@ -5,13 +5,16 @@ from pathlib import Path
 
 from app import db
 from app.db import DEFAULT_DAILY_TEMPLATE
-from app.migrations import SCHEMA_VERSION, init_db
+from app.migrations import SCHEMA_VERSION, _create_product_forecast_costs, init_db
 from tests.support import DatabaseTestCase
 
 
 class DatabaseSchemaTest(DatabaseTestCase):
     def test_empty_database_has_only_current_schema_and_defaults(self):
         with db.connect() as connection:
+            schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
             indexes = {row[0] for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type='index'")}
             shops = [tuple(row) for row in connection.execute("SELECT * FROM shops ORDER BY id")]
@@ -24,6 +27,11 @@ class DatabaseSchemaTest(DatabaseTestCase):
             exchange_info = {row[1]: row for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             item_pk = [row[1] for row in sorted(
                 connection.execute("PRAGMA table_info(order_items)"), key=lambda row: row[5]) if row[5]]
+        self.assertEqual(SCHEMA_VERSION, 13)
+        self.assertEqual(schema_version, SCHEMA_VERSION)
+        self.assertNotIn("product_forecast_costs", tables)
+        self.assertNotIn("product_forecast_cost_history", tables)
+        self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
         self.assertIn("idx_auto_sync_once", indexes)
         self.assertIn("idx_sync_one_running", indexes)
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
@@ -144,8 +152,33 @@ class DatabaseSchemaTest(DatabaseTestCase):
         self.assertEqual(tables, {"ozon_finance_transactions", "ozon_finance_transaction_items",
                                   "ozon_finance_transaction_services", "ozon_finance_reconciliations"})
 
+    def test_v7_database_migrates_forecast_tables_then_removes_them(self):
+        with db.transaction() as connection:
+            connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
+            connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
+            connection.execute("""INSERT INTO orders(
+              shop_id,posting_number,channel,status_raw,shipped,source)
+              VALUES(1,'V7-ORDER','realFBS','运输中',1,'test')""")
+            connection.execute("PRAGMA user_version=7")
+
+        init_db()
+        with db.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            indexes = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'")}
+            order = connection.execute(
+                "SELECT status_raw FROM orders WHERE posting_number='V7-ORDER'").fetchone()
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(order[0], "运输中")
+        self.assertNotIn("product_forecast_costs", tables)
+        self.assertNotIn("product_forecast_cost_history", tables)
+        self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
+
     def test_v11_database_migrates_erp_cost_tables_without_losing_existing_facts(self):
         with db.transaction() as connection:
+            _create_product_forecast_costs(connection)
             connection.execute("""INSERT INTO orders(
               shop_id,posting_number,channel,status_raw,shipped,source)
               VALUES(1,'V11-ORDER','realFBS','运输中',1,'test')""")
@@ -171,12 +204,66 @@ class DatabaseSchemaTest(DatabaseTestCase):
             version = connection.execute("PRAGMA user_version").fetchone()[0]
             counts = tuple(connection.execute("""
               SELECT (SELECT COUNT(*) FROM orders), (SELECT COUNT(*) FROM order_items),
-                     (SELECT COUNT(*) FROM ozon_finance_transactions),
-                     (SELECT COUNT(*) FROM product_forecast_costs)
+                     (SELECT COUNT(*) FROM ozon_finance_transactions)
             """).fetchone())
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertTrue({"erp_cost_import_batches", "erp_order_item_costs"} <= tables)
-        self.assertEqual(counts, (1, 1, 1, 1))
+        self.assertNotIn("product_forecast_costs", tables)
+        self.assertNotIn("product_forecast_cost_history", tables)
+        self.assertEqual(counts, (1, 1, 1))
+
+    def test_v12_database_migration_removes_only_forecast_tables(self):
+        with db.transaction() as connection:
+            _create_product_forecast_costs(connection)
+            connection.execute("""INSERT INTO product_forecast_costs(
+              product_identity,purchase_cost,purchase_currency,created_at,updated_at)
+              VALUES('V12-PRODUCT',10,'USD','2026-08-31T00:00:00Z','2026-08-31T00:00:00Z')""")
+            connection.execute("""INSERT INTO product_forecast_cost_history(
+              product_identity,purchase_cost,purchase_currency,recorded_at)
+              VALUES('V12-PRODUCT',10,'USD','2026-08-31T00:00:00Z')""")
+            connection.execute("""INSERT INTO orders(
+              shop_id,posting_number,channel,status_raw,shipped,source)
+              VALUES(1,'V12-ORDER','realFBS','运输中',1,'test')""")
+            connection.execute("""INSERT INTO order_items(
+              shop_id,channel,posting_number,sku,quantity,source)
+              VALUES(1,'realFBS','V12-ORDER','V12-SKU',1,'test')""")
+            connection.execute("""INSERT INTO ozon_finance_transactions(
+              shop_id,operation_id,operation_type,operation_date,amount,
+              accruals_for_sale,sale_commission,delivery_charge,return_delivery_charge,
+              currency,payload_json,fetched_at)
+              VALUES(1,'V12-OP','Operation','2026-08-31',10,10,0,0,0,'USD','{}','2026-08-31T00:00:00Z')""")
+            batch_id = connection.execute("""INSERT INTO erp_cost_import_batches(
+              shop_id,filename,row_count,parsed_count,inserted_count,updated_count,
+              unchanged_count,imported_at)
+              VALUES(1,'v12.xlsx',1,1,1,0,0,'2026-08-31T00:00:00Z')""").lastrowid
+            connection.execute("""INSERT INTO erp_order_item_costs(
+              shop_id,erp_order_number,ozon_sku,quantity,unit_cost,total_cost,
+              source_batch_id,source_row_no,raw_payload_json,imported_at,updated_at)
+              VALUES(1,'V12-ERP','V12-SKU',1,'10','10',?,?, '{}',
+                     '2026-08-31T00:00:00Z','2026-08-31T00:00:00Z')""", (batch_id, 2))
+            connection.execute("PRAGMA user_version=12")
+
+        init_db()
+        with db.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            indexes = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'")}
+            counts = tuple(connection.execute("""
+              SELECT (SELECT COUNT(*) FROM orders WHERE posting_number='V12-ORDER'),
+                     (SELECT COUNT(*) FROM order_items WHERE posting_number='V12-ORDER'),
+                     (SELECT COUNT(*) FROM ozon_finance_transactions WHERE operation_id='V12-OP'),
+                     (SELECT COUNT(*) FROM erp_cost_import_batches WHERE filename='v12.xlsx'),
+                     (SELECT COUNT(*) FROM erp_order_item_costs WHERE erp_order_number='V12-ERP')
+            """).fetchone())
+        self.assertEqual(version, 13)
+        self.assertNotIn("product_forecast_costs", tables)
+        self.assertNotIn("product_forecast_cost_history", tables)
+        self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
+        self.assertTrue({"erp_cost_import_batches", "erp_order_item_costs",
+                         "ozon_finance_transactions"} <= tables)
+        self.assertEqual(counts, (1, 1, 1, 1, 1))
 
     def test_v6_migration_keeps_duplicate_running_history_and_adds_unique_index(self):
         with db.transaction() as connection:
@@ -209,10 +296,17 @@ class DatabaseSchemaTest(DatabaseTestCase):
             columns = {row[1] for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             row = connection.execute("""SELECT service_penalty_exchange_rate,sales_exchange_rate
               FROM exchange_rates WHERE from_currency='USD'""").fetchone()
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            indexes = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'")}
         self.assertEqual(version, SCHEMA_VERSION)
         self.assertEqual(tuple(row), ("90", None))
         self.assertNotIn("base_rate", columns)
         self.assertNotIn("rate_with_adjustment", columns)
+        self.assertNotIn("product_forecast_costs", tables)
+        self.assertNotIn("product_forecast_cost_history", tables)
+        self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
 
         with db.connect() as connection:
             sales_info = next(row for row in connection.execute("PRAGMA table_info(exchange_rates)")

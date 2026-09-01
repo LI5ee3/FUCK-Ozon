@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def _create_webhook_events(db):
@@ -315,6 +315,12 @@ def _migrate_v11_to_v12(db):
     db.execute("PRAGMA user_version=12")
 
 
+def _migrate_v12_to_v13(db):
+    db.execute("DROP TABLE IF EXISTS product_forecast_cost_history")
+    db.execute("DROP TABLE IF EXISTS product_forecast_costs")
+    db.execute("PRAGMA user_version=13")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -354,6 +360,9 @@ def init_db():
             if version == 11:
                 _migrate_v11_to_v12(db)
                 version = 12
+            if version == 12:
+                _migrate_v12_to_v13(db)
+                version = 13
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -517,6 +526,5 @@ def init_db():
         """)
         _create_ad_statistics(db)
         _create_alert_tables(db)
-        _create_product_forecast_costs(db)
         _create_finance_tables(db)
         _create_erp_cost_tables(db)
