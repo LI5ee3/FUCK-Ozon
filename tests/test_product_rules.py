@@ -64,3 +64,76 @@ class ProductRulesTest(DatabaseTestCase):
                 (group_id,))], [("offer_id", "OFFER-1"), ("offer_id", "OFFER-2")])
         asyncio.run(save_product_rule(Request({"kind": "dissolve", "id": group_id})))
         self.assertEqual(product_rules()["groups"], [])
+
+    def test_merge_rejects_inferred_sku_owned_by_other_group(self):
+        with db.transaction() as connection:
+            self._product(connection, 1, "P-A", "SKU-X", "OFFER-A", "同一 SKU 历史货号")
+            self._product(connection, 1, "P-B", "SKU-X", "OFFER-B", "同一 SKU 新货号")
+            self._product(connection, 1, "P-C", "SKU-C", "OFFER-C", "独立商品")
+        asyncio.run(save_product_rule(Request({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}],
+        })))
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(Request({
+                "kind": "merge", "primary_offer_id": "OFFER-B", "primary_sku": "SKU-X",
+                "members": [{"key_type": "offer_id", "key_value": "OFFER-C"}],
+            })))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("SKU-X / OFFER-B", raised.exception.detail)
+        with db.connect() as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM product_groups").fetchone()[0], 1)
+
+    def test_edit_merge_rejects_inferred_sku_owned_by_other_group(self):
+        with db.transaction() as connection:
+            self._product(connection, 1, "P-A", "SKU-X", "OFFER-A", "同一 SKU 历史货号")
+            self._product(connection, 1, "P-B", "SKU-X", "OFFER-B", "同一 SKU 新货号")
+            self._product(connection, 1, "P-C", "SKU-C", "OFFER-C", "独立商品")
+            self._product(connection, 1, "P-D", "SKU-D", "OFFER-D", "另一个独立商品")
+        asyncio.run(save_product_rule(Request({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}],
+        })))
+        asyncio.run(save_product_rule(Request({
+            "kind": "merge", "primary_offer_id": "OFFER-C", "primary_sku": "SKU-C",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-D"}],
+        })))
+        group_b = product_rules()["groups"][-1]["id"]
+        with db.connect() as connection:
+            members_before = [dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value", (group_b,))]
+
+        with self.assertRaises(HTTPException) as raised:
+            asyncio.run(save_product_rule(Request({
+                "kind": "merge", "id": group_b, "primary_offer_id": "OFFER-C", "primary_sku": "SKU-C",
+                "members": [{"key_type": "offer_id", "key_value": "OFFER-D"},
+                             {"key_type": "offer_id", "key_value": "OFFER-B"}],
+            })))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("SKU-X / OFFER-B", raised.exception.detail)
+        with db.connect() as connection:
+            self.assertEqual([dict(row) for row in connection.execute(
+                "SELECT * FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value", (group_b,))],
+                members_before)
+
+    def test_edit_merge_allows_same_sku_history_offer_in_same_group(self):
+        with db.transaction() as connection:
+            self._product(connection, 1, "P-A", "SKU-X", "OFFER-A", "同一 SKU 历史货号")
+            self._product(connection, 1, "P-B", "SKU-X", "OFFER-B", "同一 SKU 新货号")
+        asyncio.run(save_product_rule(Request({
+            "kind": "merge", "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"}],
+        })))
+        group_id = product_rules()["groups"][0]["id"]
+
+        asyncio.run(save_product_rule(Request({
+            "kind": "merge", "id": group_id, "primary_offer_id": "OFFER-A", "primary_sku": "SKU-X",
+            "members": [{"key_type": "offer_id", "key_value": "OFFER-1"},
+                         {"key_type": "offer_id", "key_value": "OFFER-B"}],
+        })))
+        with db.connect() as connection:
+            self.assertEqual([tuple(row) for row in connection.execute(
+                "SELECT key_type,key_value FROM product_group_members WHERE group_id=? ORDER BY key_type,key_value",
+                (group_id,))],
+                [("offer_id", "OFFER-1"), ("offer_id", "OFFER-A"), ("offer_id", "OFFER-B")])

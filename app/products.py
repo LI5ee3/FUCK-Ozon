@@ -5,6 +5,15 @@ def clean_product_name(value):
     return str(value or "").replace("Новый&#xA0;", "").replace("Новый\u00a0", "").strip()
 
 
+def inferred_group_ids_by_sku(rules):
+    result = {}
+    for offer_id, sku in rules["names"]:
+        group_id = rules["members"].get(("offer_id", offer_id))
+        if group_id is not None:
+            result.setdefault(sku, set()).add(group_id)
+    return result
+
+
 def load_product_rules(db):
     short_names = {row["key_value"]: row["short_name"] for row in db.execute(
         "SELECT key_value,short_name FROM product_short_names WHERE key_type='sku'")}
@@ -22,14 +31,11 @@ def load_product_rules(db):
                FROM order_items WHERE NULLIF(offer_id,'') IS NOT NULL GROUP BY offer_id,sku)
              SELECT i.offer_id,i.sku,i.product_name_raw FROM preferred p
              JOIN order_items i ON i.rowid=p.item_rowid""")}
-    inferred = {}
-    for offer_id, sku in names:
-        group_id = members.get(("offer_id", offer_id))
-        if group_id:
-            inferred.setdefault(sku, set()).add(group_id)
-    inferred = {sku: next(iter(group_ids)) for sku, group_ids in inferred.items() if len(group_ids) == 1}
-    return {"short_names": short_names, "groups": groups, "members": members,
-            "inferred": inferred, "names": names}
+    rules = {"short_names": short_names, "groups": groups, "members": members, "names": names}
+    inferred_group_ids = inferred_group_ids_by_sku(rules)
+    rules["inferred"] = {sku: next(iter(group_ids)) for sku, group_ids in inferred_group_ids.items()
+                          if len(group_ids) == 1}
+    return rules
 
 
 def resolve_product(rules, sku="", offer_id="", raw_name=""):

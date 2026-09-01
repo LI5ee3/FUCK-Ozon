@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 
 from ..db import connect, transaction
-from ..products import clean_product_name, load_product_rules, resolve_product
+from ..products import clean_product_name, inferred_group_ids_by_sku, load_product_rules, resolve_product
 from .common import _utc_text, read_bounded_json
 
 
@@ -103,11 +103,14 @@ async def save_product_rule(request: Request):
               sku IN ({','.join('?' for _ in member_skus) or "''"}) OR
               offer_id IN ({','.join('?' for _ in member_offers) or "''"})""",
               [*member_skus, *member_offers]).fetchall()
+            inferred_group_ids = inferred_group_ids_by_sku(load_product_rules(db))
             for pair in pairs:
                 owner = db.execute("""SELECT group_id FROM product_group_members WHERE group_id<>?
                   AND ((key_type='sku' AND key_value=?) OR (key_type='offer_id' AND key_value=?)) LIMIT 1""",
                   (group_id, pair["sku"], pair["offer_id"])).fetchone()
                 if owner: raise HTTPException(400, f"商品 {pair['sku']} / {pair['offer_id']} 与其他主货号冲突")
+                if inferred_group_ids.get(pair["sku"], set()) - {group_id}:
+                    raise HTTPException(400, f"商品 {pair['sku']} / {pair['offer_id']} 与其他主货号冲突")
             if group_id:
                 if not db.execute("SELECT 1 FROM product_groups WHERE id=?", (group_id,)).fetchone():
                     raise HTTPException(400, "合并关系不存在")
