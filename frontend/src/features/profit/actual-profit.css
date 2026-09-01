@@ -1,0 +1,197 @@
+.actual-profit-view {
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.actual-profit-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 8px 0;
+}
+
+.actual-profit-date-control,
+.actual-profit-search {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+
+.actual-profit-date-control {
+  flex-wrap: wrap;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.actual-profit-date-picker {
+  width: 250px;
+}
+
+.actual-profit-search {
+  width: min(100%, 420px);
+}
+
+.actual-profit-search .n-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.actual-profit-table {
+  overflow: hidden;
+  border: 1px solid var(--opanel-line);
+  border-radius: var(--opanel-radius-input);
+}
+
+.actual-profit-table .n-data-table-th {
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.actual-profit-table .n-data-table-td {
+  vertical-align: top;
+}
+
+.actual-profit-order,
+.actual-profit-shop-cell strong,
+.actual-profit-money {
+  color: var(--opanel-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.actual-profit-order {
+  display: block;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actual-profit-shop-cell,
+.actual-profit-money-cell,
+.actual-profit-status-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actual-profit-shop-cell strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actual-profit-channel-neutral {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: var(--opanel-radius-pill);
+  background: var(--opanel-panel-hover);
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.actual-profit-time,
+.actual-profit-money-sub,
+.actual-profit-reasons {
+  color: var(--opanel-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.actual-profit-money-cell {
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.actual-profit-money {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.actual-profit-profit {
+  display: block;
+  font-size: 14px;
+}
+
+.actual-profit-money.is-negative {
+  color: var(--opanel-danger);
+}
+
+.actual-profit-money-sub {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.actual-profit-status-cell {
+  align-items: flex-start;
+}
+
+.actual-profit-status-tag {
+  font-weight: 650;
+}
+
+.actual-profit-status-tag--ready {
+  background: var(--opanel-tone-mint-bg) !important;
+  color: var(--opanel-tone-mint-text) !important;
+}
+
+.actual-profit-status-tag--incomplete {
+  background: var(--opanel-tone-butter-bg) !important;
+  color: var(--opanel-tone-butter-text) !important;
+}
+
+.actual-profit-reasons {
+  max-width: 190px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+}
+
+.actual-profit-pager {
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .actual-profit-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actual-profit-search {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .actual-profit-date-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actual-profit-date-picker,
+  .actual-profit-date-presets {
+    width: 100%;
+  }
+
+  .actual-profit-search {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actual-profit-search .n-input,
+  .actual-profit-search .n-button {
+    width: 100%;
+  }
+}

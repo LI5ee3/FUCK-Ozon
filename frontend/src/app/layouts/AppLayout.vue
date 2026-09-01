@@ -195,7 +195,7 @@ onMounted(async () => {
             <template #icon><morph-icon :icon="collapsed ? 'chevronRight' : 'chevronLeft'" size="17" stroke-width="1.8" /></template>
           </NButton>
           <NSelect
-            v-if="route.name !== 'profit' && route.name !== 'product-costs'"
+            v-if="route.name !== 'product-costs'"
             :value="selectedShopId"
             :options="shopOptions"
             class="opanel-shop-select"

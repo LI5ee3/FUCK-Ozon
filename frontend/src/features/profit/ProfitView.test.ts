@@ -1,725 +1,318 @@
-import { defineComponent, h, nextTick, type Component } from "vue";
+import { defineComponent, h, nextTick, type Component, type PropType } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { flushPromises, shallowMount, type VueWrapper } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useShop } from "../../shared/composables/useShop";
 import ProfitView from "./ProfitView.vue";
-import type { ProductCostRow } from "../product-costs/types";
+import type { ActualProfitOrder, ActualProfitResponse } from "./types";
 
-const api = vi.hoisted(() => ({
-  listProductCosts: vi.fn(),
-  saveProductCost: vi.fn(),
-  listProductCostHistory: vi.fn(),
-}));
-const commissionApi = vi.hoisted(() => ({ getProductCommission: vi.fn() }));
-const exchangeApi = vi.hoisted(() => ({ getExchangeRateStatus: vi.fn() }));
+const api = vi.hoisted(() => ({ listActualOrderProfits: vi.fn() }));
+vi.mock("./api", () => api);
 
-vi.mock("../product-costs/api", () => api);
-vi.mock("./commission", () => commissionApi);
-vi.mock("../sync/api", () => exchangeApi);
-
-const usdCost = {
-  id: 1,
-  product_identity: "OFFER-USD",
-  purchase_cost: 60,
-  purchase_currency: "USD" as const,
-  weight_grams: 200,
-  length_cm: 10,
-  width_cm: 5,
-  height_cm: 3,
-  packing_cost_cny: 2,
-  other_cost_cny: 1,
-  note: "美元成本备注",
-  created_at: "2026-08-30T00:00:00Z",
-  updated_at: "2026-08-31T00:00:00Z",
+type TestColumn = {
+  key: string;
+  render?: (row: ActualProfitOrder, index: number) => unknown;
 };
-const cnyCost = { ...usdCost, id: 2, product_identity: "OFFER-CNY", purchase_cost: 400, purchase_currency: "CNY" as const, weight_grams: 100, packing_cost_cny: 0, other_cost_cny: 0 };
-const usdRow: ProductCostRow = {
-  product_identity: "OFFER-USD", display_name: "美元商品", ozon_skus: ["1936515175"], offer_ids: ["WGMFR265C46BL"],
-  listings: [
-    { shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL", offer_ids: ["WGMFR265C46BL"] },
-    { shop_id: 2, sku: "3017433550", offer_id: "WGMFR265C46BL", offer_ids: ["WGMFR265C46BL"] },
-  ],
-  sku: "1936515175", offer_id: "WGMFR265C46BL", forecast_cost: usdCost, configured: true,
-  updated_at: usdCost.updated_at, conflict: false, conflict_message: null,
-};
-const cnyRow: ProductCostRow = {
-  ...usdRow, product_identity: "OFFER-CNY", display_name: "人民币商品", ozon_skus: ["1936515176"], offer_ids: ["WGMFR265C46GR"],
-  listings: [{ shop_id: 1, sku: "1936515176", offer_id: "WGMFR265C46GR", offer_ids: ["WGMFR265C46GR"] }],
-  sku: "1936515176", offer_id: "WGMFR265C46GR", forecast_cost: cnyCost, updated_at: cnyCost.updated_at,
-};
-const unconfiguredRow: ProductCostRow = {
-  ...usdRow, product_identity: "OFFER-EMPTY", display_name: "未配置商品", ozon_skus: ["1936515177"], offer_ids: ["WGMFR265C46RD"],
-  listings: [{ shop_id: 1, sku: "1936515177", offer_id: "WGMFR265C46RD", offer_ids: ["WGMFR265C46RD"] }],
-  sku: "1936515177", offer_id: "WGMFR265C46RD", forecast_cost: null, configured: false, updated_at: null,
-};
-const conflictRow: ProductCostRow = {
-  ...unconfiguredRow, product_identity: null, display_name: "冲突商品", ozon_skus: ["1936515178"], offer_ids: ["WGMFR265C46BK"],
-  sku: "1936515178", offer_id: "WGMFR265C46BK", conflict: true, conflict_message: "商品匹配规则存在冲突",
-};
-const multiRow: ProductCostRow = {
-  ...usdRow, product_identity: "OFFER-MULTI", display_name: "多SKU商品", ozon_skus: ["1936515180", "1936515181"],
-  offer_ids: ["WGMFR265C46M1", "WGMFR265C46M2"],
-  listings: [
-    { shop_id: 1, sku: "1936515180", offer_id: "WGMFR265C46M1", offer_ids: ["WGMFR265C46M1"] },
-    { shop_id: 1, sku: "1936515181", offer_id: "WGMFR265C46M2", offer_ids: ["WGMFR265C46M2"] },
-  ],
-  sku: "1936515180", offer_id: "WGMFR265C46M1", forecast_cost: { ...usdCost, id: 3, product_identity: "OFFER-MULTI" },
-};
-const historicalOfferRow: ProductCostRow = {
-  ...usdRow,
-  product_identity: "OFFER-HISTORICAL",
-  display_name: "历史货号商品",
-  ozon_skus: ["1936515190", "1936515192"],
-  offer_ids: ["OLD-OFFER", "NEW-OFFER", "SECOND-OLD-OFFER"],
-  listings: [
-    { shop_id: 1, sku: "1936515190", offer_id: null, offer_ids: ["OLD-OFFER", "NEW-OFFER"] },
-    { shop_id: 1, sku: "1936515192", offer_id: "SECOND-OLD-OFFER", offer_ids: ["SECOND-OLD-OFFER"] },
-  ],
-  sku: "1936515190",
-  offer_id: "OLD-OFFER",
-};
-const products = [usdRow, cnyRow, unconfiguredRow, conflictRow, multiRow, historicalOfferRow];
 
 const SlotStub = defineComponent({
   inheritAttrs: false,
   setup(_, { attrs, slots }) {
-    return () => h("div", attrs, [slots.header?.(), slots.icon?.(), slots.default?.()]);
+    return () => h("div", attrs, [slots.header?.(), slots.default?.()]);
   },
 });
 const ButtonStub = defineComponent({
   inheritAttrs: false,
-  setup(_, { attrs, slots }) {
-    return () => h("button", attrs, [slots.icon?.(), slots.default?.()]);
+  props: { attrType: { type: String, default: "button" }, disabled: Boolean },
+  setup(props, { attrs, slots }) {
+    return () => h("button", { ...attrs, type: props.attrType, disabled: props.disabled }, [slots.icon?.(), slots.default?.()]);
   },
 });
-const NumberInputStub = defineComponent({
+const TagStub = defineComponent({
   inheritAttrs: false,
-  props: { value: { type: [String, Number], default: null } },
-  emits: ["update:value"],
+  setup(_, { attrs, slots }) {
+    return () => h("span", attrs, slots.default?.());
+  },
+});
+const SearchFieldStub = defineComponent({
+  inheritAttrs: false,
+  props: { value: { type: String, default: "" } },
+  emits: ["update:value", "clear", "keydown"],
   setup(props, { attrs, emit }) {
     return () => h("input", {
       ...attrs,
-      value: props.value ?? "",
-      onInput: (event: Event) => {
-        const value = (event.target as HTMLInputElement).value;
-        emit("update:value", value === "" ? null : Number(value));
-      },
+      value: props.value,
+      onInput: (event: Event) => emit("update:value", (event.target as HTMLInputElement).value),
+      onKeydown: (event: KeyboardEvent) => emit("keydown", event),
     });
   },
 });
-const SelectStub = defineComponent({
+const DatePresetPillsStub = defineComponent({
   inheritAttrs: false,
-  props: { value: { type: [String, Number], default: null }, options: { type: Array, default: () => [] } },
-  emits: ["update:value", "search", "clear"],
+  props: { options: { type: Array, default: () => [] }, activeKey: { type: String, default: "" } },
+  emits: ["select"],
+  setup(props, { attrs, emit }) {
+    return () => h("div", attrs, (props.options as Array<{ key: string; label: string }>).map((option) => h("button", {
+      type: "button",
+      "aria-pressed": props.activeKey === option.key,
+      onClick: () => emit("select", option.key),
+    }, option.label)));
+  },
+});
+const DatePickerStub = defineComponent({
+  inheritAttrs: false,
+  props: { formattedValue: { type: Array as PropType<string[]>, default: () => [] } },
   setup(props, { attrs }) {
-    return () => h("div", { ...attrs, "data-value": props.value ?? "" }, (props.options as Array<{ label: string }>).map((option) => h("span", option.label)));
+    return () => h("input", { ...attrs, value: props.formattedValue.join("至"), readonly: true });
+  },
+});
+const PaginationStub = defineComponent({
+  inheritAttrs: false,
+  props: { page: { type: Number, default: 1 }, pageCount: { type: Number, default: 1 }, pageSize: { type: Number, default: 50 }, disabled: Boolean },
+  emits: ["update:page"],
+  setup(props, { attrs }) {
+    return () => h("button", { ...attrs, type: "button", disabled: props.disabled, "data-page": props.page }, `第 ${props.page} / ${props.pageCount} 页`);
+  },
+});
+const ChannelTagStub = defineComponent({
+  inheritAttrs: false,
+  props: { channel: { type: String, default: "" } },
+  setup(props, { attrs, slots }) {
+    return () => h("span", { ...attrs, class: "opanel-channel-tag" }, slots.default?.() ?? props.channel);
+  },
+});
+const EmptyStateStub = defineComponent({
+  inheritAttrs: false,
+  props: { title: { type: String, default: "" }, hint: { type: String, default: "" } },
+  setup(props, { attrs }) {
+    return () => h("div", { ...attrs, class: "opanel-empty" }, [h("strong", props.title), props.hint ? h("small", props.hint) : null]);
+  },
+});
+const DataTableStub = defineComponent({
+  inheritAttrs: false,
+  props: {
+    columns: { type: Array as PropType<TestColumn[]>, default: () => [] },
+    data: { type: Array as PropType<ActualProfitOrder[]>, default: () => [] },
+    loading: Boolean,
+  },
+  setup(props, { attrs, slots }) {
+    return () => h("div", { ...attrs, "data-testid": "actual-profit-table" }, props.loading
+      ? h("span", "加载中…")
+      : props.data.length
+        ? props.data.map((row, index) => h("div", { class: "actual-profit-test-row" }, props.columns.map((column) => h(
+            "div",
+            { class: `actual-profit-test-cell actual-profit-test-cell--${column.key}` },
+            column.render ? h("span", undefined, column.render(row, index) as any) : undefined,
+          ))))
+        : slots.empty?.());
   },
 });
 
 const stubs: Record<string, Component> = {
+  NAlert: SlotStub,
   Alert: SlotStub,
+  NButton: ButtonStub,
   Button: ButtonStub,
+  NCard: SlotStub,
   Card: SlotStub,
-  InputNumber: NumberInputStub,
-  Select: SelectStub,
-  Tag: SlotStub,
+  NDataTable: DataTableStub,
+  DataTable: DataTableStub,
+  NDatePicker: DatePickerStub,
+  DatePicker: DatePickerStub,
+  NPagination: PaginationStub,
+  Pagination: PaginationStub,
+  NTag: TagStub,
+  Tag: TagStub,
+  ChannelTag: ChannelTagStub,
+  DatePresetPills: DatePresetPillsStub,
+  EmptyState: EmptyStateStub,
+  MorphIcon: SlotStub,
+  SearchField: SearchFieldStub,
 };
 
-async function mountProfit(): Promise<VueWrapper> {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/product-costs", component: { template: "<div />" } }] });
-  await router.push("/product-costs");
-  return shallowMount(ProfitView, { global: { plugins: [router], stubs } });
+function makeOrder(overrides: Partial<ActualProfitOrder> = {}): ActualProfitOrder {
+  return {
+    shop_id: 2,
+    shop_name: "店铺 2",
+    posting_number: "ORDER-1",
+    channel: "FBP",
+    created_at: "2026-08-31T08:00:00Z",
+    status_raw: "已签收",
+    finance: {
+      status: "available",
+      operation_count: 2,
+      currency: "CNY",
+      net_amount: "675.00",
+      net_cny: "675.00",
+    },
+    erp_cost: {
+      status: "complete",
+      item_count: 1,
+      matched_items: 1,
+      missing_items: 0,
+      quantity_mismatch_items: 0,
+      offer_id_mismatch_items: 0,
+      exchange_rate_original: "1",
+      total_cost_cny: "50.00",
+    },
+    actual_profit_cny: "625.00",
+    profit_status: "ready",
+    incomplete_reasons: [],
+    ...overrides,
+  };
 }
 
-function productSelect(wrapper: VueWrapper) {
-  return wrapper.findAllComponents(SelectStub).find((component) => component.attributes("data-testid") === "profit-product-select")!;
+function makeResponse(items: ActualProfitOrder[], total = items.length, page = 1, size = 50): ActualProfitResponse {
+  return { items, total, page, size };
 }
 
-function numberInput(wrapper: VueWrapper, label: string) {
-  return wrapper.findAllComponents(NumberInputStub).find((component) => component.attributes("aria-label") === label)!;
-}
+let mounted: VueWrapper[] = [];
+const { selectedShopId } = useShop();
 
-function selectInput(wrapper: VueWrapper, label: string) {
-  return wrapper.findAllComponents(SelectStub).find((component) => component.attributes("aria-label") === label)!;
-}
-
-async function search(wrapper: VueWrapper, query: string): Promise<void> {
-  await productSelect(wrapper).vm.$emit("search", query);
-  await vi.advanceTimersByTimeAsync(300);
+async function mountProfit(query: Record<string, string> = {}): Promise<{ wrapper: VueWrapper; router: ReturnType<typeof createRouter> }> {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/profit", component: ProfitView }] });
+  await router.push({ path: "/profit", query });
+  await router.isReady();
+  const wrapper = shallowMount(ProfitView, { global: { plugins: [router], stubs } });
+  mounted.push(wrapper);
   await flushPromises();
+  return { wrapper, router };
 }
 
-describe("ProfitView forecast-cost integration", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.clearAllMocks();
-    api.listProductCosts.mockResolvedValue({ items: products, total: products.length, page: 1, size: 50 });
-    commissionApi.getProductCommission.mockImplementation((shopId: number, sku: string) => {
-      return Promise.resolve({
-        shop_id: shopId,
-        sku,
-        offer_id: "CURRENT-OFFER",
-        product_id: 123,
-        sales_percent_fbp: 15,
-        sales_percent_rfbs: 12,
-        fetched_at: "2026-08-31T08:00:00Z",
-      });
-    });
-    exchangeApi.getExchangeRateStatus.mockResolvedValue({
-      source: "ozon_xapi",
-      last_success_at: "2026-08-31T08:00:00Z",
-      data_through: "2026-08-31T21:00:00Z",
-      as_of: "2026-08-31T08:00:00Z",
-      rates: {
-        USD: {
-          service_penalty_exchange_rate: "80",
-          sales_exchange_rate: "88",
-          valid_from_utc: "2026-08-30T21:00:00Z",
-          valid_to_utc: "2026-08-31T21:00:00Z",
-        },
-        CNY: {
-          service_penalty_exchange_rate: "12",
-          sales_exchange_rate: "11",
-          valid_from_utc: "2026-08-30T21:00:00Z",
-          valid_to_utc: "2026-08-31T21:00:00Z",
-        },
+beforeEach(() => {
+  selectedShopId.value = 0;
+  vi.clearAllMocks();
+  api.listActualOrderProfits.mockResolvedValue(makeResponse([]));
+});
+
+afterEach(() => {
+  mounted.forEach((wrapper) => wrapper.unmount());
+  mounted = [];
+});
+
+describe("ProfitView actual profit orders", () => {
+  it("renders Finance CNY, ERP cost, actual profit, channel, and ready status", async () => {
+    const order = makeOrder();
+    api.listActualOrderProfits.mockResolvedValue(makeResponse([order]));
+    const { wrapper } = await mountProfit();
+
+    expect(wrapper.find(".actual-profit-test-cell--posting_number").text()).toContain("ORDER-1");
+    expect(wrapper.find(".actual-profit-finance-cell").text()).toContain("¥675.00");
+    expect(wrapper.find(".actual-profit-erp-cell").text()).toContain("¥50.00");
+    expect(wrapper.find(".actual-profit-profit").text()).toBe("¥625.00");
+    expect(wrapper.find(".actual-profit-status-cell").text()).toContain("完整");
+    expect(wrapper.text()).toContain("FBP");
+    expect(wrapper.text()).not.toContain("预测利润");
+    expect(api.listActualOrderProfits).toHaveBeenCalledWith(expect.objectContaining({ shopId: 0, page: 1, size: 50 }));
+  });
+
+  it("shows an incomplete ERP order without calculating a profit in the browser", async () => {
+    const order = makeOrder({
+      posting_number: "NO-ERP",
+      erp_cost: {
+        status: "incomplete",
+        item_count: 2,
+        matched_items: 0,
+        missing_items: 2,
+        quantity_mismatch_items: 0,
+        offer_id_mismatch_items: 0,
+        exchange_rate_original: null,
+        total_cost_cny: null,
       },
+      actual_profit_cny: null,
+      profit_status: "incomplete",
+      incomplete_reasons: ["missing_erp_cost"],
     });
+    api.listActualOrderProfits.mockResolvedValue(makeResponse([order]));
+    const { wrapper } = await mountProfit();
+
+    expect(wrapper.find(".actual-profit-profit").text()).toBe("—");
+    expect(wrapper.find(".actual-profit-erp-cell").text()).toContain("—");
+    expect(wrapper.find(".actual-profit-erp-cell").text()).toContain("0 / 2 成本匹配");
+    expect(wrapper.find(".actual-profit-status-cell").text()).toContain("数据不完整");
+    expect(wrapper.find(".actual-profit-status-cell").text()).toContain("缺 ERP 成本");
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("remotely searches by name, Ozon SKU and offer_id without loading all products", async () => {
-    const wrapper = await mountProfit();
-    expect(api.listProductCosts).not.toHaveBeenCalled();
-    for (const query of ["美元商品", "1936515175", "WGMFR265C46BL"]) await search(wrapper, query);
-    expect(api.listProductCosts.mock.calls.map(([query]) => query)).toEqual([
-      { search: "美元商品", page: 1, size: 50 },
-      { search: "1936515175", page: 1, size: 50 },
-      { search: "WGMFR265C46BL", page: 1, size: 50 },
-    ]);
-  });
-
-  it("loads current USD/CNY forecast parameters, marks overrides, resets on switch, and never persists", async () => {
-    const wrapper = await mountProfit();
-    await search(wrapper, "商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(60);
-    expect(numberInput(wrapper, "重量克数").props("value")).toBe(200);
-    expect(numberInput(wrapper, "包装成本 CNY").props("value")).toBe(2);
-    expect(numberInput(wrapper, "其他成本 CNY").props("value")).toBe(1);
-    expect(wrapper.text()).toContain("SKU 成本库");
-    expect(wrapper.text()).toContain("¥432.00");
-    expect(wrapper.text()).toContain("WGMFR265C46BL");
-    expect(wrapper.text()).toContain("1936515175");
-    expect(wrapper.text()).toContain("10 × 5 × 3 cm");
-    expect(wrapper.text()).toContain("美元成本备注");
-    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
-
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await nextTick();
-    expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515175");
-    expect(wrapper.text()).toContain("平台佣金：FBP 15% · realFBS 12%");
-    expect(wrapper.text()).toContain("¥108.00");
-
-    await numberInput(wrapper, "采购成本").vm.$emit("update:value", 65);
-    await nextTick();
-    expect(wrapper.text()).toContain("手工覆盖 · 基于 SKU 成本库");
-    expect(wrapper.text()).toContain("¥468.00");
-    expect(api.saveProductCost).not.toHaveBeenCalled();
-
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-CNY");
-    await nextTick();
-    await flushPromises();
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(400);
-    expect(wrapper.findAllComponents(SelectStub).find((component) => component.attributes("aria-label") === "采购币种")!.props("value")).toBe("CNY");
-    expect(numberInput(wrapper, "重量克数").props("value")).toBe(100);
-    expect(numberInput(wrapper, "包装成本 CNY").props("value")).toBe(0);
-    expect(numberInput(wrapper, "其他成本 CNY").props("value")).toBe(0);
-    expect(wrapper.text()).toContain("SKU 成本库");
-    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
-    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
-    expect(api.listProductCostHistory).not.toHaveBeenCalled();
-  });
-
-  it("uses one fetched commission response for FBP and realFBS and never lets API price replace the simulation price", async () => {
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await nextTick();
-    expect(wrapper.text()).toContain("¥108.00");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
-
-    await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
-    await nextTick();
-    expect(wrapper.text()).toContain("¥86.40");
-    expect(wrapper.text()).toContain("¥38.20");
-    expect(wrapper.text()).not.toContain("跨境运费未接入规则");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-
-    await selectInput(wrapper, "realFBS 发货渠道").vm.$emit("update:value", "shenzhen");
-    await nextTick();
-    expect(wrapper.text()).toContain("¥86.40");
-    expect(wrapper.text()).toContain("¥34.81");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 92);
-    await nextTick();
-    expect(numberInput(wrapper, "平台售价").props("value")).toBe(92);
-    expect(wrapper.text()).toContain("¥79.49");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
-  });
-
-  it("blocks profit when the current service/penalty rate is unavailable", async () => {
-    exchangeApi.getExchangeRateStatus.mockResolvedValueOnce({
-      source: "ozon_xapi",
-      last_success_at: "2026-08-31T08:00:00Z",
-      data_through: "2026-08-31T21:00:00Z",
-      as_of: "2026-08-31T08:00:00Z",
-      rates: { USD: null, CNY: null },
-    });
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await nextTick();
-    expect(wrapper.text()).toContain("当前 Ozon 服务和罚款汇率不可用");
-    expect(wrapper.text()).toContain("开通Ozon物流平台的电子服务");
-    expect(wrapper.text()).toContain("数据不可用");
-    expect(wrapper.text()).not.toContain("末端运费");
-    expect(wrapper.text()).toContain("无法完成利润测算");
-  });
-
-  it("does not show a current rate while the service/penalty request is loading", async () => {
-    let resolveRates: ((value: unknown) => void) | undefined;
-    exchangeApi.getExchangeRateStatus.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveRates = resolve;
-    }));
-    const wrapper = await mountProfit();
-    await nextTick();
-    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · 获取中…");
-    expect(wrapper.text()).not.toContain("当前有效");
-    expect(wrapper.text()).not.toContain("Ozon 服务和罚款汇率 · USD/RUB 80");
-    resolveRates?.({
-      source: "ozon_xapi",
-      last_success_at: "2026-08-31T08:00:00Z",
-      data_through: "2026-08-31T21:00:00Z",
-      as_of: "2026-08-31T08:00:00Z",
-      rates: {
-        USD: {
-          service_penalty_exchange_rate: "80",
-          sales_exchange_rate: "88",
-          valid_from_utc: "2026-08-30T21:00:00Z",
-          valid_to_utc: "2026-08-31T21:00:00Z",
-        },
-        CNY: {
-          service_penalty_exchange_rate: "12",
-          sales_exchange_rate: "11",
-          valid_from_utc: "2026-08-30T21:00:00Z",
-          valid_to_utc: "2026-08-31T21:00:00Z",
-        },
-      },
-    });
-    await flushPromises();
-    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · USD/RUB 80 · 当前有效");
-  });
-
-  it("requires an explicit Ozon SKU for multiple current-shop listings and uses shop plus SKU for the request", async () => {
-    const wrapper = await mountProfit();
-    await search(wrapper, "多SKU商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-MULTI");
-    await nextTick();
-    expect(wrapper.text()).toContain("当前店铺存在多个 Ozon SKU，请选择平台商品");
-    const platformOptions = selectInput(wrapper, "平台商品 Ozon SKU").props("options") as Array<{ label: string }>;
-    expect(platformOptions.map((option) => option.label)).toEqual([
-      "1936515180 · 历史货号：WGMFR265C46M1",
-      "1936515181 · 历史货号：WGMFR265C46M2",
-    ]);
-    expect(commissionApi.getProductCommission).not.toHaveBeenCalled();
-
-    await selectInput(wrapper, "平台商品 Ozon SKU").vm.$emit("update:value", "1936515181");
-    await nextTick();
-    await flushPromises();
-    expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515181");
-    expect(wrapper.text()).toContain("1936515181 · 历史货号：WGMFR265C46M2");
-  });
-
-  it("switches listing and commission when the shop changes, then hits the session cache when switching back", async () => {
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(1, "1936515175");
-
-    await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 2);
-    await nextTick();
-    await flushPromises();
-    expect(wrapper.findAllComponents(SelectStub).some((component) => component.attributes("aria-label") === "平台商品 Ozon SKU")).toBe(false);
-    expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("平台商品：3017433550 · 当前货号：CURRENT-OFFER");
-    expect(wrapper.text()).toContain("Ozon 服务和罚款汇率 · CNY/RUB 12 · 当前有效");
-
-    await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 1);
-    await nextTick();
-    await flushPromises();
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
-    expect(commissionApi.getProductCommission).toHaveBeenLastCalledWith(2, "3017433550");
-    expect(wrapper.text()).toContain("平台商品：1936515175 · 当前货号：CURRENT-OFFER");
-  });
-
-  it("labels historical offers explicitly, avoids a false conflict, and shows the current Ozon offer only after loading", async () => {
-    let resolveCommission: ((value: unknown) => void) | undefined;
-    commissionApi.getProductCommission.mockImplementationOnce(() => new Promise((resolve) => { resolveCommission = resolve; }));
-    const wrapper = await mountProfit();
-    await search(wrapper, "历史货号商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HISTORICAL");
-    await nextTick();
-    expect(wrapper.text()).not.toContain("同一 Ozon SKU 对应多个 offer_id");
-    const platformOptions = selectInput(wrapper, "平台商品 Ozon SKU").props("options") as Array<{ label: string }>;
-    expect(platformOptions.map((option) => option.label)).toEqual([
-      "1936515190 · 历史货号 2 个",
-      "1936515192 · 历史货号：SECOND-OLD-OFFER",
-    ]);
-    expect(wrapper.text()).toContain("历史货号：OLD-OFFER +2");
-    await selectInput(wrapper, "平台商品 Ozon SKU").vm.$emit("update:value", "1936515190");
-    await nextTick();
-    expect(commissionApi.getProductCommission).toHaveBeenCalledWith(1, "1936515190");
-    expect(wrapper.text()).toContain("平台商品：1936515190 · 正在获取 Ozon 当前佣金…");
-    expect(wrapper.text()).not.toContain("当前货号：");
-    expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
-    expect(wrapper.text()).not.toContain("平台佣金：FBP 15% · realFBS 12%");
-    expect(wrapper.text()).not.toContain("2026-08-31 16:00");
-
-    resolveCommission?.({
-      shop_id: 1, sku: "1936515190", offer_id: "CURRENT-OFFER", product_id: 123,
-      sales_percent_fbp: 15, sales_percent_rfbs: 12, fetched_at: "2026-08-31T08:00:00Z",
-    });
-    await flushPromises();
-    expect(wrapper.text()).toContain("平台商品：1936515190 · 当前货号：CURRENT-OFFER");
-    expect(wrapper.text()).toContain("平台佣金：FBP 15% · realFBS 12%");
-    expect(wrapper.text()).toContain("来源：Ozon API · 本次查询：2026-08-31 16:00");
-  });
-
-  it("allows a selected product without a current-shop listing and does not request another shop's commission", async () => {
-    const rowWithoutShopListing: ProductCostRow = {
-      ...usdRow,
-      product_identity: "OFFER-NO-LISTING",
-      display_name: "无当前店铺 listing",
-      listings: [{ shop_id: 2, sku: "3017433551", offer_id: "WGMFR265C46XX", offer_ids: ["WGMFR265C46XX"] }],
-    };
-    api.listProductCosts.mockResolvedValueOnce({ items: [rowWithoutShopListing], total: 1, page: 1, size: 50 });
-    const wrapper = await mountProfit();
-    await search(wrapper, "无当前店铺 listing");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-NO-LISTING");
-    await nextTick();
-    await flushPromises();
-    expect(wrapper.text()).toContain("当前店铺未找到该商品的 Ozon listing，无法自动获取平台佣金");
-    expect(commissionApi.getProductCommission).not.toHaveBeenCalled();
-  });
-
-  it("uses SKU cost dimensions for Hong Kong shipping and blocks when dimensions are missing", async () => {
-    const rowWithoutDimensions: ProductCostRow = {
-      ...usdRow,
-      product_identity: "OFFER-HK-NO-DIMENSIONS",
-      display_name: "香港尺寸缺失商品",
-      forecast_cost: {
-        ...usdCost,
-        id: 4,
-        product_identity: "OFFER-HK-NO-DIMENSIONS",
-        length_cm: null,
-        width_cm: null,
-        height_cm: null,
-      },
-    };
-    api.listProductCosts.mockResolvedValueOnce({ items: [rowWithoutDimensions], total: 1, page: 1, size: 50 });
-    const wrapper = await mountProfit();
-    await search(wrapper, "香港尺寸缺失商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HK-NO-DIMENSIONS");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
-    await nextTick();
-    expect(wrapper.text()).toContain("尺寸未配置");
-    expect(wrapper.text()).toContain("跨境运费");
-    expect(wrapper.text()).toContain("待输入");
-    expect(wrapper.text()).toContain("预计利润—");
-    expect(wrapper.text()).toContain("确保 SKU 成本已配置完整长宽高");
-    expect(wrapper.text()).not.toContain("请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率");
-    expect(wrapper.text()).not.toContain("跨境运费未接入规则");
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(1);
-    expect(exchangeApi.getExchangeRateStatus).toHaveBeenCalledTimes(1);
-  });
-
-  it("explains Hong Kong transport-limit failures without blaming price or exchange-rate inputs", async () => {
-    const oversizedRow: ProductCostRow = {
-      ...usdRow,
-      product_identity: "OFFER-HK-OVERSIZED",
-      display_name: "香港超限商品",
-      forecast_cost: {
-        ...usdCost,
-        id: 5,
-        product_identity: "OFFER-HK-OVERSIZED",
-        weight_grams: 25000.01,
-      },
-    };
-    api.listProductCosts.mockResolvedValueOnce({ items: [oversizedRow], total: 1, page: 1, size: 50 });
-    const wrapper = await mountProfit();
-    await search(wrapper, "香港超限商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-HK-OVERSIZED");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await selectInput(wrapper, "履约模式").vm.$emit("update:value", "realFBS");
-    await nextTick();
-    const crossBorderRow = wrapper.findAll(".profit-cost-row").find((row) => row.text().includes("跨境运费"));
-    expect(crossBorderRow?.text()).toContain("数据不可用");
-    expect(wrapper.text()).toContain("预计利润—");
-    expect(wrapper.text()).toContain("超过香港渠道运输限制");
-    expect(wrapper.text()).not.toContain("请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率");
-  });
-
-  it("keeps the page usable but blocks a complete result when Ozon commission fetching fails", async () => {
-    commissionApi.getProductCommission.mockRejectedValueOnce(new Error("timeout"));
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await numberInput(wrapper, "采购成本").vm.$emit("update:value", 60);
-    await nextTick();
-    expect(wrapper.text()).toContain("Ozon 平台佣金获取失败");
-    expect(wrapper.text()).toContain("timeout");
-    expect(wrapper.text()).toContain("数据不可用");
-    expect(wrapper.text()).toContain("无法计算完整预计利润");
-    expect(wrapper.text()).not.toContain("¥0.00");
-    expect(wrapper.text()).not.toContain("当前货号：");
-    expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
-    expect(wrapper.text()).not.toContain("平台佣金：FBP —");
-    expect(numberInput(wrapper, "平台售价").props("value")).toBe(100);
-  });
-
-  it("ignores an invalid commission response", async () => {
-    commissionApi.getProductCommission.mockResolvedValueOnce({
+  it("keeps Shop 1 original USD visible when the backend has no CNY amount", async () => {
+    const order = makeOrder({
       shop_id: 1,
-      sku: "1936515175",
-      offer_id: "WGMFR265C46BL",
-      product_id: 123,
-      sales_percent_fbp: Number.NaN,
-      sales_percent_rfbs: 12,
-      fetched_at: "2026-08-31T08:00:00Z",
+      shop_name: "店铺 1",
+      posting_number: "USD-PARTIAL",
+      finance: {
+        status: "available",
+        operation_count: 1,
+        currency: "USD",
+        net_amount: "100",
+        net_cny: null,
+      },
+      erp_cost: {
+        status: "incomplete",
+        item_count: 2,
+        matched_items: 1,
+        missing_items: 1,
+        quantity_mismatch_items: 0,
+        offer_id_mismatch_items: 0,
+        exchange_rate_original: null,
+        total_cost_cny: null,
+      },
+      actual_profit_cny: null,
+      profit_status: "incomplete",
+      incomplete_reasons: ["missing_erp_cost"],
     });
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    expect(wrapper.text()).toContain("数据不可用");
+    api.listActualOrderProfits.mockResolvedValue(makeResponse([order]));
+    const { wrapper } = await mountProfit({ shop_id: "1" });
+
+    const financeCell = wrapper.find(".actual-profit-finance-cell");
+    expect(financeCell.text()).toContain("—");
+    expect(financeCell.text()).toContain("100.00 USD");
+    expect(financeCell.text()).not.toContain("¥100.00");
+    expect(wrapper.find(".actual-profit-profit").text()).toBe("—");
   });
 
-  it("accepts a positive numeric-string product_id", async () => {
-    commissionApi.getProductCommission.mockResolvedValueOnce({
-      shop_id: 1,
-      sku: "1936515175",
-      offer_id: "CURRENT-OFFER",
-      product_id: "000123",
-      sales_percent_fbp: 15,
-      sales_percent_rfbs: 12,
-      fetched_at: "2026-08-31T08:00:00Z",
-    });
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
+  it("resets to page 1 and requests the new global shop", async () => {
+    api.listActualOrderProfits.mockImplementation((query: { page: number }) => Promise.resolve(makeResponse([], 150, query.page)));
+    const { wrapper } = await mountProfit({ shop_id: "0", page: "3" });
+    expect(api.listActualOrderProfits).toHaveBeenLastCalledWith(expect.objectContaining({ shopId: 0, page: 3 }));
+
+    selectedShopId.value = 1;
     await flushPromises();
-    expect(wrapper.text()).toContain("当前货号：CURRENT-OFFER");
-    expect(wrapper.text()).not.toContain("Ozon佣金响应格式无效");
+
+    expect(api.listActualOrderProfits).toHaveBeenLastCalledWith(expect.objectContaining({ shopId: 1, page: 1 }));
+    expect(wrapper.findComponent(PaginationStub).props("page")).toBe(1);
   });
 
-  it("rejects invalid product_id values", async () => {
-    const invalidProductIds: unknown[] = [
-      null, undefined, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY,
-      true, false, "", "   ", "abc", "12abc",
-    ];
-    for (const productId of invalidProductIds) {
-      commissionApi.getProductCommission.mockResolvedValueOnce({
-        shop_id: 1,
-        sku: "1936515175",
-        offer_id: "CURRENT-OFFER",
-        product_id: productId,
-        sales_percent_fbp: 15,
-        sales_percent_rfbs: 12,
-        fetched_at: "2026-08-31T08:00:00Z",
-      });
-      const wrapper = await mountProfit();
-      await search(wrapper, "美元商品");
-      await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-      await nextTick();
-      await flushPromises();
-      expect(wrapper.text(), `product_id=${String(productId)}`).toContain("Ozon佣金响应格式无效");
-      expect(wrapper.text()).toContain("数据不可用");
-      expect(wrapper.text()).not.toContain("来源：Ozon API · 本次查询");
-    }
+  it("submits search and server pagination parameters without client-side filtering", async () => {
+    api.listActualOrderProfits.mockImplementation((query: { page: number }) => Promise.resolve(makeResponse([], 100, query.page)));
+    const { wrapper } = await mountProfit();
+    const search = wrapper.findComponent(SearchFieldStub);
+    search.vm.$emit("update:value", "SKU-9");
+    await nextTick();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.listActualOrderProfits).toHaveBeenLastCalledWith(expect.objectContaining({ search: "SKU-9", page: 1 }));
+
+    wrapper.findComponent(PaginationStub).vm.$emit("update:page", 2);
+    await flushPromises();
+    expect(api.listActualOrderProfits).toHaveBeenLastCalledWith(expect.objectContaining({ search: "SKU-9", page: 2, size: 50 }));
   });
 
-  it("does not cache an invalid product_id response", async () => {
-    commissionApi.getProductCommission
-      .mockResolvedValueOnce({
-        shop_id: 1,
-        sku: "1936515175",
-        offer_id: "CURRENT-OFFER",
-        product_id: null,
-        sales_percent_fbp: 15,
-        sales_percent_rfbs: 12,
-        fetched_at: "2026-08-31T08:00:00Z",
-      })
-      .mockResolvedValueOnce({
-        shop_id: 1,
-        sku: "1936515175",
-        offer_id: "CURRENT-OFFER",
-        product_id: 123,
-        sales_percent_fbp: 15,
-        sales_percent_rfbs: 12,
-        fetched_at: "2026-08-31T08:00:00Z",
-      });
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
+  it("does not let a late response overwrite newer filters", async () => {
+    let resolveFirst!: (value: ActualProfitResponse) => void;
+    const oldOrder = makeOrder({ posting_number: "OLD" });
+    const newOrder = makeOrder({ posting_number: "NEW" });
+    api.listActualOrderProfits
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce(makeResponse([newOrder]));
+    const { wrapper } = await mountProfit({ shop_id: "0", from: "2026-06-01", to: "2026-06-30" });
+
+    const search = wrapper.findComponent(SearchFieldStub);
+    search.vm.$emit("update:value", "NEW");
     await nextTick();
+    await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(wrapper.text()).toContain("Ozon佣金响应格式无效");
-
-    await productSelect(wrapper).vm.$emit("clear");
-    await nextTick();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
+    resolveFirst(makeResponse([oldOrder]));
     await flushPromises();
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(2);
-    expect(wrapper.text()).toContain("当前货号：CURRENT-OFFER");
-  });
 
-  it("ignores a late response for a previous product", async () => {
-    let resolveUsd: ((value: unknown) => void) | undefined;
-    let resolveCny: ((value: unknown) => void) | undefined;
-    commissionApi.getProductCommission.mockImplementationOnce(() => new Promise((resolve) => { resolveUsd = resolve; }));
-    commissionApi.getProductCommission.mockImplementationOnce(() => new Promise((resolve) => { resolveCny = resolve; }));
-    const wrapper = await mountProfit();
-    await search(wrapper, "商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-CNY");
-    await nextTick();
-    resolveCny?.({
-      shop_id: 1, sku: "1936515176", offer_id: "WGMFR265C46GR", product_id: 124,
-      sales_percent_fbp: 9, sales_percent_rfbs: 8, fetched_at: "2026-08-31T08:00:00Z",
-    });
-    await flushPromises();
-    expect(wrapper.text()).toContain("平台商品：1936515176 · 当前货号：WGMFR265C46GR");
-    expect(wrapper.text()).toContain("平台佣金：FBP 9% · realFBS 8%");
-    resolveUsd?.({
-      shop_id: 1, sku: "1936515175", offer_id: "WGMFR265C46BL", product_id: 123,
-      sales_percent_fbp: 15, sales_percent_rfbs: 12, fetched_at: "2026-08-31T08:00:00Z",
-    });
-    await flushPromises();
-    expect(wrapper.text()).toContain("平台商品：1936515176 · 当前货号：WGMFR265C46GR");
-    expect(wrapper.text()).toContain("平台佣金：FBP 9% · realFBS 8%");
-  });
-
-  it("preserves a valid zero commission as implemented zero cost", async () => {
-    commissionApi.getProductCommission.mockResolvedValueOnce({
-      shop_id: 1,
-      sku: "1936515175",
-      offer_id: "WGMFR265C46BL",
-      product_id: 123,
-      sales_percent_fbp: 0,
-      sales_percent_rfbs: 0,
-      fetched_at: "2026-08-31T08:00:00Z",
-    });
-    const wrapper = await mountProfit();
-    await search(wrapper, "美元商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-USD");
-    await nextTick();
-    await flushPromises();
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 100);
-    await nextTick();
-    expect(wrapper.text()).toContain("平台佣金：FBP 0% · realFBS 0%");
-    expect(wrapper.text()).toContain("平台佣金已接入");
-    expect(wrapper.text()).toContain("¥0.00");
-  });
-
-  it("allows unconfigured manual mode, blocks conflict auto-load, and preserves unrelated inputs when cleared", async () => {
-    const wrapper = await mountProfit();
-    await search(wrapper, "商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-EMPTY");
-    await nextTick();
-    expect(wrapper.text()).toContain("尚未配置 SKU 预测成本");
-    expect(wrapper.text()).toContain("前往 SKU 成本");
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(null);
-
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 700);
-    await numberInput(wrapper, "采购成本").vm.$emit("update:value", 400);
-    await nextTick();
-    const commissionRequestsBeforeConflict = commissionApi.getProductCommission.mock.calls.length;
-    await productSelect(wrapper).vm.$emit("update:value", "conflict:1936515178:WGMFR265C46BK");
-    await nextTick();
-    expect(wrapper.text()).toContain("商品匹配规则存在冲突，请先处理商品匹配规则");
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(null);
-    expect(commissionApi.getProductCommission).toHaveBeenCalledTimes(commissionRequestsBeforeConflict);
-
-    await productSelect(wrapper).vm.$emit("clear");
-    await nextTick();
-    expect(wrapper.text()).toContain("预测参数：纯手工测算");
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(null);
-    expect(numberInput(wrapper, "平台售价").props("value")).toBe(700);
-  });
-
-  it("keeps manual calculation available after search failure and rejects invalid forecast data", async () => {
-    const invalidRow = { ...usdRow, product_identity: "OFFER-BAD", display_name: "异常商品", forecast_cost: { ...usdCost, purchase_cost: Number.NaN } } as ProductCostRow;
-    api.listProductCosts.mockResolvedValueOnce({ items: [invalidRow], total: 1, page: 1, size: 50 });
-    const wrapper = await mountProfit();
-    await search(wrapper, "异常商品");
-    await productSelect(wrapper).vm.$emit("update:value", "OFFER-BAD");
-    await nextTick();
-    expect(wrapper.text()).toContain("SKU 成本数据异常");
-    expect(numberInput(wrapper, "采购成本").props("value")).toBe(null);
-
-    await productSelect(wrapper).vm.$emit("clear");
-    await nextTick();
-    api.listProductCosts.mockRejectedValueOnce(new Error("网络失败"));
-    await search(wrapper, "网络失败");
-    expect(wrapper.text()).toContain("仍可继续手工测算");
-    await selectInput(wrapper, "利润测算店铺").vm.$emit("update:value", 2);
-    await numberInput(wrapper, "平台售价").vm.$emit("update:value", 700);
-    await numberInput(wrapper, "采购成本").vm.$emit("update:value", 400);
-    await nextTick();
-    expect(wrapper.text()).toContain("请输入有效的平台售价和包裹重量以计算跨境运费");
-    expect(wrapper.text()).toContain("跨境运费");
-    await numberInput(wrapper, "重量克数").vm.$emit("update:value", 100);
-    await selectInput(wrapper, "采购币种").vm.$emit("update:value", "CNY");
-    await numberInput(wrapper, "USD CNY 测算汇率").vm.$emit("update:value", null);
-    await nextTick();
-    expect(wrapper.text()).toContain("当前为纯手工阶段性测算");
-    expect(wrapper.text()).toContain("平台佣金未计入");
-    expect(wrapper.text()).toContain("¥463.07");
-    expect(wrapper.text()).toContain("¥236.93");
-    expect(wrapper.text()).toContain("33.85%");
-    expect(api.saveProductCost).not.toHaveBeenCalled();
-    expect(api.listProductCostHistory).not.toHaveBeenCalled();
+    expect(wrapper.find(".actual-profit-order").text()).toBe("NEW");
+    expect(wrapper.text()).not.toContain("OLD");
   });
 });

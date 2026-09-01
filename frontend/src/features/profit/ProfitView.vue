@@ -1,719 +1,445 @@
 <script setup lang="ts">
-import "../../styles/analytics.css";
-import "./profit.css";
-import { computed, h, onMounted, ref, watch, type VNodeChild } from "vue";
-import MorphIcon from "../../shared/components/MorphIcon.vue";
-import { NAlert, NButton, NCard, NInputNumber, NSelect, NTag } from "naive-ui";
-import { useShop } from "../../shared/composables/useShop";
-import { formatBeijingDateTime, formatNumber } from "../../shared/utils/format";
-import { useRouter } from "vue-router";
-import type { ProductCostRow, ProductForecastCost, ProductListing } from "../product-costs/types";
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch, type VNodeChild } from "vue";
+import type { LocationQuery } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
-  calculateProfit,
-  PROFIT_COST_KEYS,
-  type ProfitCostKey,
-  type ProfitCostStatus,
-  type ProfitFulfillmentMode,
-  type ProfitPath,
-  type ProfitPurchaseCurrency,
-  type ProfitRealFbsChannel,
-  type ProfitShopId,
-} from "./calculator";
-import { useProfitCommission } from "./useProfitCommission";
-import { useProfitProduct } from "./useProfitProduct";
-import { useProfitServicePenaltyRate } from "./useProfitServicePenaltyRate";
+  NAlert,
+  NButton,
+  NCard,
+  NDataTable,
+  NDatePicker,
+  NPagination,
+  NTag,
+} from "naive-ui";
+import type { DataTableColumns } from "naive-ui";
+import ChannelTag from "../../shared/components/ChannelTag.vue";
+import DatePresetPills from "../../shared/components/DatePresetPills.vue";
+import EmptyState from "../../shared/components/EmptyState.vue";
+import MorphIcon from "../../shared/components/MorphIcon.vue";
+import SearchField from "../../shared/components/SearchField.vue";
+import "../../styles/analytics.css";
+import "./actual-profit.css";
+import { getErrorMessage } from "../../shared/api/client";
+import { useShop } from "../../shared/composables/useShop";
+import type { Channel, ShopSelection } from "../../shared/types/common";
+import {
+  beijingThreeMonthRange,
+  parseValidDateRange,
+  standardDatePresetRange,
+  type DateRange,
+  type StandardDatePreset,
+} from "../../shared/utils/date";
+import { formatBeijingDateTime } from "../../shared/utils/format";
+import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
+import { listActualOrderProfits } from "./api";
+import type { ActualProfitOrder, ActualProfitResponse } from "./types";
 
-const { shops } = useShop();
-const router = useRouter();
-const { products, loading: productSearchLoading, error: productSearchError, search: searchProducts, clear: clearProductSearch } = useProfitProduct();
-const {
-  commission: productCommission,
-  loading: commissionLoading,
-  error: commissionError,
-  load: loadCommission,
-  clear: clearCommission,
-} = useProfitCommission();
-const {
-  rates: servicePenaltyRates,
-  loading: servicePenaltyRateLoading,
-  error: servicePenaltyRateError,
-  load: loadServicePenaltyRates,
-} = useProfitServicePenaltyRate();
-const profitShopId = ref<ProfitShopId>(1);
-const fulfillmentMode = ref<ProfitFulfillmentMode>("FBP");
-const realFbsChannel = ref<ProfitRealFbsChannel>("hongkong");
-const priceOriginal = ref<number | null>(null);
-const purchaseCost = ref<number | null>(null);
-const purchaseCurrency = ref<ProfitPurchaseCurrency>("USD");
-const weightGrams = ref<number | null>(null);
-const packingCostCny = ref<number | null>(null);
-const otherCostCny = ref<number | null>(null);
-const usdCnyRate = ref<number | null>(7.2);
-const selectedProduct = ref<ProductCostRow | null>(null);
-const platformSku = ref<string | null>(null);
-const manualOverride = ref(false);
-
-onMounted(() => { void loadServicePenaltyRates(); });
-
-type ForecastParameters = {
-  purchaseCost: number | null;
-  purchaseCurrency: ProfitPurchaseCurrency;
-  weightGrams: number | null;
-  packingCostCny: number | null;
-  otherCostCny: number | null;
+type DatePreset = StandardDatePreset;
+type ActualProfitFilters = {
+  shopId: ShopSelection;
+  from: string;
+  to: string;
+  search: string;
+  page: number;
 };
 
-type ProductOption = { label: string; value: string; row: ProductCostRow };
-type PlatformSkuOption = { label: string; value: string; offer_id: string };
+const PAGE_SIZE = 50;
+const route = useRoute();
+const router = useRouter();
+const { selectedShopId, selectShop } = useShop();
+const datePresets: ReadonlyArray<{ key: DatePreset; label: string }> = [
+  { key: "today", label: "今天" },
+  { key: "3days", label: "3天内" },
+  { key: "7days", label: "7天内" },
+  { key: "3months", label: "近三个月" },
+  { key: "all", label: "全部时间" },
+];
+const initialFilters = parseFilters(route.query, selectedShopId.value);
+const filters = reactive<ActualProfitFilters>(initialFilters);
+const searchDraft = ref(initialFilters.search);
+const response = ref<ActualProfitResponse | null>(null);
+const loading = ref(false);
+const error = ref("");
+let requestId = 0;
+let routeReady = false;
+let ignoreNextShopChange = false;
 
-const purchaseCurrencyOptions = [
-  { label: "USD · 美元", value: "USD" },
-  { label: "CNY · 人民币", value: "CNY" },
+const dateRange = computed<DateRange>(() => [filters.from, filters.to]);
+const activePreset = computed<DatePreset | "">(() => {
+  for (const preset of datePresets) {
+    const [from, to] = standardDatePresetRange(preset.key);
+    if (filters.from === from && filters.to === to) return preset.key;
+  }
+  return "";
+});
+const items = computed(() => response.value?.items ?? []);
+const total = computed(() => response.value?.total ?? 0);
+const pageSize = computed(() => response.value?.size || PAGE_SIZE);
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
+const currentPage = computed(() => response.value?.page ?? filters.page);
+
+function parseFilters(query: LocationQuery, fallbackShop: ShopSelection): ActualProfitFilters {
+  const [from, to] = parseValidDateRange(queryValue(query, "from"), queryValue(query, "to"), beijingThreeMonthRange());
+  return {
+    shopId: shopSelectionFromQuery(query, fallbackShop),
+    from,
+    to,
+    search: queryValue(query, "q").trim(),
+    page: positiveInteger(queryValue(query, "page"), 1),
+  };
+}
+
+function queryFor(value: ActualProfitFilters): Record<string, string> {
+  const defaultRange = beijingThreeMonthRange();
+  const query: Record<string, string> = { shop_id: String(value.shopId) };
+  const search = value.search.trim();
+  if (search) query.q = search;
+  if (value.page !== 1) query.page = String(value.page);
+  if (value.from !== defaultRange[0] || value.to !== defaultRange[1]) {
+    query.from = value.from;
+    query.to = value.to;
+  }
+  return query;
+}
+
+function applyRouteQuery(query: LocationQuery, fallbackShop: ShopSelection): ActualProfitFilters {
+  const next = parseFilters(query, fallbackShop);
+  Object.assign(filters, next);
+  searchDraft.value = next.search;
+  if (selectedShopId.value !== next.shopId) {
+    ignoreNextShopChange = true;
+    selectShop(next.shopId);
+  }
+  return next;
+}
+
+function updateRoute(next: ActualProfitFilters, replace = false): void {
+  const normalized = { ...next, search: next.search.trim() };
+  Object.assign(filters, normalized);
+  searchDraft.value = normalized.search;
+  if (queryMatches(route.query, queryFor(normalized))) {
+    void loadActualProfits(normalized);
+    return;
+  }
+  void (replace ? router.replace({ query: queryFor(normalized) }) : router.push({ query: queryFor(normalized) }));
+}
+
+function currentFilters(): ActualProfitFilters {
+  const next = { ...filters, search: searchDraft.value.trim() };
+  if (!queryValue(route.query, "from") && !queryValue(route.query, "to")) {
+    [next.from, next.to] = beijingThreeMonthRange();
+  }
+  return next;
+}
+
+function updateFilters(overrides: Partial<ActualProfitFilters>, replace = false): void {
+  updateRoute({ ...currentFilters(), ...overrides }, replace);
+}
+
+async function loadActualProfits(queryFilters: ActualProfitFilters): Promise<void> {
+  const currentRequest = ++requestId;
+  loading.value = true;
+  error.value = "";
+  response.value = null;
+  try {
+    const data = await listActualOrderProfits({
+      shopId: queryFilters.shopId,
+      dateFrom: queryFilters.from,
+      dateTo: queryFilters.to,
+      search: queryFilters.search || undefined,
+      page: queryFilters.page,
+      size: PAGE_SIZE,
+    });
+    if (currentRequest !== requestId) return;
+    const responsePageCount = Math.max(1, Math.ceil(data.total / (data.size || PAGE_SIZE)));
+    if (queryFilters.page > responsePageCount) {
+      if (queryMatches(route.query, queryFor(currentFilters()))) {
+        await router.replace({ query: queryFor({ ...queryFilters, page: responsePageCount }) });
+      }
+      return;
+    }
+    response.value = data;
+  } catch (cause) {
+    if (currentRequest === requestId) error.value = getErrorMessage(cause);
+  } finally {
+    if (currentRequest === requestId) loading.value = false;
+  }
+}
+
+function retry(): void {
+  const next = currentFilters();
+  Object.assign(filters, next);
+  void loadActualProfits(next);
+}
+
+function submitSearch(): void {
+  updateFilters({ search: searchDraft.value, page: 1 });
+}
+
+function clearSearch(): void {
+  searchDraft.value = "";
+  updateFilters({ search: "", page: 1 });
+}
+
+function handleDateRangeChange(value: string | DateRange | null): void {
+  if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string" || typeof value[1] !== "string") return;
+  const [from, to] = parseValidDateRange(value[0], value[1], beijingThreeMonthRange());
+  if (from !== value[0] || to !== value[1]) return;
+  updateFilters({ from, to, page: 1 });
+}
+
+function selectPreset(preset: DatePreset): void {
+  const [from, to] = standardDatePresetRange(preset);
+  updateFilters({ from, to, page: 1 });
+}
+
+function changePage(page: number): void {
+  if (page !== filters.page) updateFilters({ page });
+}
+
+function isChannel(value: string): value is Channel {
+  return value === "FBP" || value === "realFBS" || value === "WHD";
+}
+
+const decimalFormatter = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function displayDecimal(value: string | null): number | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatDecimal(value: string | null): string {
+  const parsed = displayDecimal(value);
+  return parsed === null
+    ? "—"
+    : decimalFormatter.format(parsed);
+}
+
+function formatCny(value: string | null): string {
+  const parsed = displayDecimal(value);
+  if (parsed === null) return "—";
+  const absolute = decimalFormatter.format(Math.abs(parsed));
+  return parsed < 0 ? `-¥${absolute}` : `¥${absolute}`;
+}
+
+function isNegative(value: string | null): boolean {
+  const parsed = displayDecimal(value);
+  return parsed !== null && parsed < 0;
+}
+
+const incompleteReasonLabels: Record<string, string> = {
+  missing_order_items: "缺订单明细",
+  missing_finance: "缺 Finance",
+  missing_erp_cost: "缺 ERP 成本",
+  quantity_mismatch: "数量不一致",
+  missing_exchange_rate: "缺 ERP 汇率",
+  exchange_rate_mismatch: "ERP 汇率不一致",
+  finance_currency_mismatch: "Finance 币种异常",
+};
+
+function formatIncompleteReasons(reasons: string[]): string {
+  const labels = [...new Set(reasons.map((reason) => incompleteReasonLabels[reason] ?? "数据校验异常"))];
+  if (!labels.length) return "数据校验异常";
+  const visible = labels.slice(0, 2).join(" · ");
+  return labels.length > 2 ? `${visible} +${labels.length - 2}` : visible;
+}
+
+function renderOrderCell(row: ActualProfitOrder): VNodeChild {
+  return h("strong", { class: "actual-profit-order", title: row.posting_number }, row.posting_number);
+}
+
+function renderShopChannelCell(row: ActualProfitOrder): VNodeChild {
+  return h("div", { class: "actual-profit-shop-cell" }, [
+    h("strong", { title: row.shop_name }, row.shop_name),
+    isChannel(row.channel)
+      ? h(ChannelTag, { channel: row.channel })
+      : h("span", { class: "actual-profit-channel-neutral" }, row.channel || "—"),
+  ]);
+}
+
+function renderCreatedAtCell(row: ActualProfitOrder): VNodeChild {
+  return h("span", { class: "actual-profit-time" }, formatBeijingDateTime(row.created_at));
+}
+
+function renderFinanceCell(row: ActualProfitOrder): VNodeChild {
+  const original = formatDecimal(row.finance.net_amount);
+  const originalCurrency = row.finance.currency && row.finance.currency !== "CNY" && original !== "—"
+    ? `${original} ${row.finance.currency}`
+    : null;
+  return h("div", { class: "actual-profit-money-cell actual-profit-finance-cell" }, [
+    h("strong", { class: "actual-profit-money" }, formatCny(row.finance.net_cny)),
+    originalCurrency ? h("small", { class: "actual-profit-money-sub" }, originalCurrency) : null,
+  ]);
+}
+
+function renderErpCostCell(row: ActualProfitOrder): VNodeChild {
+  const matched = row.erp_cost.item_count > 0
+    ? `${row.erp_cost.matched_items} / ${row.erp_cost.item_count} 成本匹配`
+    : null;
+  return h("div", { class: "actual-profit-money-cell actual-profit-erp-cell" }, [
+    h("strong", { class: "actual-profit-money" }, formatCny(row.erp_cost.total_cost_cny)),
+    matched ? h("small", { class: "actual-profit-money-sub" }, matched) : null,
+  ]);
+}
+
+function renderProfitCell(row: ActualProfitOrder): VNodeChild {
+  const value = row.profit_status === "ready" ? row.actual_profit_cny : null;
+  return h("strong", {
+    class: ["actual-profit-money", "actual-profit-profit", { "is-negative": isNegative(value) }],
+  }, formatCny(value));
+}
+
+function renderStatusCell(row: ActualProfitOrder): VNodeChild {
+  const ready = row.profit_status === "ready";
+  return h("div", { class: "actual-profit-status-cell" }, [
+    h(NTag, {
+      bordered: false,
+      round: true,
+      size: "small",
+      type: ready ? "success" : "warning",
+      class: `actual-profit-status-tag actual-profit-status-tag--${ready ? "ready" : "incomplete"}`,
+    }, { default: () => ready ? "完整" : "数据不完整" }),
+    !ready
+      ? h("small", {
+          class: "actual-profit-reasons",
+          title: row.incomplete_reasons.map((reason) => incompleteReasonLabels[reason] ?? "数据校验异常").join(" · "),
+        }, formatIncompleteReasons(row.incomplete_reasons))
+      : null,
+  ]);
+}
+
+const columns: DataTableColumns<ActualProfitOrder> = [
+  { key: "posting_number", title: "订单", width: 180, render: renderOrderCell },
+  { key: "shop_channel", title: "店铺 / 渠道", width: 180, render: renderShopChannelCell },
+  { key: "created_at", title: "创建时间", width: 160, render: renderCreatedAtCell },
+  { key: "finance", title: "Finance 实际净额", width: 180, align: "right", render: renderFinanceCell },
+  { key: "erp_cost", title: "ERP 商品成本", width: 180, align: "right", render: renderErpCostCell },
+  { key: "actual_profit_cny", title: "实际利润", width: 160, align: "right", render: renderProfitCell },
+  { key: "profit_status", title: "数据状态", width: 220, render: renderStatusCell },
 ];
 
-function productKey(row: ProductCostRow): string {
-  return row.product_identity || `conflict:${row.sku}:${row.offer_id}`;
-}
-
-function compactIdentifiers(values: string[]): string {
-  if (!values.length) return "—";
-  return values.length === 1 ? values[0] : `${values[0]} +${values.length - 1}`;
-}
-
-function renderProductLabel(option: { label?: unknown; row?: unknown }): VNodeChild {
-  if (!option.row || typeof option.row !== "object") return String(option.label ?? "");
-  const row = option.row as ProductCostRow;
-  const offers = Array.isArray(row.offer_ids) ? row.offer_ids : [];
-  const skus = Array.isArray(row.ozon_skus) ? row.ozon_skus : [];
-  const suffix = row.conflict ? " · 规则冲突" : row.configured ? "" : " · 未配置成本";
-  return h("div", { class: "profit-product-option" }, [
-    h("strong", row.display_name),
-    h("small", `历史货号：${compactIdentifiers(offers)} · Ozon SKU：${compactIdentifiers(skus)}${suffix}`),
-  ]);
-}
-
-function renderPlatformSkuLabel(option: { label?: unknown; value?: unknown; offer_id?: unknown }): VNodeChild {
-  return h("div", { class: "profit-product-option" }, [
-    h("strong", String(option.value ?? option.label ?? "")),
-    option.offer_id ? h("small", String(option.offer_id)) : null,
-  ]);
-}
-
-function validOptionalNumber(value: unknown): value is number | null {
-  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
-}
-
-function isUsableForecastCost(value: unknown): value is ProductForecastCost {
-  if (!value || typeof value !== "object") return false;
-  const cost = value as Record<string, unknown>;
-  return typeof cost.product_identity === "string"
-    && typeof cost.purchase_cost === "number" && Number.isFinite(cost.purchase_cost) && cost.purchase_cost >= 0
-    && (cost.purchase_currency === "USD" || cost.purchase_currency === "CNY")
-    && ["weight_grams", "length_cm", "width_cm", "height_cm", "packing_cost_cny", "other_cost_cny"]
-      .every((key) => validOptionalNumber(cost[key]))
-    && typeof cost.note === "string" && typeof cost.updated_at === "string";
-}
-
-const selectedProductValue = computed(() => selectedProduct.value ? productKey(selectedProduct.value) : null);
-const productOptions = computed<ProductOption[]>(() => {
-  const rows = [...products.value];
-  if (selectedProduct.value && !rows.some((row) => productKey(row) === productKey(selectedProduct.value!))) {
-    rows.unshift(selectedProduct.value);
-  }
-  return rows.map((row) => ({ label: row.display_name, value: productKey(row), row }));
-});
-const selectedForecastCost = computed<ProductForecastCost | null>(() => {
-  const row = selectedProduct.value;
-  return row?.configured && isUsableForecastCost(row.forecast_cost) ? row.forecast_cost : null;
-});
-const forecastCostError = computed(() => {
-  const row = selectedProduct.value;
-  return row && !row.conflict && row.configured && !selectedForecastCost.value
-    ? "SKU 成本数据异常，请先检查 SKU 成本页面；当前测算已回退为手工输入。"
-    : "";
+watch(() => route.fullPath, () => {
+  if (!routeReady) return;
+  const next = applyRouteQuery(route.query, 0);
+  void loadActualProfits(next);
 });
 
-const currentForecastParameters = computed<ForecastParameters>(() => ({
-  purchaseCost: purchaseCost.value,
-  purchaseCurrency: purchaseCurrency.value,
-  weightGrams: weightGrams.value,
-  packingCostCny: packingCostCny.value,
-  otherCostCny: otherCostCny.value,
-}));
-const automaticParameters = ref<ForecastParameters | null>(null);
-
-function sameForecastParameters(left: ForecastParameters, right: ForecastParameters): boolean {
-  return left.purchaseCost === right.purchaseCost
-    && left.purchaseCurrency === right.purchaseCurrency
-    && left.weightGrams === right.weightGrams
-    && left.packingCostCny === right.packingCostCny
-    && left.otherCostCny === right.otherCostCny;
-}
-
-watch(currentForecastParameters, (value) => {
-  if (automaticParameters.value) manualOverride.value = !sameForecastParameters(value, automaticParameters.value);
-}, { deep: true });
-
-function resetForecastParameters(): void {
-  automaticParameters.value = null;
-  manualOverride.value = false;
-  purchaseCost.value = null;
-  purchaseCurrency.value = "USD";
-  weightGrams.value = null;
-  packingCostCny.value = null;
-  otherCostCny.value = null;
-}
-
-function selectProduct(value: string | number | null): void {
-  if (value === null || value === "") {
-    clearProduct();
+watch(selectedShopId, (shopId) => {
+  if (ignoreNextShopChange) {
+    ignoreNextShopChange = false;
     return;
   }
-  const option = productOptions.value.find((item) => item.value === String(value));
-  if (!option) return;
-  platformSku.value = null;
-  clearCommission();
-  selectedProduct.value = option.row;
-  resetForecastParameters();
-  if (option.row.conflict || !option.row.configured || !isUsableForecastCost(option.row.forecast_cost)) return;
-  const cost = option.row.forecast_cost;
-  const parameters: ForecastParameters = {
-    purchaseCost: cost.purchase_cost,
-    purchaseCurrency: cost.purchase_currency,
-    weightGrams: cost.weight_grams,
-    packingCostCny: cost.packing_cost_cny,
-    otherCostCny: cost.other_cost_cny,
-  };
-  automaticParameters.value = parameters;
-  purchaseCost.value = parameters.purchaseCost;
-  purchaseCurrency.value = parameters.purchaseCurrency;
-  weightGrams.value = parameters.weightGrams;
-  packingCostCny.value = parameters.packingCostCny;
-  otherCostCny.value = parameters.otherCostCny;
-}
-
-function clearProduct(): void {
-  platformSku.value = null;
-  clearCommission();
-  selectedProduct.value = null;
-  resetForecastParameters();
-  clearProductSearch();
-}
-
-function updatePurchaseCurrency(value: string | number | null): void {
-  if (value === "USD" || value === "CNY") purchaseCurrency.value = value;
-}
-
-function openProductCosts(): void {
-  void router.push("/product-costs");
-}
-
-function formatProductSize(cost: ProductForecastCost): string {
-  const values = [cost.length_cm, cost.width_cm, cost.height_cm];
-  return values.every((value) => value === null)
-    ? "尺寸未配置"
-    : `${values.map((value) => value === null ? "—" : formatNumber(value, 1)).join(" × ")} cm`;
-}
-
-function validProductListing(value: unknown): value is ProductListing {
-  if (!value || typeof value !== "object") return false;
-  const listing = value as Record<string, unknown>;
-  return (listing.shop_id === 1 || listing.shop_id === 2)
-    && typeof listing.sku === "string" && listing.sku.trim() !== ""
-    && (listing.offer_id === null || typeof listing.offer_id === "string")
-    && Array.isArray(listing.offer_ids)
-    && listing.offer_ids.every((value) => typeof value === "string" && value.trim() !== "");
-}
-
-const shopListings = computed<ProductListing[]>(() => {
-  const row = selectedProduct.value;
-  if (!row || row.conflict || !Array.isArray(row.listings)) return [];
-  const listings = new Map<string, ProductListing>();
-  for (const listing of row.listings) {
-    if (!validProductListing(listing) || listing.shop_id !== profitShopId.value) continue;
-    const offerIds = [...new Set(listing.offer_ids.concat(listing.offer_id ? [listing.offer_id] : []))];
-    const current = listings.get(listing.sku);
-    if (current) {
-      const mergedOfferIds = [...new Set(current.offer_ids.concat(offerIds))];
-      current.offer_ids = mergedOfferIds;
-      current.offer_id = mergedOfferIds.length === 1 ? mergedOfferIds[0] : null;
-    } else {
-      listings.set(listing.sku, {
-        ...listing,
-        offer_ids: offerIds,
-        offer_id: offerIds.length === 1 ? offerIds[0] : null,
-      });
-    }
-  }
-  return [...listings.values()];
+  if (!routeReady || filters.shopId === shopId) return;
+  updateFilters({ shopId, page: 1 });
 });
 
-const platformSkus = computed(() => [...new Set(shopListings.value.map((listing) => listing.sku))]);
-const platformSkuOptions = computed<PlatformSkuOption[]>(() => platformSkus.value.map((sku) => {
-  const listing = shopListings.value.find((item) => item.sku === sku);
-  const offerLabel = listing?.offer_ids.length === 1
-    ? `历史货号：${listing.offer_ids[0]}`
-    : listing?.offer_ids.length
-      ? `历史货号 ${listing.offer_ids.length} 个`
-      : "";
-  return { label: offerLabel ? `${sku} · ${offerLabel}` : sku, value: sku, offer_id: offerLabel };
-}));
-const selectedPlatformListing = computed<ProductListing | null>(() => {
-  if (!platformSku.value) return null;
-  const matches = shopListings.value.filter((listing) => listing.sku === platformSku.value);
-  return matches.length === 1 ? matches[0] : null;
-});
-const platformListingNeedsSelection = computed(() => platformSkus.value.length > 1);
-const platformListingMessage = computed(() => {
-  if (!selectedProduct.value || selectedProduct.value.conflict) return "";
-  if (!shopListings.value.length) return "当前店铺未找到该商品的 Ozon listing，无法自动获取平台佣金。";
-  if (platformListingNeedsSelection.value && !selectedPlatformListing.value) return "当前店铺存在多个 Ozon SKU，请选择平台商品。";
-  return "";
+onMounted(() => {
+  const next = applyRouteQuery(route.query, selectedShopId.value);
+  routeReady = true;
+  if (!queryMatches(route.query, queryFor(next))) {
+    void router.replace({ query: queryFor(next) });
+  } else {
+    void loadActualProfits(next);
+  }
 });
 
-function syncPlatformSelection(): void {
-  const skus = platformSkus.value;
-  platformSku.value = skus.length === 1
-    ? skus[0]
-    : null;
-  clearCommission();
-}
-
-function selectPlatformSku(value: string | number | null): void {
-  const sku = value == null || value === "" ? null : String(value);
-  if (sku !== null && !platformSkuOptions.value.some((option) => option.value === sku)) return;
-  clearCommission();
-  platformSku.value = sku;
-}
-
-watch([selectedProduct, profitShopId], syncPlatformSelection, { immediate: true });
-watch(selectedPlatformListing, (listing) => {
-  if (!listing) {
-    clearCommission();
-    return;
-  }
-  void loadCommission(profitShopId.value, listing.sku);
-}, { immediate: true });
-
-function formatCommissionPercent(value: number | null | undefined): string {
-  return value === null || value === undefined || !Number.isFinite(value)
-    ? "—"
-    : `${Number.isInteger(value) ? value : formatNumber(value, 2)}%`;
-}
-
-const parameterSourceLabel = computed(() => {
-  const row = selectedProduct.value;
-  if (!row) return "预测参数：纯手工测算 · 平台佣金未计入；选择商品后可自动获取 Ozon 佣金";
-  if (row.conflict) return "预测参数：不可用（商品匹配规则冲突）";
-  if (forecastCostError.value) return "预测参数：数据异常，已回退手工输入";
-  if (selectedForecastCost.value) {
-    return manualOverride.value
-      ? "预测参数：手工覆盖 · 基于 SKU 成本库"
-      : `预测参数：SKU 成本库 · 更新于 ${formatBeijingDateTime(selectedForecastCost.value.updated_at)}`;
-  }
-  return "预测参数：未配置 · 手工输入";
-});
-
-const profitCostLabels: Record<ProfitCostKey, string> = {
-  purchase_cost: "采购成本",
-  hunchun_shipping: "发往珲春物流费",
-  cross_border_shipping: "跨境运费",
-  ozon_logistics_platform_electronic_service: "开通Ozon物流平台的电子服务",
-  warehouse_fee: "仓库处理费",
-  commission: "平台佣金",
-  advertising: "广告费用",
-  international_transport_contract_service: "国际运输组织合同的签订服务",
-  bank_acquiring_fee: "银行收单手续费",
-  packing: "打包成本",
-  other_cost: "其他费用",
-};
-
-const profitStatusLabels: Record<ProfitCostStatus, string> = {
-  implemented: "已接入",
-  missing_input: "待输入",
-  data_unavailable: "数据不可用",
-  not_implemented: "未接入规则",
-  not_applicable: "不适用",
-};
-
-const profitPathLabels: Record<ProfitPath, string> = {
-  FBP: "FBP",
-  realFBS_hongkong: "realFBS · 香港",
-  realFBS_shenzhen: "realFBS · 深圳",
-};
-
-const shopOptions = computed(() => {
-  const available = shops.value.filter((shop) => shop.id === 1 || shop.id === 2);
-  return (available.length ? available : [{ id: 1, name: "店铺1" }, { id: 2, name: "店铺2" }]).map((shop) => ({
-    label: `${shop.name} · ${shop.id === 2 ? "CNY" : "USD"}`,
-    value: shop.id,
-  }));
-});
-
-const result = computed(() => calculateProfit({
-  shopId: profitShopId.value,
-  priceOriginal: priceOriginal.value,
-  purchaseCost: purchaseCost.value,
-  purchaseCurrency: purchaseCurrency.value,
-  weightGrams: weightGrams.value,
-  lengthCm: selectedForecastCost.value?.length_cm ?? null,
-  widthCm: selectedForecastCost.value?.width_cm ?? null,
-  heightCm: selectedForecastCost.value?.height_cm ?? null,
-  packingCostCny: packingCostCny.value,
-  otherCostCny: otherCostCny.value,
-  servicePenaltyExchangeRateRub: profitShopId.value === 1
-    ? servicePenaltyRates.value?.rates.USD?.service_penalty_exchange_rate ?? null
-    : servicePenaltyRates.value?.rates.CNY?.service_penalty_exchange_rate ?? null,
-  salesPercentFbp: selectedProduct.value ? productCommission.value?.sales_percent_fbp ?? null : undefined,
-  salesPercentRfbs: selectedProduct.value ? productCommission.value?.sales_percent_rfbs ?? null : undefined,
-  usdCnyRate: usdCnyRate.value,
-  fulfillmentMode: fulfillmentMode.value,
-  realFbsChannel: realFbsChannel.value,
-}));
-
-const priceCurrency = computed(() => result.value.price_currency ?? "—");
-const pricePrefix = computed(() => result.value.price_currency === "CNY" ? "¥" : "$");
-const purchasePrefix = computed(() => purchaseCurrency.value === "CNY" ? "¥" : "$");
-const priceUsdLabel = computed(() => result.value.price_currency === "CNY" ? "美元等值" : "美元售价");
-const priceCnyLabel = computed(() => result.value.price_currency === "CNY" ? "人民币售价" : "人民币等值");
-const showRealFbsChannel = computed(() => fulfillmentMode.value === "realFBS");
-const configuredCostNames = computed(() => PROFIT_COST_KEYS
-  .filter((key) => !["not_implemented", "not_applicable"].includes(result.value.costs[key].status)
-    && (key !== "commission" || result.value.costs[key].status === "implemented"))
-  .map((key) => profitCostLabels[key]));
-const profitNotice = computed(() => `当前已接入费用：${configuredCostNames.value.join("、") || "暂无"}；其他费用规则尚未接入。`);
-const servicePenaltyRateCurrency = computed(() => profitShopId.value === 1 ? "USD" : "CNY");
-const servicePenaltyRateValue = computed(() => servicePenaltyRateCurrency.value === "USD"
-  ? servicePenaltyRates.value?.rates.USD?.service_penalty_exchange_rate ?? null
-  : servicePenaltyRates.value?.rates.CNY?.service_penalty_exchange_rate ?? null);
-const servicePenaltyRateNote = computed(() => {
-  if (servicePenaltyRateLoading.value) return "Ozon 服务和罚款汇率 · 获取中…";
-  if (!servicePenaltyRateValue.value) {
-    return servicePenaltyRateError.value
-      ? `当前 Ozon 服务和罚款汇率不可用：${servicePenaltyRateError.value}`
-      : "当前 Ozon 服务和罚款汇率不可用，暂时无法完成利润测算";
-  }
-  return `Ozon 服务和罚款汇率 · ${servicePenaltyRateCurrency.value}/RUB ${formatNumber(Number(servicePenaltyRateValue.value), 4)} · 当前有效`;
-});
-const summaryNote = computed(() => {
-  const crossBorderShippingStatus = result.value.costs.cross_border_shipping.status;
-  const isHongKongPath = result.value.fulfillment_path === "realFBS_hongkong";
-  const crossBorderShippingMissing = !isHongKongPath
-    && crossBorderShippingStatus === "missing_input";
-  const hongKongCrossBorderShippingMissing = isHongKongPath
-    && crossBorderShippingStatus === "missing_input";
-  if (result.value.costs.commission.status === "data_unavailable") {
-    return `当前履约模式的 Ozon 平台佣金暂不可用，无法计算完整预计利润；${profitNotice.value}`;
-  }
-  if (result.value.costs.ozon_logistics_platform_electronic_service.status === "data_unavailable") {
-    return `当前 Ozon 服务和罚款汇率不可用，暂时无法完成利润测算；${profitNotice.value}`;
-  }
-  if (isHongKongPath && crossBorderShippingStatus === "data_unavailable") {
-    return `当前包裹超过香港渠道运输限制（实际重量 ≤ 25000g、最长边 ≤ 150cm、边长总和 < 310cm），无法计算完整预计利润；${profitNotice.value}`;
-  }
-  if (!selectedProduct.value && result.value.costs.commission.status === "missing_input") {
-    if (hongKongCrossBorderShippingMissing) {
-      return "当前为纯手工阶段性测算，平台佣金未计入；香港跨境运费需要 SKU 成本中的完整长宽高和包裹重量，请先选择已配置 SKU。";
-    }
-    return crossBorderShippingMissing
-      ? "当前为纯手工阶段性测算，平台佣金未计入；请输入有效的平台售价和包裹重量以计算跨境运费。"
-      : "当前为纯手工阶段性测算，平台佣金未计入；选择商品后可自动获取 Ozon 当前佣金。";
-  }
-  if (hongKongCrossBorderShippingMissing) {
-    return `请输入有效的包裹重量，并确保 SKU 成本已配置完整长宽高，以计算香港跨境运费；${profitNotice.value}`;
-  }
-  if (crossBorderShippingMissing) {
-    return `请输入有效的平台售价和包裹重量以计算跨境运费；${profitNotice.value}`;
-  }
-  return result.value.profit_cny === null
-    ? `请输入有效的平台售价、采购成本以及所需的 USD/CNY 测算汇率；${profitNotice.value}`
-    : profitNotice.value;
-});
-
-type MacaronTone = "azure" | "lavender" | "mint" | "peach" | "butter";
-
-function updateShop(value: string | number | null): void {
-  const nextShop = value === 1 || value === "1" ? 1 : value === 2 || value === "2" ? 2 : null;
-  if (nextShop === null || nextShop === profitShopId.value) return;
-  platformSku.value = null;
-  clearCommission();
-  profitShopId.value = nextShop;
-}
-
-function updateFulfillment(value: string | number | null): void {
-  if (value === "FBP" || value === "realFBS") fulfillmentMode.value = value;
-}
-
-function updateChannel(value: string | number | null): void {
-  if (value === "hongkong" || value === "shenzhen") realFbsChannel.value = value;
-}
-
-// Macaron tone mapping (DESIGN.md §colors.tones): mint = 已接入,
-// butter = 待输入, descriptive statuses stay neutral.
-function statusTone(status: ProfitCostStatus): MacaronTone | "" {
-  if (status === "implemented") return "mint";
-  if (status === "missing_input") return "butter";
-  return "";
-}
-
-function formatProfitMoney(value: number | null, currency = "CNY"): string {
-  if (value === null || !Number.isFinite(value)) return "—";
-  return `${currency === "USD" ? "$" : "¥"}${value.toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-function formatProfitPercent(value: number | null): string {
-  return value === null || !Number.isFinite(value) ? "—" : `${(value * 100).toFixed(2)}%`;
-}
+onBeforeUnmount(() => { requestId += 1; });
 </script>
 
 <template>
-  <section class="profit-view">
-    <NCard :bordered="false" class="analytics-table-card profit-intro-panel">
-      <div class="analytics-panel-heading">
-        <div>
-          <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />利润测算</h2>
-          <span>按店铺定价币种换算，当前结果统一以人民币展示</span>
-        </div>
-        <NTag round>第一阶段框架</NTag>
+  <section class="actual-profit-view">
+    <form class="actual-profit-toolbar" role="search" @submit.prevent="submitSearch">
+      <div class="actual-profit-date-control">
+        <span>订单创建日期</span>
+        <NDatePicker
+          :formatted-value="dateRange"
+          type="daterange"
+          value-format="yyyy-MM-dd"
+          separator="至"
+          :clearable="false"
+          class="actual-profit-date-picker"
+          aria-label="实际利润订单日期范围"
+          @update:formatted-value="handleDateRangeChange"
+        />
+        <DatePresetPills
+          class="actual-profit-date-presets"
+          aria-label="日期快捷范围"
+          :options="datePresets"
+          :active-key="activePreset"
+          @select="selectPreset"
+        />
       </div>
-      <NAlert type="warning" class="profit-notice" role="status">
-        <template #icon><morph-icon icon="alertCircle" size="15" stroke-width="1.8" /></template>
-        {{ profitNotice }}
-      </NAlert>
-    </NCard>
+      <div class="actual-profit-search">
+        <SearchField
+          v-model:value="searchDraft"
+          type="text"
+          aria-label="搜索实际利润订单"
+          placeholder="搜索订单号、SKU 或货号…"
+          @keydown.enter.prevent="submitSearch"
+          @clear="clearSearch"
+        />
+        <NButton type="primary" attr-type="submit" :loading="loading">
+          <template #icon><morph-icon icon="search" size="14" stroke-width="2" /></template>
+          查询
+        </NButton>
+      </div>
+    </form>
 
-    <div class="profit-input-grid">
-      <NCard :bordered="false" class="analytics-table-card profit-input-panel">
-        <template #header>
-          <div class="analytics-panel-heading">
-            <div>
-              <h2><morph-icon icon="settings" size="18" stroke-width="1.8" />基础信息</h2>
-              <span>店铺币种固定；商品预测参数可自动带入，也可手工覆盖</span>
-            </div>
-          </div>
-        </template>
-        <div class="profit-fields-grid">
-          <label class="profit-field profit-product-field">
-            <span>商品</span>
-            <NSelect
-              data-testid="profit-product-select"
-              :value="selectedProductValue"
-              :options="productOptions"
-              filterable
-              remote
-              clearable
-              :loading="productSearchLoading"
-              placeholder="搜索商品名称、Ozon SKU 或货号…"
-              :render-label="renderProductLabel"
-              aria-label="利润测算商品"
-              @search="searchProducts"
-              @update:value="selectProduct"
-              @clear="clearProduct"
-            />
-            <small class="profit-product-source">{{ parameterSourceLabel }}</small>
-          </label>
-          <label v-if="selectedProduct && !selectedProduct.conflict && platformListingNeedsSelection" class="profit-field profit-platform-listing-field">
-            <span>平台商品 <small>Ozon SKU</small></span>
-            <NSelect
-              :value="platformSku"
-              :options="platformSkuOptions"
-              placeholder="选择 Ozon SKU"
-              :render-label="renderPlatformSkuLabel"
-              aria-label="平台商品 Ozon SKU"
-              @update:value="selectPlatformSku"
-            />
-          </label>
-          <div v-if="selectedProduct && !selectedProduct.conflict" class="profit-product-info" role="status">
-            <div>
-              <strong>{{ selectedProduct.display_name }}</strong>
-              <span>历史货号：{{ compactIdentifiers(selectedProduct.offer_ids) }} · Ozon SKU：{{ compactIdentifiers(selectedProduct.ozon_skus) }}</span>
-            </div>
-            <div class="profit-product-meta">
-              <small v-if="selectedForecastCost">
-                最后更新：{{ formatBeijingDateTime(selectedForecastCost.updated_at) }} · 尺寸：{{ formatProductSize(selectedForecastCost) }}<span v-if="selectedForecastCost.note"> · 备注：{{ selectedForecastCost.note }}</span>
-              </small>
-              <small v-if="selectedPlatformListing && commissionLoading">
-                平台商品：{{ selectedPlatformListing.sku }} · 正在获取 Ozon 当前佣金…
-              </small>
-              <small v-else-if="selectedPlatformListing && productCommission">
-                平台商品：{{ selectedPlatformListing.sku }} · 当前货号：{{ productCommission.offer_id }} · 平台佣金：FBP {{ formatCommissionPercent(productCommission.sales_percent_fbp) }} · realFBS {{ formatCommissionPercent(productCommission.sales_percent_rfbs) }} · 来源：Ozon API · 本次查询：{{ formatBeijingDateTime(productCommission.fetched_at) }}
-              </small>
-              <small v-else-if="selectedPlatformListing">
-                平台商品：{{ selectedPlatformListing.sku }}
-              </small>
-            </div>
-          </div>
-          <NAlert v-if="productSearchError" type="error" class="profit-product-alert">
-            商品搜索失败：{{ productSearchError }}；仍可继续手工测算。
-          </NAlert>
-          <NAlert v-else-if="selectedProduct?.conflict" type="error" class="profit-product-alert">
-            商品匹配规则存在冲突，请先处理商品匹配规则。
-          </NAlert>
-          <NAlert v-else-if="forecastCostError" type="error" class="profit-product-alert">
-            {{ forecastCostError }}
-          </NAlert>
-          <NAlert v-else-if="commissionError" type="error" class="profit-product-alert">
-            Ozon 平台佣金获取失败：{{ commissionError }}；仍可继续调整测算参数。
-          </NAlert>
-          <NAlert v-else-if="platformListingMessage" type="warning" class="profit-product-alert">
-            {{ platformListingMessage }}
-          </NAlert>
-          <NAlert v-else-if="selectedProduct && !selectedProduct.configured" type="warning" class="profit-product-alert">
-            该商品尚未配置 SKU 预测成本，可继续手工输入，或 <NButton text type="primary" @click="openProductCosts">前往 SKU 成本</NButton>。
-          </NAlert>
-          <NAlert v-else-if="commissionLoading" type="info" class="profit-product-alert">
-            正在获取当前 Ozon 平台佣金…
-          </NAlert>
-          <NAlert v-else-if="selectedPlatformListing && result.costs.commission.status === 'data_unavailable'" type="warning" class="profit-product-alert">
-            当前履约模式的 Ozon 平台佣金不可用，无法计算完整预计利润。
-          </NAlert>
-          <label class="profit-field">
-            <span>店铺</span>
-            <NSelect
-              :value="profitShopId"
-              :options="shopOptions"
-              aria-label="利润测算店铺"
-              @update:value="updateShop"
-            />
-          </label>
-          <label class="profit-field">
-            <span>履约模式</span>
-            <NSelect
-              :value="fulfillmentMode"
-              :options="[{ label: 'FBP', value: 'FBP' }, { label: 'realFBS', value: 'realFBS' }]"
-              aria-label="履约模式"
-              @update:value="updateFulfillment"
-            />
-          </label>
-          <label v-if="showRealFbsChannel" class="profit-field">
-            <span>realFBS 发货渠道</span>
-            <NSelect
-              :value="realFbsChannel"
-              :options="[{ label: '香港', value: 'hongkong' }, { label: '深圳', value: 'shenzhen' }]"
-              aria-label="realFBS 发货渠道"
-              @update:value="updateChannel"
-            />
-          </label>
-          <label class="profit-field">
-            <span>平台售价 <small>{{ priceCurrency }}</small></span>
-            <span class="profit-input-with-prefix"><b>{{ pricePrefix }}</b><NInputNumber v-model:value="priceOriginal" :min="0" :step="0.01" :show-button="false" clearable placeholder="输入售价" aria-label="平台售价" /></span>
-          </label>
-          <label class="profit-field">
-            <span>采购成本 <small>{{ purchaseCurrency }}</small></span>
-            <span class="profit-input-with-prefix"><b>{{ purchasePrefix }}</b><NInputNumber v-model:value="purchaseCost" :min="0" :step="0.01" :show-button="false" clearable placeholder="输入采购成本" aria-label="采购成本" /></span>
-          </label>
-          <label class="profit-field">
-            <span>采购币种</span>
-            <NSelect :value="purchaseCurrency" :options="purchaseCurrencyOptions" aria-label="采购币种" @update:value="updatePurchaseCurrency" />
-          </label>
-          <label class="profit-field">
-            <span>重量</span>
-            <span class="profit-input-with-suffix"><NInputNumber v-model:value="weightGrams" :min="0" :step="1" :show-button="false" clearable placeholder="输入重量" aria-label="重量克数" /><b>g</b></span>
-          </label>
-          <label class="profit-field">
-            <span>包装成本 <small>CNY</small></span>
-            <span class="profit-input-with-prefix"><b>¥</b><NInputNumber v-model:value="packingCostCny" :min="0" :step="0.01" :show-button="false" clearable placeholder="可选" aria-label="包装成本 CNY" /></span>
-          </label>
-          <label class="profit-field">
-            <span>其他成本 <small>CNY</small></span>
-            <span class="profit-input-with-prefix"><b>¥</b><NInputNumber v-model:value="otherCostCny" :min="0" :step="0.01" :show-button="false" clearable placeholder="可选" aria-label="其他成本 CNY" /></span>
-          </label>
-          <label class="profit-field">
-            <span>USD/CNY 测算汇率</span>
-            <span class="profit-rate-input"><b>1 USD =</b><NInputNumber v-model:value="usdCnyRate" :min="0" :step="0.01" :show-button="false" clearable aria-label="USD CNY 测算汇率" /><b>CNY</b></span>
-          </label>
-        </div>
-      </NCard>
+    <NAlert v-if="error" type="error" class="analytics-error" :title="error">
+      <div class="analytics-error-content">
+        <span>实际利润订单未更新，请重试。</span>
+        <NButton size="small" @click="retry">重试</NButton>
+      </div>
+    </NAlert>
 
-      <NCard :bordered="false" class="analytics-table-card profit-price-panel">
-        <template #header>
-          <div class="analytics-panel-heading">
-            <div>
-              <h2><morph-icon icon="layers" size="18" stroke-width="1.8" />售价折算</h2>
-              <span>输入变化后即时更新标准化价格</span>
-            </div>
-          </div>
-        </template>
-        <div class="profit-conversion-values">
-          <div class="profit-conversion-item">
-            <span>{{ priceUsdLabel }}</span>
-            <strong>{{ formatProfitMoney(result.price_usd, "USD") }}</strong>
-          </div>
-          <div class="profit-conversion-item">
-            <span>{{ priceCnyLabel }}</span>
-            <strong>{{ formatProfitMoney(result.price_cny) }}</strong>
-          </div>
-        </div>
-        <div class="profit-price-meta">
-          <span>内部标准化字段</span>
-          <code>price_original · price_currency · price_usd · price_cny</code>
-        </div>
-      </NCard>
-    </div>
-
-    <NCard :bordered="false" class="analytics-table-card profit-cost-panel">
+    <NCard :bordered="false" class="analytics-table-card actual-profit-panel">
       <template #header>
         <div class="analytics-panel-heading">
           <div>
-            <h2><morph-icon icon="package" size="18" stroke-width="1.8" />费用明细</h2>
-            <span>费用均以 CNY 核算；“—”表示规则尚未接入</span>
+            <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />实际利润订单</h2>
+            <span>Ozon Finance 实际事实 + 马帮 ERP 历史实际成本；按订单创建时间查询</span>
           </div>
-          <NTag size="small" round class="profit-tone-tag--azure">{{ profitPathLabels[result.fulfillment_path] }}</NTag>
+          <span v-if="loading" class="analytics-loading-label">实际利润订单加载中…</span>
         </div>
       </template>
-      <div class="profit-price-meta profit-service-rate-meta" role="status">
-        <span>{{ servicePenaltyRateNote }}</span>
-      </div>
-      <div class="profit-cost-list">
-        <div v-for="key in PROFIT_COST_KEYS" :key="key" class="profit-cost-row">
-          <div class="profit-cost-label">
-            <strong>{{ profitCostLabels[key] }}</strong>
-            <NTag size="small" round :bordered="false" type="default" :class="statusTone(result.costs[key].status) ? `profit-tone-tag--${statusTone(result.costs[key].status)}` : ''">
-              {{ profitStatusLabels[result.costs[key].status] }}
-            </NTag>
-          </div>
-          <strong class="profit-cost-value" :class="{ 'is-pending': result.costs[key].status !== 'implemented' }">
-            {{ result.costs[key].status === "implemented" ? formatProfitMoney(result.costs[key].value) : "—" }}
-          </strong>
-        </div>
-      </div>
-    </NCard>
 
-    <NCard :bordered="false" class="analytics-table-card profit-summary-panel">
-      <template #header>
-        <div class="analytics-panel-heading">
-          <div>
-            <h2><morph-icon icon="trendingUp" size="18" stroke-width="1.8" />利润汇总</h2>
-            <span>基于当前已接入费用计算</span>
-          </div>
-        </div>
-      </template>
-      <div class="analytics-kpi-grid profit-summary-grid">
-        <NCard :bordered="false" class="analytics-kpi-card tone-azure">
-          <div class="analytics-kpi-head"><span>销售收入</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="coins" size="18" stroke-width="1.8" /></span></div>
-          <strong class="analytics-kpi-value tone-value">{{ formatProfitMoney(result.revenue_cny) }}</strong>
-          <small>price_cny</small>
-        </NCard>
-        <NCard :bordered="false" class="analytics-kpi-card tone-peach">
-          <div class="analytics-kpi-head"><span>总成本</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="wallet" size="18" stroke-width="1.8" /></span></div>
-          <strong class="analytics-kpi-value tone-value">{{ formatProfitMoney(result.total_cost_cny) }}</strong>
-          <small>已接入费用之和</small>
-        </NCard>
-        <NCard :bordered="false" class="analytics-kpi-card tone-mint">
-          <div class="analytics-kpi-head"><span>预计利润</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="trendingUp" size="18" stroke-width="1.8" /></span></div>
-          <strong class="analytics-kpi-value tone-value" :class="{ 'is-negative': result.profit_cny !== null && result.profit_cny < 0 }">{{ formatProfitMoney(result.profit_cny) }}</strong>
-          <small>销售收入 − 当前总成本</small>
-        </NCard>
-        <NCard :bordered="false" class="analytics-kpi-card tone-lavender">
-          <div class="analytics-kpi-head"><span>净利润率</span><span class="analytics-icon-badge tone-badge"><morph-icon icon="percent" size="18" stroke-width="1.8" /></span></div>
-          <strong class="analytics-kpi-value tone-value" :class="{ 'is-negative': result.net_margin !== null && result.net_margin < 0 }">{{ formatProfitPercent(result.net_margin) }}</strong>
-          <small>当前阶段性结果</small>
-        </NCard>
+      <div class="analytics-table-meta">
+        <span>共 {{ total }} 个订单</span>
+        <span v-if="loading" class="analytics-loading-label">正在加载…</span>
       </div>
-      <p class="profit-summary-note">{{ summaryNote }}</p>
+
+      <NDataTable
+        class="analytics-table actual-profit-table"
+        :columns="columns"
+        :data="items"
+        :loading="loading"
+        :pagination="false"
+        :remote="true"
+        :scroll-x="1260"
+        table-layout="fixed"
+        :row-key="(row: ActualProfitOrder) => `${row.shop_id}:${row.posting_number}`"
+      >
+        <template #empty>
+          <EmptyState
+            icon="trendingUp"
+            :title="error ? '实际利润订单加载失败' : '当前条件下没有实际利润订单'"
+            :hint="error ? '请点击上方重试。' : undefined"
+          />
+        </template>
+      </NDataTable>
+
+      <div class="analytics-pager actual-profit-pager">
+        <span>第 {{ currentPage }} / {{ pageCount }} 页，共 {{ total }} 个订单</span>
+        <NPagination
+          :page="currentPage"
+          :page-count="pageCount"
+          :page-size="pageSize"
+          :disabled="loading"
+          :page-slot="7"
+          @update:page="changePage"
+        />
+      </div>
     </NCard>
   </section>
 </template>
