@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def _create_webhook_events(db):
@@ -264,6 +264,32 @@ def _create_finance_tables(db):
     """)
 
 
+def _create_erp_cost_tables(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS erp_cost_import_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shop_id INTEGER NOT NULL REFERENCES shops(id), filename TEXT NOT NULL,
+      row_count INTEGER NOT NULL, parsed_count INTEGER NOT NULL,
+      inserted_count INTEGER NOT NULL, updated_count INTEGER NOT NULL,
+      unchanged_count INTEGER NOT NULL, imported_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS erp_order_item_costs (
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      erp_order_number TEXT NOT NULL, ozon_sku TEXT NOT NULL, offer_id TEXT,
+      quantity INTEGER NOT NULL CHECK(quantity>0), unit_cost TEXT NOT NULL,
+      exchange_rate_original TEXT, total_cost TEXT NOT NULL,
+      platform_link TEXT NOT NULL DEFAULT '', source_batch_id INTEGER NOT NULL
+        REFERENCES erp_cost_import_batches(id), source_row_no INTEGER NOT NULL,
+      raw_payload_json TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(shop_id,erp_order_number,ozon_sku));
+    CREATE INDEX IF NOT EXISTS idx_erp_order_item_costs_order
+      ON erp_order_item_costs(shop_id,erp_order_number);
+    CREATE INDEX IF NOT EXISTS idx_erp_order_item_costs_sku
+      ON erp_order_item_costs(shop_id,ozon_sku);
+    CREATE INDEX IF NOT EXISTS idx_erp_order_item_costs_offer
+      ON erp_order_item_costs(shop_id,offer_id);
+    """)
+
+
 def _migrate_v10_to_v11(db):
     db.execute("ALTER TABLE shop_auto_sync_settings RENAME TO shop_auto_sync_settings_v10")
     db.execute("""CREATE TABLE shop_auto_sync_settings (
@@ -282,6 +308,11 @@ def _migrate_v10_to_v11(db):
     db.execute("DROP TABLE shop_auto_sync_settings_v10")
     _create_finance_tables(db)
     db.execute("PRAGMA user_version=11")
+
+
+def _migrate_v11_to_v12(db):
+    _create_erp_cost_tables(db)
+    db.execute("PRAGMA user_version=12")
 
 
 def init_db():
@@ -320,6 +351,9 @@ def init_db():
             if version == 10:
                 _migrate_v10_to_v11(db)
                 version = 11
+            if version == 11:
+                _migrate_v11_to_v12(db)
+                version = 12
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -485,3 +519,4 @@ def init_db():
         _create_alert_tables(db)
         _create_product_forecast_costs(db)
         _create_finance_tables(db)
+        _create_erp_cost_tables(db)

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from ..db import connect
+from ..erp_costs import import_erp_costs, list_erp_cost_imports
 from ..importer import CHANNELS, import_csv
 
 
@@ -29,6 +30,28 @@ async def upload(kind: str, request: Request, shop_id: int):
         return await run_in_threadpool(import_csv, shop_id, kind, filename, content)
     except (csv.Error, ValueError, UnicodeError) as error:
         raise HTTPException(400, str(error)) from error
+
+
+@router.post("/api/erp-costs/import")
+async def upload_erp_costs(request: Request, shop_id: int):
+    if shop_id not in (1, 2): raise HTTPException(400, "请选择店铺")
+    filename = unquote(request.headers.get("x-filename", "erp-costs.xlsx"))
+    if Path(filename).suffix.lower() != ".xlsx": raise HTTPException(400, "仅支持XLSX文件")
+    chunks, size = [], 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > 50 * 1024 * 1024:
+            raise HTTPException(413, "文件超过50MB")
+        chunks.append(chunk)
+    try:
+        return await run_in_threadpool(import_erp_costs, shop_id, filename, b"".join(chunks))
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@router.get("/api/erp-costs/imports")
+def erp_cost_imports():
+    return list_erp_cost_imports()
 
 
 @router.get("/api/imports")
