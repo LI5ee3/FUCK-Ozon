@@ -15,7 +15,7 @@ wait_for_stopped() {
   while launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; do
     attempt=$((attempt + 1))
     if [ "$attempt" -ge "$MAX_WAIT_ATTEMPTS" ]; then
-      printf '%s\n' '错误：oPanel LaunchAgent 未能在预期时间内停止。' >&2
+      printf '%s\n' '错误：O3Pilot LaunchAgent 未能在预期时间内停止。' >&2
       return 1
     fi
     sleep 0.25
@@ -61,7 +61,7 @@ if ! command -v launchctl >/dev/null 2>&1; then
   exit 1
 fi
 if ! launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
-  printf '%s\n' '错误：oPanel LaunchAgent 当前未运行，拒绝执行 production update。' >&2
+  printf '%s\n' '错误：O3Pilot LaunchAgent 当前未运行，拒绝执行 production update。' >&2
   exit 1
 fi
 if ! curl -fsS --max-time 10 http://127.0.0.1:38652/api/session >/dev/null; then
@@ -119,4 +119,4 @@ if ! "$ROOT/scripts/verify-frontend.sh"; then
 fi
 
 rm -rf "$DIST_PREVIOUS"
-printf '%s\n' 'oPanel 更新、Vue 前端切换、重启及本地验证完成。'
+printf '%s\n' 'O3Pilot 更新、Vue 前端切换、重启及本地验证完成。'

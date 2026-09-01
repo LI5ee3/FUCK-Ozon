@@ -21,6 +21,11 @@ it("tracks the 800px navigation breakpoint and removes its listener", async () =
   await router.push("/");
   const wrapper = shallowMount(AppLayout, { global: { plugins: [router] } });
   await flushPromises();
+  expect(wrapper.get(".opanel-heading h1").text()).toContain("O3Pilot");
+  expect(wrapper.get(".opanel-logo").attributes("alt")).toBe("O3Pilot");
+  expect(wrapper.get(".opanel-brand-name").attributes("aria-label")).toBe("O3Pilot");
+  expect(wrapper.get(".brand-subscript").text()).toBe("3");
+  expect(wrapper.get(".opanel-eyebrow").text()).toBe("O3PILOT · MACARON EDITION");
   expect(media).toHaveBeenCalledWith("(max-width: 800px)");
   const change = addEventListener.mock.calls[0]![1] as (event: { matches: boolean }) => void;
   for (const matches of [true, false]) {

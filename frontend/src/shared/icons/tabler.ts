@@ -1,5 +1,5 @@
 /**
- * Tabler Icons path data for the oPanel icon registry (24x24 stroke icons).
+ * Tabler Icons path data for the O3Pilot icon registry (24x24 stroke icons).
  * Keys are the business-layer icon names used across the app.
  * SVG path data © Tabler Icons, MIT — see public/assets/TABLER_ICONS_LICENSE.
  */

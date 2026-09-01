@@ -1,10 +1,10 @@
-# oPanel macOS 部署
+# O3Pilot macOS 部署
 
 ## 部署约定
 
 生产环境为 Mac mini M4 / Apple Silicon macOS、原生 Python venv、Node.js/npm、用户级 launchd、SQLite 和 Cloudflare Tunnel。
 
-oPanel 固定监听：
+O3Pilot 固定监听：
 
 ```text
 127.0.0.1:38652
@@ -16,11 +16,11 @@ Cloudflare Tunnel 的 Origin 固定为：
 http://127.0.0.1:38652
 ```
 
-不使用备用端口，不监听 `0.0.0.0`。安装脚本不会自动配置 Cloudflare，也不会让 oPanel 管理 `cloudflared` 的生命周期。
+不使用备用端口，不监听 `0.0.0.0`。安装脚本不会自动配置 Cloudflare，也不会让 O3Pilot 管理 `cloudflared` 的生命周期。
 
 当前生产状态：Phase 20 Static Cleanup 已完成。FastAPI 从 `frontend/dist/` 提供 Vue SPA，`/assets/` 提供构建资产，`/static/*` 明确返回 404。
 
-## 1. 安装 oPanel
+## 1. 安装 O3Pilot
 
 准备 macOS、Python 3.14（优先）或 Python 3.12+，以及 Node.js 22（>=22.18）、Node.js 24（>=24.11）或 Node.js >=25 和 npm，并确保可以访问 Ozon API：
 
@@ -68,7 +68,7 @@ DINGTALK_WEBHOOK_URL=钉钉自定义机器人Webhook
 DINGTALK_SECRET=钉钉机器人加签Secret
 ```
 
-Performance API 配置为可选项；未填写时不影响 Seller API 和 oPanel 启动。不要在密钥两侧添加引号，也不要提交 `.env`。
+Performance API 配置为可选项；未填写时不影响 Seller API 和 O3Pilot 启动。不要在密钥两侧添加引号，也不要提交 `.env`。
 
 修改 `.env` 后重启：
 
@@ -146,7 +146,7 @@ FastAPI 正式从 `frontend/dist/index.html` 提供 `/` 和 Vue history deep lin
 brew install cloudflared
 ```
 
-然后按照 Cloudflare Zero Trust 控制台的 Tunnel 流程登录并创建独立的 Tunnel。Tunnel 的账号、凭据和生命周期由 Cloudflare/cloudflared 管理，不要写入 oPanel 的 `.env`，也不要由 oPanel 脚本自动创建或启动。
+然后按照 Cloudflare Zero Trust 控制台的 Tunnel 流程登录并创建独立的 Tunnel。Tunnel 的账号、凭据和生命周期由 Cloudflare/cloudflared 管理，不要写入 O3Pilot 的 `.env`，也不要由 O3Pilot 脚本自动创建或启动。
 
 ## 4. Cloudflare Tunnel 目标
 
@@ -162,7 +162,7 @@ Origin Service 设置为：
 http://127.0.0.1:38652
 ```
 
-发布域名后，通过 `https://panel.example.com` 访问 oPanel。Tunnel 与 oPanel 是两个独立服务；oPanel 只负责本机的 FastAPI 服务。
+发布域名后，通过 `https://panel.example.com` 访问 O3Pilot。Tunnel 与 O3Pilot 是两个独立服务；O3Pilot 只负责本机的 FastAPI 服务。
 
 不需要：
 

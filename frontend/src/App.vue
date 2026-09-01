@@ -34,7 +34,7 @@ onMounted(() => {
           <NLoadingBarProvider>
             <div v-if="!ready" class="app-loading">
               <NSpin size="medium" />
-              <span>正在连接 oPanel…</span>
+              <span>正在连接 O3Pilot…</span>
             </div>
             <LoginView
               v-else-if="!authenticated"

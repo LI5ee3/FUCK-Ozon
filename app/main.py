@@ -73,7 +73,7 @@ class ViteStaticFiles(StaticFiles):
         return response
 
 
-app = FastAPI(title="oPanel", docs_url=None, redoc_url=None, lifespan=lifespan)
+app = FastAPI(title="O3Pilot", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.mount("/assets", ViteStaticFiles(directory=FRONTEND_ASSETS, check_dir=False), name="frontend-assets")
 app.include_router(analytics_router)
 app.include_router(auth_router)

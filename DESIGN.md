@@ -1,19 +1,19 @@
 ---
-version: 2.1.0
-name: oPanel-Design-System
-description: "Apple-based design language for a high-density e-commerce operations workspace, extended with oPanel's Open Macaron identity, business semantic tones, and resilient UI/UX rules."
+version: 2.2.0
+name: O3Pilot-Design-System
+description: "Apple-based design language for a high-density e-commerce operations workspace, extended with O3Pilot's Open Macaron identity, business semantic tones, and resilient UI/UX rules."
 authority:
   foundation: "Apple DESIGN.md"
-  product-identity: "oPanel Open Macaron and high-density data-workspace rules"
+  product-identity: "O3Pilot Open Macaron and high-density data-workspace rules"
   ux-supplement: "UI UX Pro Max — UI/UX quality guidance only"
   motion-supplement: "Emil Kowalski Skills — Motion / Animation / Interaction quality guidance only"
-  motion: "oPanel Motion System defined in this document"
+  motion: "O3Pilot Motion System defined in this document"
 ---
 
-# oPanel Design System
+# O3Pilot Design System
 
-This document is the upstream design specification for oPanel. It defines how
-oPanel should be designed independently of any implementation. New screens and
+This document is the upstream design specification for O3Pilot. It defines how
+O3Pilot should be designed independently of any implementation. New screens and
 future frontends must use this document as their design contract.
 
 ## 1. Design Sources & Authority
@@ -24,10 +24,10 @@ The sources have a strict relationship:
    interaction language: quiet chrome, clear typography, restrained surfaces,
    hairlines, purposeful whitespace, precise alignment, spatial clarity, and
    coherent light/dark expression.
-2. **oPanel is the product identity.** Open Macaron tones, Apple Action Blue,
+2. **O3Pilot is the product identity.** Open Macaron tones, Apple Action Blue,
    high-density e-commerce operations, Data First, operational efficiency,
-   business semantics, tabular data, KPI-oriented summaries, and oPanel's chart
-   language and icon system define what makes oPanel oPanel.
+   business semantics, tabular data, KPI-oriented summaries, chart language,
+   and icon system define O3Pilot's operational identity.
 3. **UI UX Pro Max is a UI/UX quality supplement only.** Use its applicable
    guidance for information hierarchy, anti-boxification, content resilience,
    responsive behavior, accessibility, forms, feedback, navigation, tables,
@@ -36,17 +36,17 @@ The sources have a strict relationship:
    supplement.** Use it to guide animation decisions, purpose, frequency,
    easing, duration, physicality, spatial origin, continuity, interruptibility,
    gesture behavior, performance, reduced motion, and motion anti-patterns. It
-   must not redefine oPanel's colors, typography, radii, spacing, surface
+   must not redefine O3Pilot's colors, typography, radii, spacing, surface
    hierarchy, Open Macaron tones, icon family, business semantics, table
    alignment, or general UI style.
 
-The supplements must not redefine oPanel's visual system. Do not use them to
+The supplements must not redefine O3Pilot's visual system. Do not use them to
 automatically choose a new UI style, brand style, font family, color palette,
-radius system, shadow system, or icon family. Do not turn oPanel into Material,
+radius system, shadow system, or icon family. Do not turn O3Pilot into Material,
 Fluent, Polaris, a generic SaaS dashboard, a Bento dashboard, Glassmorphism,
 or a generic Tailwind admin UI.
 
-If sources appear to conflict, preserve the Apple foundation and the oPanel
+If sources appear to conflict, preserve the Apple foundation and the O3Pilot
 identity defined here. Apply UI UX Pro Max only within its UI/UX quality scope
 and Emil Kowalski Skills only within the Motion System scope. The normative
 motion rules are defined in [Motion System](#14-motion-system), and
@@ -62,18 +62,30 @@ Reference sources:
 
 ### Apple Foundation
 
-oPanel uses Apple's visual restraint as its chassis: UI chrome recedes, text
+O3Pilot uses Apple's visual restraint as its chassis: UI chrome recedes, text
 and data remain crisp, surfaces are calm, and every visual treatment must have
 a job. Hairlines, surface changes, alignment, and whitespace carry more weight
 than decoration. Apple-style clarity is adapted for operations rather than
 copied as a consumer product page.
 
-### oPanel Identity
+### O3Pilot Identity
 
-oPanel is an Open Macaron, high-density e-commerce operations workspace. Its
+O3Pilot is an Open Macaron, high-density e-commerce operations workspace. Its
 pastel-to-ganache light/dark pairs, five business tones, compact analytical
 summaries, structured tables, KPI reading, and its chart language are product
 identity—not optional themes and not recommendations to be replaced.
+
+### Brand Naming
+
+- Canonical product name: `O3Pilot`.
+- Visual wordmark: `O₃Pilot`, rendered with an ordinary `3` and CSS
+  subscript styling rather than relying on the Unicode subscript character.
+- Machine-readable name: `o3pilot`.
+- `O₃` comes from the chemical formula for ozone and subtly references Ozon.
+- Never use `O³Pilot`.
+- Accessibility labels, metadata, and titles use `O3Pilot`.
+- O3Pilot is an independent, unofficial Ozon seller operations tool; never
+  imply that Ozon developed, authorized, operates, or endorses it.
 
 ### Data First
 
@@ -127,7 +139,7 @@ must not become an equal-weight square grid.
 
 ### 3.1 Colors and Semantic Tones
 
-The oPanel palette defined here is normative. Light and dark values are paired
+The O3Pilot palette defined here is normative. Light and dark values are paired
 expressions of the same role; do not invent feature-specific replacements.
 
 #### Core and Surface Tokens
@@ -151,7 +163,7 @@ expressions of the same role; do not invent feature-specific replacements.
 
 #### Open Macaron Tone System
 
-These five tones are the only oPanel tone mechanism. Each tone has a light
+These five tones are the only O3Pilot tone mechanism. Each tone has a light
 pastel shell with high-contrast text and a dark deep shell with bright text.
 
 | Tone | Light background / text | Dark background / text | Product role |
@@ -266,8 +278,8 @@ both themes.
 Use surfaces in this order:
 
 1. **Canvas:** page background.
-2. **Primary panel:** use an 18px radius, a 1px oPanel hairline, and the
-   oPanel whisper-soft card shadow only when an outer panel is truly needed.
+2. **Primary panel:** use an 18px radius, a 1px O3Pilot hairline, and the
+   O3Pilot whisper-soft card shadow only when an outer panel is truly needed.
 3. **Inset surface:** use an 8px radius, a subtle panel-hover difference, and
    no shadow. An optional hairline may clarify a real boundary.
 4. **Flat section:** use no border or shadow when whitespace and typography
@@ -293,8 +305,8 @@ hide content or keyboard focus.
 
 ### 3.7 Iconography
 
-oPanel uses the curated Tabler-style 24x24 stroke icon system defined here. Use
-one coherent icon family, consistent optical weight, and oPanel morphing icon
+O3Pilot uses the curated Tabler-style 24x24 stroke icon system defined here. Use
+one coherent icon family, consistent optical weight, and O3Pilot morphing icon
 behavior. Typical view stroke width remains `1.8–2`; compact controls may use
 the system default where optical balance requires it.
 
@@ -306,7 +318,7 @@ Icons have a semantic role:
   equivalent.
 - An interactive icon is a control and needs a clear accessible name.
 
-Do not replace oPanel's icon identity with emojis, mixed icon families, or
+Do not replace O3Pilot's icon identity with emojis, mixed icon families, or
 an automatically selected external library.
 
 ## 4. Information Architecture
@@ -393,13 +405,13 @@ business question.
 
 ### 5.2 Breakpoint System
 
-oPanel uses the following semantic breakpoints. Do not replace them with values
+O3Pilot uses the following semantic breakpoints. Do not replace them with values
 selected by an external style catalog.
 
 | Key | Threshold | Semantic behavior |
 |---|---|---|
 | `compact` | `< 640px` | Single-column summaries; toolbar stacks; tables use a bounded horizontal-scroll region or a detail alternative |
-| `navigation-collapse` | `< 800px` | Navigation collapses to oPanel's compact/drawer expression; header actions wrap; summaries reduce columns |
+| `navigation-collapse` | `< 800px` | Navigation collapses to O3Pilot's compact/drawer expression; header actions wrap; summaries reduce columns |
 | `dense-layout` | `< 1100px` | Summary grids fold; secondary table columns hide or move into detail; analytical columns remain readable |
 | `wide` | `> 1200px` | High-density summary grids and side-by-side analysis may be used where content supports them |
 
@@ -448,7 +460,7 @@ system for one feature.
   values may use a deliberate multi-line treatment rather than shrinking.
 - Primary KPIs receive the strongest position and type. Supporting KPIs may be
   quieter or grouped without equal borders.
-- Wide layouts may use oPanel's five-column dashboard or
+- Wide layouts may use O3Pilot's five-column dashboard or
   four-column analytical summary patterns when the content supports them; the
   pattern is not a mandate to give every metric equal weight.
 
@@ -656,7 +668,7 @@ identifier-like values must be safely displayable.
 
 ## 10. Data Tables
 
-Tables are a primary oPanel surface for high-density operations.
+Tables are a primary O3Pilot surface for high-density operations.
 
 ### Alignment and Numerals
 
@@ -697,7 +709,7 @@ turn each row, cell group, or expansion into another 18px card.
 
 ## 11. Data Visualization UX
 
-oPanel data visualization uses the following visual language: SF Pro Text
+O3Pilot data visualization uses the following visual language: SF Pro Text
 typography, quiet axes and hairlines, restrained grid lines, readable labels,
 shared Macaron/semantic colors, and precise operational tooltips. A chart is a
 tool for a business question, not a decoration added to make a dashboard look
@@ -732,7 +744,7 @@ bar/table when exact comparison is the real task.
   aggregation over visual effects or excessive series.
 - Provide a concise textual summary or visible data-table fallback when the
   chart carries an important decision.
-- Use the following oPanel series roles: Azure for primary, Mint for secondary,
+- Use the following O3Pilot series roles: Azure for primary, Mint for secondary,
   Butter for tertiary, Peach for comparison/cost, and Lavender only where its
   business meaning is relevant. Do not introduce a new chart palette.
 
@@ -753,7 +765,7 @@ Accessibility is a first-class design requirement, not a final cosmetic pass.
 - Every interactive element is keyboard reachable.
 - Focus order follows the visual and task order; do not create a keyboard trap
   or an illogical custom tab sequence.
-- Every interactive element has a visible focus state. The oPanel focus
+- Every interactive element has a visible focus state. The O3Pilot focus
   expression is a 2px Focus Blue outline with a 2px offset where the control
   permits it.
 - Modal and drawer controls receive logical focus entry and return focus
@@ -830,7 +842,7 @@ specific exception necessary and the full meaning remains accessible:
 - Arbitrary shadows or equal-elevation shadows on every block
 - Excessive low-contrast muted text
 - Mixing multiple icon families
-- Automatically replacing the Open Macaron, Apple, or oPanel visual
+- Automatically replacing the Open Macaron, Apple, or O3Pilot visual
   system with an external recommendation
 
 ### Data and Charts
@@ -843,20 +855,20 @@ specific exception necessary and the full meaning remains accessible:
 
 ## 14. Motion System
 
-This section is the normative oPanel Motion / Animation / Interaction Motion
+This section is the normative O3Pilot Motion / Animation / Interaction Motion
 system. Emil Kowalski Skills is a quality supplement for this section; UI UX
 Pro Max contributes no Motion or Animation authority. No external source or
 animation library outranks the rules defined here.
 
 ### 14.1 Motion Philosophy
 
-oPanel motion is **crisp, direct, restrained, spatially coherent, and
+O3Pilot motion is **crisp, direct, restrained, spatially coherent, and
 interruptible**. Motion explains change and confirms interaction; it never
 competes with operational data.
 
 - **Crisp:** respond quickly without making an operation feel delayed.
 - **Direct:** show meaningful feedback at the moment the user acts.
-- **Restrained:** treat oPanel as a high-density operations workspace, not a
+- **Restrained:** treat O3Pilot as a high-density operations workspace, not a
   showcase for continuous animation.
 - **Spatially coherent:** explain where an element came from, where it goes,
   and which trigger or state change it belongs to.
@@ -866,7 +878,7 @@ competes with operational data.
   table scanning, status recognition, or an operational action.
 
 Motion must feel cohesive across the product. A single playful or elastic
-component is a defect when it conflicts with the calm, precise oPanel tone.
+component is a defect when it conflicts with the calm, precise O3Pilot tone.
 
 ### 14.2 Motion Decision Framework
 
@@ -950,7 +962,7 @@ override frequency or accessibility:
 
 ### 14.5 Easing System
 
-oPanel uses semantic easing roles rather than one universal easing curve:
+O3Pilot uses semantic easing roles rather than one universal easing curve:
 
 | Motion situation | Easing | Intent |
 |---|---|---|
@@ -981,9 +993,9 @@ Time-based motion uses a component and frequency budget:
 | Standard component transition | `160–240ms` |
 | Modal, non-gesture drawer, or non-gesture sheet | `200–300ms` default |
 | Large spatial transition | Only as long as the spatial relationship requires; remain restrained |
-| Marketing or explanatory motion | Not a normal oPanel application pattern |
+| Marketing or explanatory motion | Not a normal O3Pilot application pattern |
 
-Normal time-based oPanel UI animation should generally stay below approximately `300ms`.
+Normal time-based O3Pilot UI animation should generally stay below approximately `300ms`.
 This is a budget, not a mechanical hard cap: a large spatial transition or a
 physical gesture settle may need more time when distance and velocity justify
 it, but it must not feel sluggish.
@@ -1095,7 +1107,7 @@ preserve continuity when physical input requires it.
 
 ### 14.12 Springs and Physical Motion
 
-oPanel does not use named spring presets as its Motion taxonomy. Specify a
+O3Pilot does not use named spring presets as its Motion taxonomy. Specify a
 spring by physical purpose:
 
 | Physical purpose | Damping ratio | Response | Behavior |
@@ -1164,9 +1176,9 @@ dropdowns, filters, table sorting, or static navigation.
 - Avoid large layout animations, repeated filter or shadow animation, and
   unnecessary simultaneous property changes.
 - Blur is only a limited bridge for a crossfade that would otherwise show a
-  double exposure. It is not a default oPanel motion language; keep transition
+  double exposure. It is not a default O3Pilot motion language; keep transition
   blur light and below `20px` when it is justified.
-- Stagger is not a default oPanel style. Use it only for a small, low-frequency
+- Stagger is not a default O3Pilot style. Use it only for a small, low-frequency
   group when the sequence explains group relationship, keep delays around
   `30–80ms`, and never block interaction. Do not stagger KPI cards, table rows,
   navigation, or repeated dashboard refreshes.
@@ -1194,7 +1206,7 @@ motion, provide the same meaning through a gentler or static equivalent:
 
 ### 14.17 Motion Anti-Patterns
 
-The following are prohibited in oPanel Motion / Animation design:
+The following are prohibited in O3Pilot Motion / Animation design:
 
 - Animation whose only purpose is decoration on frequent UI
 - `ease-in` UI entrances
@@ -1239,7 +1251,7 @@ The following are prohibited in oPanel Motion / Animation design:
 - When adding a new visual treatment, first reuse a defined token, surface,
   shape, hierarchy level, or semantic tone. Add a new rule only when the
   product meaning cannot be represented by this system.
-- Apple remains the base design language, oPanel remains the visual identity,
+- Apple remains the base design language, O3Pilot remains the visual identity,
   UI UX Pro Max remains a UI/UX quality supplement without Motion authority,
   and Emil Kowalski Skills remains a Motion / Animation / Interaction quality
   supplement. No later external catalog silently outranks this authority order.

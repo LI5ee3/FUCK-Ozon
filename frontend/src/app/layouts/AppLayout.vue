@@ -28,7 +28,7 @@ const notification = useNotification();
 const { selectedShopId, options: shopOptions, load: loadShops, selectShop } = useShop();
 const { isDark, toggle: toggleTheme } = useTheme();
 
-const pageTitle = computed(() => String(route.meta.title ?? "oPanel"));
+const pageTitle = computed(() => String(route.meta.title ?? "O3Pilot"));
 const pageIcon = computed(() => route.meta.icon ?? "dashboard");
 const collapsed = ref(false);
 let navigationMedia: MediaQueryList | undefined;
@@ -127,9 +127,11 @@ onMounted(async () => {
       class="opanel-sider"
     >
       <div class="opanel-brand">
-        <img class="opanel-logo" :src="logoSrc" alt="oPanel" />
+        <img class="opanel-logo" :src="logoSrc" alt="O3Pilot" />
         <div class="opanel-brand-copy">
-          <strong class="opanel-brand-name">oPanel</strong>
+          <strong class="opanel-brand-name" role="img" aria-label="O3Pilot">
+            <span aria-hidden="true">O<span class="brand-subscript">3</span>Pilot</span>
+          </strong>
           <span class="opanel-brand-pill tone-butter">Macaron</span>
         </div>
       </div>
@@ -176,7 +178,7 @@ onMounted(async () => {
     <NLayout>
       <NLayoutHeader bordered class="opanel-header">
         <div class="opanel-heading">
-          <p class="opanel-eyebrow">OPANEL · MACARON EDITION</p>
+          <p class="opanel-eyebrow">O3PILOT · MACARON EDITION</p>
           <h1>
             <morph-icon :icon="pageIcon" size="20" stroke-width="1.8" />
             {{ pageTitle }}

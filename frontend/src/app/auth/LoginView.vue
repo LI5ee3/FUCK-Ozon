@@ -26,8 +26,8 @@ async function submit(): Promise<void> {
   <main class="login-page">
     <NCard :bordered="false" class="login-card">
       <div class="login-brand">
-        <img :src="logoSrc" alt="" />
-        <h1>oPanel</h1>
+        <img :src="logoSrc" alt="O3Pilot" />
+        <h1 aria-label="O3Pilot"><span aria-hidden="true">O<span class="brand-subscript">3</span>Pilot</span></h1>
         <p>Macaron Edition · 管理员登录</p>
       </div>
       <form class="login-form" @submit.prevent="submit">

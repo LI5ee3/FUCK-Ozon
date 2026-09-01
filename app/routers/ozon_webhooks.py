@@ -40,7 +40,7 @@ async def ozon_webhook(secret: str, request: Request):
     _validate_webhook_seller(shop_id, payload)
     message_type = str(payload.get("message_type") or "").strip()
     if message_type == "TYPE_PING":
-        return {"version": "1.0.0", "name": "oPanel", "time": _utc_text(datetime.now(timezone.utc))}
+        return {"version": "1.0.0", "name": "O3Pilot", "time": _utc_text(datetime.now(timezone.utc))}
     error = webhook_validation_error(payload)
     if error:
         raise HTTPException(400, error)

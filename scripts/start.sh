@@ -15,4 +15,4 @@ if ! launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
   launchctl bootstrap "$DOMAIN" "$PLIST"
 fi
 launchctl kickstart -k "$DOMAIN/$LABEL"
-printf '%s\n' 'oPanel launchd 服务已启动。'
+printf '%s\n' 'O3Pilot launchd 服务已启动。'

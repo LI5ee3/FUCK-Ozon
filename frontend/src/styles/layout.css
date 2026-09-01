@@ -47,6 +47,14 @@
   letter-spacing: -0.02em;
 }
 
+.brand-subscript {
+  display: inline-block;
+  margin-inline: 0.02em;
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: -0.16em;
+}
+
 .opanel-brand-pill {
   padding: 2px 7px;
   border-radius: var(--opanel-radius-pill);

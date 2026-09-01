@@ -79,7 +79,7 @@ def _ad_spend_spike(db, shop_id, config, now):
                    "baseline_spend_rub": average, "baseline_days": len(baseline),
                    "increase_percent": (current / average - 1) * 100}
         result.append(_event("ad_spend_spike", shop_id, "campaign", campaign_id, metrics,
-                             f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告花费突增\n"
+                             f"【O3Pilot 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告花费突增\n"
                              f"Campaign：{name}\n当前花费：{_fmt(current)} RUB\n过去{len(baseline)}日均值：{_fmt(average)} RUB\n"
                              f"增幅：{_fmt(metrics['increase_percent'], 1)}%\n数据日期：{target.isoformat()}"))
     return result, "", resolvable_ids
@@ -113,7 +113,7 @@ def _ad_drr_high(db, shop_id, config, now):
                    "revenue_3d": value["revenue"], "drr": drr,
                    "threshold_drr": config["threshold_drr"]}
         result.append(_event("ad_drr_high", shop_id, "campaign", campaign_id, metrics,
-                             f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告成本率过高\n"
+                             f"【O3Pilot 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告成本率过高\n"
                              f"Campaign：{name}\n近{window}日花费：{_fmt(value['spend'])} RUB\n近{window}日广告销售：{_fmt(value['revenue'])} RUB\n"
                              f"DRR：{_fmt(drr, 1)}%（阈值 {config['threshold_drr']}%）\n数据日期：{target.isoformat()}"))
     return result, "", {campaign_id for campaign_id, value in groups.items()
@@ -154,7 +154,7 @@ def _ad_clicks_no_orders(db, shop_id, config, now):
                    "clicks": value["clicks"], "spend_rub": value["spend"], "orders": 0,
                    "minimum_clicks": config["minimum_clicks"], "minimum_spend_rub": config["minimum_spend_rub"]}
         result.append(_event("ad_clicks_no_orders", shop_id, "sku_campaign", entity_id, metrics,
-                             f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：大量点击无订单\n"
+                             f"【O3Pilot 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：大量点击无订单\n"
                              f"Campaign：{campaign_name}\nSKU：{sku}\n近{window}日点击：{_fmt(value['clicks'], 0)}\n"
                              f"近{window}日花费：{_fmt(value['spend'])} RUB\n订单：0\n数据日期：{target.isoformat()}"))
     return result, "", {f"{campaign_id}:{sku}" for (campaign_id, sku), value in groups.items()
@@ -196,7 +196,7 @@ def _ad_orders_drop(db, shop_id, config, now):
                    "baseline_orders_per_day": baseline_orders, "current_spend_rub": current[1],
                    "baseline_spend_rub": baseline_spend, "drop_percent": drop}
         result.append(_event("ad_orders_drop", shop_id, "campaign", campaign_id, metrics,
-                             f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告订单下降\n"
+                             f"【O3Pilot 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：广告订单下降\n"
                              f"Campaign：{name}\n当日订单：{_fmt(current[0], 0)}\n前{len(baseline)}日均订单：{_fmt(baseline_orders)}\n"
                              f"下降：{_fmt(drop, 1)}%\n当日花费：{_fmt(current[1])} RUB\n数据日期：{target.isoformat()}"))
     return result, "", resolvable_ids
@@ -231,7 +231,7 @@ def _inventory_risk(db, shop_id, config, now):
                    "recommended_replenishment": row.get("recommended_replenishment"),
                    "stockout_before_arrival": bool(row.get("stockout_before_arrival"))}
         shop = row.get("shop_name") or f"店铺{shop_id}"
-        lines = ["【oPanel FBP库存预警】", f"店铺：{shop}", f"商品：{metrics['product_name']}", f"SKU：{sku}",
+        lines = ["【O3Pilot FBP库存预警】", f"店铺：{shop}", f"商品：{metrics['product_name']}", f"SKU：{sku}",
                  f"FBP有效库存：{_fmt(metrics['effective_stock'], 0)}", f"预测日销（FBP+realFBS需求）：{_fmt(metrics['forecast_daily'])}",
                  f"FBP预计可售：{_fmt(metrics['days_cover'])} 天", f"FBP预计缺货：{metrics['expected_stockout_date'] or '—'}",
                  f"FBP建议补货：{_fmt(metrics['recommended_replenishment'], 0)}",
@@ -267,7 +267,7 @@ def _sales_drop(db, shop_id, config, now):
     metrics = {"target_date": target.isoformat(), "current_units": current, "baseline_units_per_day": baseline_units,
                "baseline_days": baseline_days, "drop_percent": (1 - current / baseline_units) * 100}
     return [_event("sales_drop", shop_id, "shop", f"shop:{shop_id}", metrics,
-                   f"【oPanel 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：核心渠道销量下降\n"
+                   f"【O3Pilot 异常预警】\n店铺：{_shop_name(db, shop_id)}\n类型：核心渠道销量下降\n"
                    f"昨日销量：{_fmt(current, 0)} 件\n前{baseline_days}日均销量：{_fmt(baseline_units)} 件\n"
                    f"下降：{_fmt(metrics['drop_percent'], 1)}%\n统计口径：FBP + realFBS，不包含WHD\n"
                    f"数据日期：{target.isoformat()}")], "", {f"shop:{shop_id}"}

@@ -1,6 +1,10 @@
-# oPanel
+# O3Pilot
 
-oPanel 是一个专为 Ozon 跨境电商卖家打造的轻量级双店铺经营数据看板与分析系统。采用 FastAPI、SQLite 与 Vue 3 + TypeScript + Vite 前端，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，提供全链路的数据分析与决策支持。
+O3Pilot 是一个面向 Ozon 跨境电商卖家的轻量级经营数据、运营分析与决策辅助系统。采用 FastAPI、SQLite 与 Vue 3 + TypeScript + Vite 前端，支持通过 Ozon Seller API 自动化同步与 CSV 历史数据导入，覆盖 Dashboard、Inventory、Ads、Profit、Risk、Timeliness、Alerts、Sync 等经营场景，并支持 FBP、realFBS、WHD 数据与 DingTalk 通知。
+
+O3Pilot is an unofficial independent project and is not affiliated with or endorsed by Ozon.
+
+O3Pilot 是独立的非官方项目，与 Ozon 无隶属、授权或背书关系。
 
 ## 主要功能
 
@@ -161,7 +165,7 @@ chmod 600 .env
 
 ### 3. Cloudflare Tunnel
 
-Cloudflare Tunnel 与 oPanel 是两个独立服务。先确认 `http://127.0.0.1:38652` 可以访问；Tunnel 的 Origin 固定为：
+Cloudflare Tunnel 与 O3Pilot 是两个独立服务。先确认 `http://127.0.0.1:38652` 可以访问；Tunnel 的 Origin 固定为：
 
 ```text
 http://127.0.0.1:38652
@@ -183,7 +187,7 @@ cloudflared --version
 1. 确认域名已添加到 Cloudflare，并使用 Cloudflare 名称服务器。
 2. 打开 [Cloudflare Dashboard](https://one.dash.cloudflare.com/)，进入 **Networking > Tunnels**。
 3. 选择 **Create a tunnel**，类型选择 `cloudflared`，名称可填写 `opanel`。
-4. 选择 macOS 和对应架构，复制控制台生成的安装命令，在运行 oPanel 的 Mac 上原样执行。命令形式类似：
+4. 选择 macOS 和对应架构，复制控制台生成的安装命令，在运行 O3Pilot 的 Mac 上原样执行。命令形式类似：
 
    ```sh
    sudo cloudflared service install <TUNNEL_TOKEN>
@@ -191,14 +195,14 @@ cloudflared --version
 
 5. 等待 Connector 连上 Cloudflare，Tunnel 状态应显示为 `Healthy`。
 
-`TUNNEL_TOKEN` 是运行 Tunnel 的凭据，不要写入 oPanel 的 `.env`、README、Git 提交或截图。若 Token 泄露，请在 Tunnel 的 **Overview** 页面刷新 Token，再按控制台的新命令重新安装服务。
+`TUNNEL_TOKEN` 是运行 Tunnel 的凭据，不要写入 O3Pilot 的 `.env`、README、Git 提交或截图。若 Token 泄露，请在 Tunnel 的 **Overview** 页面刷新 Token，再按控制台的新命令重新安装服务。
 
-#### 3.3 发布 oPanel 域名
+#### 3.3 发布 O3Pilot 域名
 
 1. 打开刚创建的 Tunnel，选择 **Routes > Add route > Published application**。
 2. 选择已接入 Cloudflare 的域名并填写子域名，例如 `panel.example.com`。
 3. Service 选择 `HTTP`，URL 填写 `127.0.0.1:38652`。
-4. 保存后访问 `https://panel.example.com`，应进入 oPanel 登录页。
+4. 保存后访问 `https://panel.example.com`，应进入 O3Pilot 登录页。
 
 官方参考：[创建 remotely-managed Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/) 与 [`cloudflared` 下载说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/)。
 
@@ -207,7 +211,7 @@ cloudflared --version
 - Tunnel 为 `Healthy` 但访问返回 `502`：先检查本机入口和 `logs/opanel.stderr.log`。
 - Tunnel 为 `Down` 或 `Inactive`：检查 Mac 网络、`cloudflared` 服务和 Cloudflare 控制台中的 Connector；受限网络需要允许访问 Cloudflare 的出站 `7844` 端口。
 - 通过 Homebrew 更新时运行 `brew upgrade cloudflared`，然后按 Cloudflare 当前 macOS 文档重启其 launchd 服务。
-- oPanel 的 `start.sh`、`stop.sh`、`restart.sh` 和 `update.sh` 不管理 `cloudflared`。
+- O3Pilot 的 `start.sh`、`stop.sh`、`restart.sh` 和 `update.sh` 不管理 `cloudflared`。
 
 如果为整个域名启用 Cloudflare Access，必须确保 Ozon 可以直接请求 `/api/webhooks/ozon/*`；否则 Ozon Push 会被 Access 登录页拦截。
 
@@ -219,7 +223,7 @@ cloudflared --version
 https://你的域名/api/webhooks/ozon/<对应店铺的密钥>
 ```
 
-该端点只对 Push Webhook 豁免登录和 CSRF；业务事件会先写入 SQLite 收件箱，再异步补全订单详情。oPanel 不会在应用启动时自动注册订阅。
+该端点只对 Push Webhook 豁免登录和 CSRF；业务事件会先写入 SQLite 收件箱，再异步补全订单详情。O3Pilot 不会在应用启动时自动注册订阅。
 
 日常使用时进入“推送订阅管理”，按店铺填写对应的公网 Webhook URL，先检测连通性，再选择事件类型并创建、启用订阅；页面会显示当前订阅及状态。对应的受保护接口为：
 
@@ -291,7 +295,7 @@ tail -f logs/opanel.stderr.log
 ## 安全说明
 
 - 不要将 `.env`、`data/`、CSV、XLSX 或任何真实店铺数据提交到 Git。
-- 公网访问使用 Cloudflare Tunnel 的 HTTPS 域名；oPanel 不直接暴露公网端口。
+- 公网访问使用 Cloudflare Tunnel 的 HTTPS 域名；O3Pilot 不直接暴露公网端口。
 - 只授予 Ozon API 密钥项目所需的最小权限，密钥泄露后应立即轮换。
 - 该项目为单管理员系统，不适合直接作为多租户或多用户服务。
 
@@ -331,4 +335,4 @@ tail -f logs/opanel.stderr.log
 本项目前端交互与图标体系引用并改进了以下优秀的开源项目：
 
 - **[Tabler Icons](https://tabler.io/icons)** (by [Paweł Kuna](https://github.com/codecalm))：全站统一采用其 24×24 规范矢量图标定义，遵循 **[MIT License](https://github.com/tabler/tabler-icons/blob/main/LICENSE)**（见 [`frontend/public/assets/TABLER_ICONS_LICENSE`](frontend/public/assets/TABLER_ICONS_LICENSE)）。
-- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：官方 `morphicons` npm 依赖，经 `morphicons/vue` 的 `MorphIcon` 组件提供 Apple Spring 弹簧物理形变动画；oPanel 实际使用的 Tabler Icons path 数据收敛在轻量注册表 [`frontend/src/shared/icons/tabler.ts`](frontend/src/shared/icons/tabler.ts)，遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。
+- **[Morphicons](https://github.com/guillermolg00/morphicons)** (by [Guillermo López](https://github.com/guillermolg00))：官方 `morphicons` npm 依赖，经 `morphicons/vue` 的 `MorphIcon` 组件提供 Apple Spring 弹簧物理形变动画；O3Pilot 实际使用的 Tabler Icons path 数据收敛在轻量注册表 [`frontend/src/shared/icons/tabler.ts`](frontend/src/shared/icons/tabler.ts)，遵循 **[MIT License](https://github.com/guillermolg00/morphicons/blob/main/LICENSE)**。

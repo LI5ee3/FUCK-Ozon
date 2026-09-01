@@ -11,7 +11,7 @@ PLIST_TEMPLATE="$ROOT/deploy/com.opanel.app.plist"
 LABEL=com.opanel.app
 
 if [ "$(uname -s)" != "Darwin" ]; then
-  printf '%s\n' '错误：oPanel 的生产部署脚本只支持 macOS。' >&2
+  printf '%s\n' '错误：O3Pilot 的生产部署脚本只支持 macOS。' >&2
   exit 1
 fi
 
@@ -108,13 +108,13 @@ plutil -lint "$PLIST"
 "$ROOT/scripts/activate-frontend.sh"
 if ! "$ROOT/scripts/start.sh"; then
   "$ROOT/scripts/stop.sh" || true
-  printf '%s\n' '错误：oPanel launchd 服务未能启动，安装已停止。' >&2
+  printf '%s\n' '错误：O3Pilot launchd 服务未能启动，安装已停止。' >&2
   exit 1
 fi
 if ! "$ROOT/scripts/verify-frontend.sh"; then
   "$ROOT/scripts/stop.sh" || true
-  printf '%s\n' '错误：oPanel Vue production 前端验证失败，安装已停止。' >&2
+  printf '%s\n' '错误：O3Pilot Vue production 前端验证失败，安装已停止。' >&2
   exit 1
 fi
 rm -rf "$ROOT/frontend/dist.previous"
-printf '%s\n' 'oPanel 已启动并通过 http://127.0.0.1:38652/ 验证。'
+printf '%s\n' 'O3Pilot 已启动并通过 http://127.0.0.1:38652/ 验证。'

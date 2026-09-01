@@ -42,7 +42,7 @@ class OzonWebhookTest(DatabaseTestCase):
         with patch("app.routers.ozon_webhooks._env", return_value=ENV):
             result = asyncio.run(ozon_webhook("secret-one", WebhookRequest({"message_type": "TYPE_PING"})))
         self.assertEqual(result["version"], "1.0.0")
-        self.assertEqual(result["name"], "oPanel")
+        self.assertEqual(result["name"], "O3Pilot")
         self.assertTrue(result["time"].endswith("Z"))
 
         async def next_response(_):

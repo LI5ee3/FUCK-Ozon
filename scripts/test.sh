@@ -25,4 +25,4 @@ npm run type-check
 npm run test:unit
 npm run test:shipping
 
-printf '%s\n' 'oPanel 测试与类型检查通过。'
+printf '%s\n' 'O3Pilot 测试与类型检查通过。'
