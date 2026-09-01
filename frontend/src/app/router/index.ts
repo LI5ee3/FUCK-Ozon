@@ -16,7 +16,6 @@ const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
   "ad-campaigns": () => import("../../features/advertising/AdCampaignsView.vue"),
   "ad-skus": () => import("../../features/advertising/AdSkusView.vue"),
   profit: () => import("../../features/profit/ProfitView.vue"),
-  "product-costs": () => import("../../features/product-costs/ProductCostsView.vue"),
   transfer: () => import("../../features/transfer/TransferView.vue"),
   sync: () => import("../../features/sync/SyncView.vue"),
   rules: () => import("../../features/rules/RulesView.vue"),

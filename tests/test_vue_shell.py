@@ -17,7 +17,6 @@ ROUTES = (
     ("alerts", "/alerts"),
     ("complaints", "/complaints"),
     ("inventory", "/inventory"),
-    ("product-costs", "/product-costs"),
     ("profit", "/profit"),
     ("transfer", "/transfer"),
     ("sync", "/sync"),
@@ -73,7 +72,7 @@ class VueShellTest(unittest.TestCase):
         self.assertIn("setCsrfToken(\"\")", self.client)
         self.assertIn("UNAUTHORIZED_EVENT", self.client)
         self.assertIn("LOGOUT_EVENT", self.layout)
-        self.assertIn("route.name !== 'product-costs'", self.layout)
+        self.assertNotIn("route.name !== 'product-costs'", self.layout)
         self.assertNotIn("route.name !== 'profit'", self.layout)
         self.assertIn("navigate('/settings')", self.layout)
         self.assertIn("管理员", self.layout)
