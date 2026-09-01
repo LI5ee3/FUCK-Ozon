@@ -127,7 +127,7 @@ onMounted(async () => {
       class="opanel-sider"
     >
       <div class="opanel-brand">
-        <img class="opanel-logo" :src="logoSrc" alt="O3Pilot" />
+        <img class="opanel-logo" :src="logoSrc" alt="" />
         <div class="opanel-brand-copy">
           <strong class="opanel-brand-name" role="img" aria-label="O3Pilot">
             <span aria-hidden="true">O<span class="brand-subscript">3</span>Pilot</span>
