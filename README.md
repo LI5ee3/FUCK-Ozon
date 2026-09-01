@@ -79,7 +79,7 @@ npm ci
 npm run dev
 ```
 
-后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。生产入口使用 `frontend/dist/`、`127.0.0.1:38652`、launchd 与 Cloudflare Tunnel。
+后端可按现有方式单独启动；若本地手动使用 Uvicorn 默认的 `127.0.0.1:8000`，可设置 `OPANEL_API_TARGET=http://127.0.0.1:8000` 后运行上面的开发命令。
 
 提交前执行项目级核心检查：
 
@@ -91,68 +91,23 @@ npm run dev
 
 ## macOS + Apple Silicon 部署
 
-生产环境固定为 Mac mini M4 或其他 Apple Silicon Mac、macOS、Python venv、Node.js/npm、launchd 与 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22（>=22.18）、Node.js 24（>=24.11）或 Node.js >=25。
+生产环境为 Apple Silicon macOS，使用 Python venv、Node.js/npm、launchd 和 Cloudflare Tunnel。Python 3.14 优先，兼容 Python 3.12+；Vue build 支持 Node.js 22（>=22.18）、Node.js 24（>=24.11）或 Node.js >=25。
 
-完整部署说明见 [`docs/macos-deployment.md`](docs/macos-deployment.md)。
-
-### 1. 安装与配置
+最简安装：
 
 ```sh
-git clone https://github.com/LI5ee3/oPanel.git
-cd oPanel
+git clone https://github.com/LI5ee3/O3Pilot.git
+cd O3Pilot
 ./scripts/install-macos.sh
 ```
 
-安装脚本会选择 Python 3.14（否则使用可用的 Python 3.12+），检查受支持的 Node.js/npm，创建 `.venv`、安装 `requirements.txt`，通过测试门禁后生成并激活 staged `frontend/dist`，再创建或检查 `.env`、设置权限为 `600`、完成管理员密码哈希初始化或旧版 `ADMIN_PASSWORD` 迁移，最后安装用户级 launchd 服务并验证：
+本机固定访问地址：
 
 ```text
 http://127.0.0.1:38652
 ```
 
-如果首次没有管理员密码哈希，脚本会生成随机初始密码并只在终端显示一次，请立即保存。然后编辑项目根目录的 `.env`，填入店铺、可选 Performance API 及钉钉配置。
-
-```dotenv
-# 必填：Ozon Seller API
-SHOP_1_OZON_CLIENT_ID=店铺1的Client-Id
-SHOP_1_OZON_API_KEY=店铺1的Api-Key
-SHOP_2_OZON_CLIENT_ID=店铺2的Client-Id
-SHOP_2_OZON_API_KEY=店铺2的Api-Key
-
-# 可选：Ozon Performance API，用于广告活动和广告统计
-SHOP_1_OZON_PERF_CLIENT_ID=店铺1的Performance-Client-Id
-SHOP_1_OZON_PERF_CLIENT_SECRET=店铺1的Performance-Client-Secret
-SHOP_2_OZON_PERF_CLIENT_ID=店铺2的Performance-Client-Id
-SHOP_2_OZON_PERF_CLIENT_SECRET=店铺2的Performance-Client-Secret
-
-# 使用 Ozon Push 时填写，两个店铺必须使用不同的随机密钥
-OZON_WEBHOOK_SECRET_1=店铺1的Webhook随机密钥
-OZON_WEBHOOK_SECRET_2=店铺2的Webhook随机密钥
-
-# 仅当 Ozon Push 的 Seller ID 与 Client-Id 不同时填写
-# SHOP_1_OZON_SELLER_ID=店铺1的Seller ID
-# SHOP_2_OZON_SELLER_ID=店铺2的Seller ID
-
-# 可选：钉钉自定义机器人
-DINGTALK_WEBHOOK_URL=钉钉机器人Webhook
-DINGTALK_SECRET=启用加签时填写Secret
-```
-
-可运行下面的命令两次，为两个店铺分别生成 Webhook 密钥：
-
-```sh
-.venv/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))'
-```
-
-安装脚本生成或迁移的 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH` 必须保留。修改配置后执行：
-
-```sh
-chmod 600 .env
-./scripts/restart.sh
-```
-
-不要在密钥两侧添加引号，不要把 `.env` 发送给他人或提交到 Git。Cloudflare 凭据由 cloudflared/Cloudflare 管理，不写入 `.env`。
-
-### 2. 服务操作
+服务管理入口：
 
 ```sh
 ./scripts/start.sh
@@ -161,59 +116,7 @@ chmod 600 .env
 ./scripts/update.sh
 ```
 
-`update.sh` 按顺序执行 `git pull --ff-only`、依赖更新、完整测试门禁、production staged Vue build、running-sync 只读检查、服务停止、`dist` 激活、启动和固定地址 serving 验证；测试或构建失败、存在运行中同步任务时不会重启现有服务，也不会覆盖 `.env` 或删除 `data/`。
-
-### 3. Cloudflare Tunnel
-
-Cloudflare Tunnel 与 O3Pilot 是两个独立服务。先确认 `http://127.0.0.1:38652` 可以访问；Tunnel 的 Origin 固定为：
-
-```text
-http://127.0.0.1:38652
-```
-
-不需要公网 IP、DDNS、路由器端口映射、Nginx、Caddy，也不需要开放 80 或 443 入站端口。
-
-#### 3.1 安装 `cloudflared`
-
-```sh
-brew install cloudflared
-cloudflared --version
-```
-
-#### 3.2 创建并运行 Tunnel
-
-推荐使用 Cloudflare 官方的 remotely-managed Tunnel：
-
-1. 确认域名已添加到 Cloudflare，并使用 Cloudflare 名称服务器。
-2. 打开 [Cloudflare Dashboard](https://one.dash.cloudflare.com/)，进入 **Networking > Tunnels**。
-3. 选择 **Create a tunnel**，类型选择 `cloudflared`，名称可填写 `opanel`。
-4. 选择 macOS 和对应架构，复制控制台生成的安装命令，在运行 O3Pilot 的 Mac 上原样执行。命令形式类似：
-
-   ```sh
-   sudo cloudflared service install <TUNNEL_TOKEN>
-   ```
-
-5. 等待 Connector 连上 Cloudflare，Tunnel 状态应显示为 `Healthy`。
-
-`TUNNEL_TOKEN` 是运行 Tunnel 的凭据，不要写入 O3Pilot 的 `.env`、README、Git 提交或截图。若 Token 泄露，请在 Tunnel 的 **Overview** 页面刷新 Token，再按控制台的新命令重新安装服务。
-
-#### 3.3 发布 O3Pilot 域名
-
-1. 打开刚创建的 Tunnel，选择 **Routes > Add route > Published application**。
-2. 选择已接入 Cloudflare 的域名并填写子域名，例如 `panel.example.com`。
-3. Service 选择 `HTTP`，URL 填写 `127.0.0.1:38652`。
-4. 保存后访问 `https://panel.example.com`，应进入 O3Pilot 登录页。
-
-官方参考：[创建 remotely-managed Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/) 与 [`cloudflared` 下载说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/)。
-
-#### 3.4 排查与维护
-
-- Tunnel 为 `Healthy` 但访问返回 `502`：先检查本机入口和 `logs/opanel.stderr.log`。
-- Tunnel 为 `Down` 或 `Inactive`：检查 Mac 网络、`cloudflared` 服务和 Cloudflare 控制台中的 Connector；受限网络需要允许访问 Cloudflare 的出站 `7844` 端口。
-- 通过 Homebrew 更新时运行 `brew upgrade cloudflared`，然后按 Cloudflare 当前 macOS 文档重启其 launchd 服务。
-- O3Pilot 的 `start.sh`、`stop.sh`、`restart.sh` 和 `update.sh` 不管理 `cloudflared`。
-
-如果为整个域名启用 Cloudflare Access，必须确保 Ozon 可以直接请求 `/api/webhooks/ozon/*`；否则 Ozon Push 会被 Access 登录页拦截。
+完整的环境配置、`.env`、Cloudflare Tunnel、更新流程、日志、备份恢复和故障排查均以 [`docs/macos-deployment.md`](docs/macos-deployment.md) 为准。
 
 ## Ozon Push Webhook
 
@@ -258,40 +161,6 @@ POST /api/ozon/notifications/delete
 支持的导入文件：
 - Ozon `FBP.csv`、`realFBS.csv`、`WHD.csv`，分隔符为分号。
 
-## 日常运维
-
-查看日志：
-
-```sh
-tail -f logs/opanel.stdout.log
-tail -f logs/opanel.stderr.log
-```
-
-重启：
-
-```sh
-./scripts/restart.sh
-```
-
-更新：
-
-```sh
-./scripts/update.sh
-```
-
-停止：
-
-```sh
-./scripts/stop.sh
-```
-
-备份时请同时保存：
-
-- `data/`：数据库和会话密钥。
-- `.env`：管理员密码哈希和 Ozon API 凭据。
-
-恢复时将两者放回项目根目录，确认 `.env` 权限为 `600`，再运行 `./scripts/start.sh`。
-
 ## 安全说明
 
 - 不要将 `.env`、`data/`、CSV、XLSX 或任何真实店铺数据提交到 Git。
@@ -301,25 +170,9 @@ tail -f logs/opanel.stderr.log
 
 ## 常见问题
 
-### 登录提示未设置管理员密码哈希
-
-确认 `.env` 位于项目根目录，同时包含 `ADMIN_PASSWORD_SALT` 和 `ADMIN_PASSWORD_HASH`，然后重启服务。旧版 `ADMIN_PASSWORD` 会在部署或启动时一次性转换并从 `.env` 删除。
-
 ### API 拉取返回 401、403 或 502
 
 检查店铺的 `Client-Id`、`Api-Key`、API 权限和请求日期范围。两个店铺的凭据不能混用。
-
-### 服务已启动但无法访问
-
-先执行 `launchctl print "gui/$(id -u)/com.opanel.app"`，再检查 `logs/opanel.stderr.log`，并确认 `http://127.0.0.1:38652` 可以访问。
-
-### 固定端口已被占用
-
-安装脚本会显示占用 `38652` 端口的进程并停止安装，不会切换端口。先处理该进程，再重新运行安装。
-
-### 数据库位置
-
-默认数据库为 `data/opanel.db`，会话密钥为 `data/session_secret`。
 
 ## 开源协议与鸣谢
 
