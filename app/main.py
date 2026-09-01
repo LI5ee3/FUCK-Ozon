@@ -14,6 +14,7 @@ from .migrations import init_db
 from .ozon.webhooks import start_webhook_worker, stop_webhook_worker
 from .routers.alerts import router as alerts_router
 from .routers.analytics import router as analytics_router
+from .routers.actual_profit import router as actual_profit_router
 from .routers.auth import _authenticated, router as auth_router
 from .routers.complaints import router as complaints_router
 from .routers.dashboard import router as dashboard_router
@@ -98,6 +99,7 @@ app.include_router(inventory_router)
 app.include_router(products_router)
 app.include_router(imports_router)
 app.include_router(erp_costs_router)
+app.include_router(actual_profit_router)
 app.include_router(exchange_router)
 
 
