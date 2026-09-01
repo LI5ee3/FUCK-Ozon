@@ -29,10 +29,11 @@ def _present(value):
     return value is not None and (not isinstance(value, str) or value.strip())
 
 
-def resolve_erp_cost_for_order_item(db, shop_id, posting_number, sku, quantity):
+def resolve_erp_cost_for_order_item(db, shop_id, posting_number, sku):
     _shop(shop_id)
     row = db.execute("""
       SELECT i.offer_id AS order_offer_id,
+        i.quantity AS order_quantity,
         e.erp_order_number,e.ozon_sku,e.offer_id,e.quantity,e.unit_cost,
         e.exchange_rate_original,e.total_cost,e.platform_link,e.source_batch_id,
         e.source_row_no,e.raw_payload_json,e.imported_at,e.updated_at
@@ -46,12 +47,13 @@ def resolve_erp_cost_for_order_item(db, shop_id, posting_number, sku, quantity):
     if row is None or row["erp_order_number"] is None:
         return {"status": "missing_erp_cost", "erp_cost": None,
                 "order_offer_id": row["order_offer_id"] if row else None,
+                "order_quantity": row["order_quantity"] if row else None,
                 "offer_id_mismatch": False}
 
     erp_cost = {field: row[field] for field in ERP_COST_FIELDS}
     order_offer_id = row["order_offer_id"]
     erp_offer_id = row["offer_id"]
-    matched = row["quantity"] == quantity
+    matched = row["quantity"] == row["order_quantity"]
     offer_id_mismatch = bool(
         matched and _present(order_offer_id) and _present(erp_offer_id)
         and order_offer_id != erp_offer_id
@@ -60,6 +62,7 @@ def resolve_erp_cost_for_order_item(db, shop_id, posting_number, sku, quantity):
         "status": "matched" if matched else "quantity_mismatch",
         "erp_cost": erp_cost,
         "order_offer_id": order_offer_id,
+        "order_quantity": row["order_quantity"],
         "offer_id_mismatch": offer_id_mismatch,
     }
 

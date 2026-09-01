@@ -40,7 +40,7 @@ class ErpCostMatchingTest(DatabaseTestCase):
             add_erp_fact(connection, quantity=2, total_cost="20")
 
         with db.connect() as connection:
-            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1", 2)
+            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1")
         self.assertEqual(result["status"], "matched")
         self.assertEqual(result["erp_cost"]["unit_cost"], "10")
         self.assertFalse(result["offer_id_mismatch"])
@@ -55,10 +55,10 @@ class ErpCostMatchingTest(DatabaseTestCase):
             add_item(connection, 1, "M-001", "FBP", "SKU-1", 1)
 
         with db.connect() as connection:
-            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1", 1)
+            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1")
         self.assertEqual(result, {
             "status": "missing_erp_cost", "erp_cost": None,
-            "order_offer_id": None, "offer_id_mismatch": False,
+            "order_offer_id": None, "order_quantity": 1, "offer_id_mismatch": False,
         })
         coverage = get_erp_cost_coverage(1)
         self.assertEqual(coverage["order_items"]["missing_erp_cost"], 1)
@@ -88,15 +88,16 @@ class ErpCostMatchingTest(DatabaseTestCase):
         self.assertEqual(coverage["erp_facts"]["missing_order_item"], 1)
         self.assertEqual(coverage["erp_facts"]["missing_order"], 0)
 
-    def test_quantity_mismatch_is_not_matched(self):
+    def test_helper_uses_order_quantity_for_mismatch(self):
         with db.transaction() as connection:
             add_order(connection, 1, "M-001", "FBP")
             add_item(connection, 1, "M-001", "FBP", "SKU-1", 1, offer_id="OFFER-1")
             add_erp_fact(connection, quantity=2, total_cost="20")
 
         with db.connect() as connection:
-            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1", 1)
+            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1")
         self.assertEqual(result["status"], "quantity_mismatch")
+        self.assertEqual(result["order_quantity"], 1)
         coverage = get_erp_cost_coverage(1)
         self.assertEqual(coverage["order_items"]["matched"], 0)
         self.assertEqual(coverage["order_items"]["quantity_mismatch"], 1)
@@ -109,7 +110,7 @@ class ErpCostMatchingTest(DatabaseTestCase):
             add_erp_fact(connection, offer_id="ERP-OFFER")
 
         with db.connect() as connection:
-            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1", 1)
+            result = resolve_erp_cost_for_order_item(connection, 1, "M-001", "SKU-1")
         self.assertEqual(result["status"], "matched")
         self.assertTrue(result["offer_id_mismatch"])
         coverage = get_erp_cost_coverage(1)
@@ -127,7 +128,7 @@ class ErpCostMatchingTest(DatabaseTestCase):
             add_erp_fact(connection, order="M-002", sku="SKU-A", offer_id="SAME-OFFER")
 
         with db.connect() as connection:
-            isolated = resolve_erp_cost_for_order_item(connection, 2, "M-001", "SKU-1", 1)
+            isolated = resolve_erp_cost_for_order_item(connection, 2, "M-001", "SKU-1")
         self.assertEqual(isolated["status"], "missing_erp_cost")
         shop_two = get_erp_cost_coverage(2)
         self.assertEqual(shop_two["order_items"]["missing_erp_cost"], 1)
@@ -191,10 +192,10 @@ class ErpCostMatchingTest(DatabaseTestCase):
             add_item(connection, 1, "M-001", "FBP", "1936515175", 2, offer_id="offer-1")
         import_erp_costs(1, "first.xlsx", workbook_bytes([row(cost="1520.6012")]))
         with db.connect() as connection:
-            first = resolve_erp_cost_for_order_item(connection, 1, "M-001", "1936515175", 2)
+            first = resolve_erp_cost_for_order_item(connection, 1, "M-001", "1936515175")
         import_erp_costs(1, "correction.xlsx", workbook_bytes([row(cost="1500.125")]))
         with db.connect() as connection:
-            corrected = resolve_erp_cost_for_order_item(connection, 1, "M-001", "1936515175", 2)
+            corrected = resolve_erp_cost_for_order_item(connection, 1, "M-001", "1936515175")
         self.assertEqual(first["erp_cost"]["unit_cost"], "1520.6012")
         self.assertEqual(corrected["erp_cost"]["unit_cost"], "1500.125")
         self.assertEqual(corrected["erp_cost"]["total_cost"], "3000.250")
