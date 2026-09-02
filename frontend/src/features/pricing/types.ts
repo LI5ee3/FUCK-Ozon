@@ -201,6 +201,10 @@ export interface PricingHistoryEvent {
   observed_at: string;
   previous_observed_at: string;
   event_day: string | null;
+  before_offer_id: string | null;
+  after_offer_id: string | null;
+  before_product_id: string | null;
+  after_product_id: string | null;
   previous_currency: string | null;
   currency: string | null;
   types: string[];

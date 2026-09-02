@@ -55,7 +55,7 @@ function responseFor(signal: PricingStrategyResponse["strategy"]["signal"] = "ho
       reason_codes: [], warnings: [],
     },
     history: { days: 90, from: "2026-06-03T00:00:00Z", to: "2026-09-01T00:00:00Z", snapshot_count: 3, price_change_count: 1, points: [], events: [{
-      observed_at: "2026-08-25T00:00:00Z", previous_observed_at: "2026-08-24T00:00:00Z", event_day: "2026-08-25", previous_currency: "CNY", currency: "CNY", types: ["effective_price_changed"], changes: { effective_price: { from: "90", to: "80" } }, effective_price_change_pct: -11.1, price_change_status: "available", impact: null,
+      observed_at: "2026-08-25T00:00:00Z", previous_observed_at: "2026-08-24T00:00:00Z", event_day: "2026-08-25", before_offer_id: "O-1", after_offer_id: "O-1", before_product_id: "1", after_product_id: "1", previous_currency: "CNY", currency: "CNY", types: ["effective_price_changed"], changes: { effective_price: { from: "90", to: "80" } }, effective_price_change_pct: -11.1, price_change_status: "available", impact: null,
     }] },
   };
 }

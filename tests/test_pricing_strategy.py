@@ -2,6 +2,7 @@ import json
 import unittest
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -20,14 +21,15 @@ def stamp(day):
 
 
 def add_snapshot(connection, shop_id, observed_at, snapshot_key, *, price="100", currency="CNY",
-                 min_price="80", min_currency=None):
+                 min_price="80", min_currency=None, offer_id=None):
     min_currency = min_currency or currency
+    offer_id = offer_id or f"O-{snapshot_key}"
     indexes = {
         "ozon_index_data": {"min_price": min_price, "min_price_currency": min_currency},
         "external_index_data": {}, "self_marketplaces_index_data": {},
     }
     values = {
-        "shop_id": shop_id, "product_id": snapshot_key, "offer_id": f"O-{snapshot_key}",
+        "shop_id": shop_id, "product_id": snapshot_key, "offer_id": offer_id,
         "observed_at": observed_at, "currency": currency, "price": price, "old_price": None,
         "min_price": min_price, "marketing_seller_price": None, "auto_action_enabled": 0,
         "acquiring": "0", "price_index_color": "GREEN", "ozon_min_price": min_price,
@@ -35,7 +37,7 @@ def add_snapshot(connection, shop_id, observed_at, snapshot_key, *, price="100",
         "self_marketplace_min_price": None, "self_marketplace_price_index": None,
         "commissions_json": json.dumps({"sales_percent_fbp": 0, "sales_percent_rfbs": 0, "sales_percent_fbo": 0}),
         "marketing_actions_json": None, "price_indexes_json": json.dumps(indexes),
-        "payload_json": json.dumps({"name": f"商品 {snapshot_key}"}), "snapshot_key": snapshot_key,
+        "payload_json": json.dumps({"name": f"商品 {snapshot_key}", "offer_id": offer_id}), "snapshot_key": snapshot_key,
     }
     columns = ",".join(values)
     connection.execute(f"INSERT INTO product_price_snapshots({columns}) VALUES({','.join('?' for _ in values)})",
@@ -109,6 +111,52 @@ class PricingStrategyTest(DatabaseTestCase):
         self.assertEqual(result["snapshot_key"], "A")
         self.assertEqual(result["history"]["snapshot_count"], 2)
         self.assertEqual({point["currency"] for point in result["history"]["points"]}, {"CNY"})
+
+    def test_event_impact_uses_before_and_after_snapshot_offer_ids(self):
+        current = "2026-09-01T00:00:00Z"
+        with db.transaction() as connection:
+            add_snapshot(connection, 2, "2026-08-20T00:00:00Z", "A", offer_id="OLD", price="100")
+            add_snapshot(connection, 2, "2026-08-21T00:00:00Z", "A", offer_id="NEW", price="90")
+            add_snapshot(connection, 2, current, "A", offer_id="NEW", price="90")
+            add_successful_price_run(connection, 2, current)
+            for index in range(7):
+                day = date(2026, 8, 14 + index)
+                add_sale(connection, 2, f"BEFORE-OLD-{index}", day, 1, offer_id="OLD", price=100)
+                add_sale(connection, 2, f"BEFORE-NEW-{index}", day, 10, offer_id="NEW", price=90)
+                add_sale(connection, 2, f"BEFORE-CHANNEL-{index}", day, 100, offer_id="OLD", price=100, channel="realFBS")
+                add_sale(connection, 1, f"BEFORE-SHOP-{index}", day, 100, offer_id="OLD", price=100)
+            for index in range(7):
+                day = date(2026, 8, 22 + index)
+                add_sale(connection, 2, f"AFTER-NEW-{index}", day, 2, offer_id="NEW", price=90)
+                add_sale(connection, 2, f"AFTER-OLD-{index}", day, 20, offer_id="OLD", price=100)
+            add_order(connection, 2, "CANCELLED-OLD", "FBP", stamp(date(2026, 8, 14)), "已取消", 0)
+            add_item(connection, 2, "CANCELLED-OLD", "FBP", "SKU-OLD", 100,
+                     offer_id="OLD", unit_price=100, price_currency="CNY", product_name_raw="OLD")
+
+        result = get_pricing_strategy(2, "A", now=NOW)
+        event = result["history"]["events"][0]
+        self.assertEqual((event["before_offer_id"], event["after_offer_id"]), ("OLD", "NEW"))
+        self.assertEqual((event["before_product_id"], event["after_product_id"]), ("A", "A"))
+        self.assertEqual((event["impact"]["before"]["units"], event["impact"]["after"]["units"]), (7, 14))
+
+    def test_strategy_freezes_price_batch_and_exchange_entries(self):
+        first, second = "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z"
+        with db.transaction() as connection:
+            add_snapshot(connection, 1, first, "A", price="100", min_price="80")
+            add_snapshot(connection, 1, second, "A", price="900", min_price="800")
+        exchange_a = {"USD": {"sales_exchange_rate": "10"}, "CNY": {"sales_exchange_rate": "2"}}
+        exchange_b = {"USD": {"sales_exchange_rate": "20"}, "CNY": {"sales_exchange_rate": "4"}}
+        with patch("app.pricing._latest_price_batch", side_effect=[(first, "sync_run"), (second, "sync_run")]) as batches, \
+                patch("app.pricing.current_exchange_rate_entries", side_effect=[exchange_a, exchange_b]) as exchange:
+            result = get_pricing_strategy(1, "A", now=NOW)
+
+        self.assertEqual(batches.call_count, 1)
+        self.assertEqual(exchange.call_count, 1)
+        self.assertEqual(result["history"]["to"], first)
+        self.assertEqual(result["history"]["snapshot_count"], 1)
+        self.assertEqual(result["current"]["price"]["effective_price"], "100")
+        self.assertEqual(result["strategy"]["current_price"], "20")
+        self.assertEqual(result["strategy"]["market_reference_price"], "16")
 
     def test_events_skip_repeated_snapshots_and_exclude_event_day_from_impact(self):
         with db.transaction() as connection:

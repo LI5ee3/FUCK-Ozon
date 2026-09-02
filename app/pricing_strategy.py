@@ -66,6 +66,13 @@ def _history_state(row):
     }
 
 
+def _historical_identity(row):
+    return {
+        "offer_id": pricing._text(row["offer_id"]) or None,
+        "product_id": pricing._text(row["product_id"]) or None,
+    }
+
+
 def _comparison_value(value):
     if isinstance(value, dict):
         return tuple((key, _comparison_value(value.get(key))) for key in sorted(value))
@@ -96,6 +103,7 @@ def _effective_change(before, after):
 
 def _price_event(before_row, after_row, point_index):
     before, after = _history_state(before_row), _history_state(after_row)
+    before_identity, after_identity = _historical_identity(before_row), _historical_identity(after_row)
     types, changes = [], {}
     for event_type, field in TRACKED_FIELDS:
         if _changed(before[field], after[field]):
@@ -117,6 +125,8 @@ def _price_event(before_row, after_row, point_index):
         "observed_at": after["observed_at"],
         "previous_observed_at": before["observed_at"],
         "event_day": observed.astimezone(BEIJING).date().isoformat() if observed else None,
+        "before_offer_id": before_identity["offer_id"], "after_offer_id": after_identity["offer_id"],
+        "before_product_id": before_identity["product_id"], "after_product_id": after_identity["product_id"],
         "previous_currency": before["currency"], "currency": after["currency"],
         "types": types,
         "changes": changes,
@@ -207,9 +217,8 @@ def _impact(before_rows, after_rows):
     }
 
 
-def _sales_rows(db, shop_id, item, channel, start_day, end_day):
-    product = item["product"]
-    offer_id, sku = pricing._text(product.get("offer_id")), pricing._text(product.get("sku"))
+def _sales_rows(db, shop_id, channel, start_day, end_day, *, offer_id=None, sku=None):
+    offer_id, sku = pricing._text(offer_id), pricing._text(sku)
     if offer_id:
         match_field, match_value = "i.offer_id", offer_id
     elif sku:
@@ -231,26 +240,10 @@ def _sales_rows(db, shop_id, item, channel, start_day, end_day):
     return by_day
 
 
-def _attach_impacts(db, events, shop_id, item, channel, today):
+def _attach_impacts(db, events, shop_id, channel, today):
     effective_events = [event for event in events if "effective_price_changed" in event["types"]]
     if not effective_events:
         return
-    dated = [date.fromisoformat(event["event_day"]) for event in effective_events if event["event_day"]]
-    product = item["product"]
-    has_match = bool(pricing._text(product.get("offer_id")) or pricing._text(product.get("sku")))
-    if not has_match:
-        for event in effective_events:
-            event["impact"] = {"status": "unavailable", "before": None, "after": None,
-                                "units_delta": None, "units_change_pct": None,
-                                "revenue_delta": None, "revenue_change_pct": None,
-                                "weighted_avg_price_change_pct": None,
-                                "reason": "missing_product_match"}
-        return
-    complete = [day for day in dated if today >= day + timedelta(days=8)]
-    sales_by_day = {}
-    if complete:
-        sales_by_day = _sales_rows(db, shop_id, item, channel, min(day - timedelta(days=7) for day in complete),
-                                    max(day + timedelta(days=7) for day in complete)) or {}
     for event in effective_events:
         if not event["event_day"]:
             event["impact"] = {"status": "unavailable", "before": None, "after": None,
@@ -267,10 +260,27 @@ def _attach_impacts(db, events, shop_id, item, channel, today):
                                 "weighted_avg_price_change_pct": None,
                                 "reason": "after_window_incomplete"}
             continue
+        before_offer_id = pricing._text(event.get("before_offer_id"))
+        after_offer_id = pricing._text(event.get("after_offer_id"))
+        if not before_offer_id or not after_offer_id:
+            event["impact"] = {"status": "unavailable", "before": None, "after": None,
+                                "units_delta": None, "units_change_pct": None,
+                                "revenue_delta": None, "revenue_change_pct": None,
+                                "weighted_avg_price_change_pct": None,
+                                "reason": "missing_historical_product_match"}
+            continue
+        before_rows = _sales_rows(
+            db, shop_id, channel, event_day - timedelta(days=7), event_day - timedelta(days=1),
+            offer_id=before_offer_id,
+        ) or {}
+        after_rows = _sales_rows(
+            db, shop_id, channel, event_day + timedelta(days=1), event_day + timedelta(days=7),
+            offer_id=after_offer_id,
+        ) or {}
         before = [row for day in (event_day - timedelta(days=offset) for offset in range(7, 0, -1))
-                  for row in sales_by_day.get(day, [])]
+                  for row in before_rows.get(day, [])]
         after = [row for day in (event_day + timedelta(days=offset) for offset in range(1, 8))
-                 for row in sales_by_day.get(day, [])]
+                 for row in after_rows.get(day, [])]
         event["impact"] = _impact(before, after)
 
 
@@ -361,8 +371,10 @@ def get_pricing_strategy(shop_id, snapshot_key, channel="FBP", target_margin_pct
         exchange_entries = pricing.current_exchange_rate_entries(db, moment.astimezone(timezone.utc))
         rates = _rates(exchange_entries)
 
-    current_response = pricing.get_pricing(shop_id, channel=channel, target_margin_pct=target_margin,
-                                           page=1, size=1, now=moment, _snapshot_key=snapshot_key)
+    current_response = pricing.get_pricing(
+        shop_id, channel=channel, target_margin_pct=target_margin, page=1, size=1, now=moment,
+        _snapshot_key=snapshot_key, _price_batch_through=through, _exchange_entries=exchange_entries,
+    )
     if not current_response["items"]:
         raise PricingStrategyNotFound("价格实体不属于当前店铺最新完整价格批次")
     current_item = current_response["items"][0]
@@ -376,7 +388,7 @@ def get_pricing_strategy(shop_id, snapshot_key, channel="FBP", target_margin_pct
         if event:
             events.append(event)
     with connect() as db:
-        _attach_impacts(db, events, shop_id, current_item, channel, moment.astimezone(BEIJING).date())
+        _attach_impacts(db, events, shop_id, channel, moment.astimezone(BEIJING).date())
     points = [_history_point(row) for row in history_rows]
     keep = {0, len(points) - 1} if points else set()
     keep.update(event["_point_index"] for event in events

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { LineChart } from "echarts/charts";
-import { GridComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { init, use, type ECharts } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { NDrawer, NDrawerContent, NTag } from "naive-ui";
@@ -15,6 +15,7 @@ import type {
   PricingEventImpact,
   PricingHistoryChangeValue,
   PricingHistoryEvent,
+  PricingHistoryPoint,
   PricingItem,
   PricingMarketSource,
   PricingStrategyResponse,
@@ -22,7 +23,7 @@ import type {
 } from "./types";
 import "./pricing-strategy.css";
 
-use([LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
+use([LineChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer]);
 
 const props = defineProps<{
   show: boolean;
@@ -231,11 +232,24 @@ function weightedPriceWarning(impact: PricingEventImpact): string {
 
 function tooltipHtml(params: unknown): string {
   const first = Array.isArray(params) ? params[0] : params;
-  if (!first || typeof first !== "object" || !("dataIndex" in first)) return "";
-  const index = typeof first.dataIndex === "number" ? first.dataIndex : -1;
-  const point = history.value?.points[index];
+  if (!first || typeof first !== "object") return "";
+  const point = historyPointFromTooltip(first);
   if (!point) return "";
   return `<div class="pricing-strategy-chart-tooltip"><strong>${escapeHtml(formatBeijingDateTime(point.observed_at))}</strong><div>有效售价 <b>${escapeHtml(formatPrice(point.effective_price, point.currency))}</b></div><div>币种 <b>${escapeHtml(point.currency ?? "—")}</b></div></div>`;
+}
+
+function historyPointFromTooltip(param: object): PricingHistoryPoint | null {
+  const points = history.value?.points ?? [];
+  const data = "data" in param && param.data && typeof param.data === "object" ? param.data : null;
+  const pointKey = data && "pointKey" in data && typeof data.pointKey === "string" ? data.pointKey : null;
+  if (pointKey) return points.find((point) => point.observed_at === pointKey) ?? null;
+  const value = "value" in param ? param.value : null;
+  const axisValue = "axisValue" in param ? param.axisValue : null;
+  const timestamp = Array.isArray(value) ? value[0] : axisValue;
+  if (typeof timestamp !== "string" && typeof timestamp !== "number") return null;
+  const parsed = typeof timestamp === "number" ? timestamp : Date.parse(timestamp);
+  if (!Number.isFinite(parsed)) return null;
+  return points.find((point) => Date.parse(point.observed_at) === parsed) ?? null;
 }
 
 function escapeHtml(value: string): string {
@@ -259,8 +273,9 @@ function chartOption() {
     },
     legend: { top: 0, right: 0, itemWidth: 12, itemHeight: 8, textStyle: { color: colors.muted, fontFamily: macaronTokens.fontFamily } },
     xAxis: {
-      type: "category", boundaryGap: false, data: points.map((point) => point.observed_at.slice(5, 10)),
-      axisLine: { lineStyle: { color: colors.line } }, axisTick: { show: false }, axisLabel: { color: colors.muted },
+      type: "time", boundaryGap: false,
+      axisLine: { lineStyle: { color: colors.line } }, axisTick: { show: false },
+      axisLabel: { color: colors.muted, formatter: (value: number) => formatBeijingDateTime(new Date(value).toISOString()).slice(5, 10) },
     },
     yAxis: {
       type: "value", min: 0, splitNumber: 3, axisLine: { show: false }, axisTick: { show: false },
@@ -268,13 +283,17 @@ function chartOption() {
       splitLine: { lineStyle: { color: colors.line, type: "dashed" } },
     },
     series: currencies.map((currency) => ({
-      type: "line", name: `有效售价 ${currency}`, connectNulls: false, showSymbol: true, symbol: "circle", symbolSize: 6,
+      type: "line", name: `有效售价 ${currency}`, step: "end", connectNulls: false, showSymbol: true, symbol: "circle", symbolSize: 6,
       lineStyle: { width: 2, color: colors.primary }, itemStyle: { color: colors.primary },
       data: points.map((point) => {
         const sameCurrency = (point.currency ?? "币种未知") === currency;
         const value = point.effective_price === null ? NaN : Number(point.effective_price);
-        if (!sameCurrency || !Number.isFinite(value)) return null;
-        return { value, symbol: changedAt.has(point.observed_at) ? "diamond" : "circle", symbolSize: changedAt.has(point.observed_at) ? 10 : 6 };
+        const changed = changedAt.has(point.observed_at);
+        return {
+          value: [point.observed_at, sameCurrency && Number.isFinite(value) ? value : null],
+          pointKey: point.observed_at,
+          symbol: changed ? "diamond" : "circle", symbolSize: changed ? 10 : 6,
+        };
       }),
     })),
   };

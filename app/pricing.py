@@ -477,7 +477,8 @@ def _freshness(db, shop_ids, price_batches, price_rows, exchange_entries):
 
 
 def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
-                sort_by="", sort_order="desc", page=1, size=50, now=None, _snapshot_key=None):
+                sort_by="", sort_order="desc", page=1, size=50, now=None, _snapshot_key=None,
+                _price_batch_through=None, _exchange_entries=None):
     shop_ids = _shop_ids(shop_id)
     channel = _channel(channel)
     health = _health_filter(health)
@@ -495,7 +496,11 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
         shop_rows = {row["id"]: dict(row) for row in db.execute(
             f"SELECT id,name,settlement_currency FROM shops WHERE id IN ({marks}) ORDER BY id", shop_ids)}
         rules = load_product_rules(db)
-        price_batches = {shop: _latest_price_batch(db, shop) for shop in shop_ids}
+        price_batches = {
+            shop: (_price_batch_through, "override") if _price_batch_through is not None
+            else _latest_price_batch(db, shop)
+            for shop in shop_ids
+        }
         price_rows = []
         for current_shop in shop_ids:
             through = price_batches[current_shop][0]
@@ -542,7 +547,8 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
         for values in erp_by_sku.values():
             values.sort(key=lambda row: (_text(row["updated_at"]), _text(row["imported_at"]),
                                          int(row["source_batch_id"] or 0), int(row["source_row_no"] or 0)), reverse=True)
-        exchange_entries = current_exchange_rate_entries(db, moment.astimezone(timezone.utc))
+        exchange_entries = (_exchange_entries if _exchange_entries is not None
+                            else current_exchange_rate_entries(db, moment.astimezone(timezone.utc)))
         rates = {currency: _decimal(entry.get("sales_exchange_rate"))
                  for currency, entry in exchange_entries.items()}
         rates = {currency: rate for currency, rate in rates.items() if rate is not None and rate > 0}
