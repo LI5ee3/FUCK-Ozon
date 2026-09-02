@@ -1,19 +1,25 @@
 import { flushPromises, shallowMount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
+import { useShop } from "../../shared/composables/useShop";
 import SyncView from "./SyncView.vue";
 
 const api = vi.hoisted(() => ({
   getAutoSyncSettings: vi.fn(),
   getExchangeRateStatus: vi.fn(),
+  getSyncRun: vi.fn(),
   getSyncRuns: vi.fn(),
+  startSync: vi.fn(),
 }));
+const dialog = vi.hoisted(() => ({ warning: vi.fn() }));
 
 vi.mock("./api", () => api);
 vi.mock("naive-ui", async () => ({
   ...await vi.importActual<typeof import("naive-ui")>("naive-ui"),
-  useDialog: () => ({ warning: vi.fn() }),
+  useDialog: () => dialog,
   useMessage: () => ({ error: vi.fn(), success: vi.fn() }),
 }));
+
+const { selectedShopId } = useShop();
 
 describe("Sync exchange rate contract", () => {
   it("renders service/penalty and sales rates separately", async () => {
@@ -84,5 +90,37 @@ describe("Sync exchange rate contract", () => {
 
     expect(wrapper.text()).toContain("暂无");
     expect(wrapper.text()).not.toContain("0.0000");
+  });
+
+  it("starts stock and prices directly for the all-time preset", async () => {
+    api.getSyncRuns.mockResolvedValue([]);
+    api.getAutoSyncSettings.mockResolvedValue([]);
+    api.getExchangeRateStatus.mockResolvedValue({
+      source: "ozon_xapi", last_success_at: null, data_through: null,
+      as_of: "2026-08-31T08:00:00Z", rates: {},
+    });
+    api.startSync.mockResolvedValue({ run_id: 1, status: "running", progress_total: 1 });
+    api.getSyncRun.mockResolvedValue({ status: "success", records: 1 });
+    dialog.warning.mockReset();
+    selectedShopId.value = 1;
+
+    const wrapper = shallowMount(SyncView);
+    await flushPromises();
+    const state = (wrapper.vm.$ as unknown as { setupState: Record<string, unknown> }).setupState;
+    (state.selectManualPreset as (preset: "all") => void)("all");
+    await wrapper.vm.$nextTick();
+
+    const startManualSync = state.startManualSync as (module: "stock" | "prices" | "orders") => void;
+    for (const module of ["stock", "prices"] as const) {
+      startManualSync(module);
+      await flushPromises();
+    }
+    expect(dialog.warning).not.toHaveBeenCalled();
+    expect(api.startSync).toHaveBeenCalledWith("stock", 1, expect.any(String), expect.any(String));
+    expect(api.startSync).toHaveBeenCalledWith("prices", 1, expect.any(String), expect.any(String));
+
+    startManualSync("orders");
+    expect(dialog.warning).toHaveBeenCalledTimes(1);
+    selectedShopId.value = 0;
   });
 });

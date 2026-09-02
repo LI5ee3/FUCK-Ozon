@@ -108,6 +108,9 @@ const syncNames: Record<ManualSyncModule, string> = {
   ad_campaign_daily: "广告日统计",
   ad_sku_daily: "SKU广告统计",
 };
+const fullRangeConfirmationModules: ReadonlySet<ManualSyncModule> = new Set([
+  "orders", "returns", "finance_transactions", "ad_campaign_daily", "ad_sku_daily",
+]);
 
 const message = useMessage();
 const dialog = useDialog();
@@ -479,6 +482,10 @@ function confirmFullSync(module: ManualSyncModule, shopId: ShopId): void {
   });
 }
 
+function requiresFullRangeConfirmation(module: ManualSyncModule): boolean {
+  return fullRangeConfirmationModules.has(module);
+}
+
 function startManualSync(module: ManualSyncModule): void {
   if (selectedShopId.value === 0) {
     message.error("请先在右上角选择一个店铺");
@@ -487,7 +494,7 @@ function startManualSync(module: ManualSyncModule): void {
   if (manualSyncing[module]) return;
   const shopId = selectedShopId.value;
   const range: DateRange = [...manualRange.value];
-  if (manualActivePreset.value === "all") {
+  if (manualActivePreset.value === "all" && requiresFullRangeConfirmation(module)) {
     confirmFullSync(module, shopId);
     return;
   }

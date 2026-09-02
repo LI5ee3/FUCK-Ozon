@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 SYNC_MODULES = {"orders", "returns", "stock", "prices", "finance_transactions"}
 LEGACY_SYNC_MODULES = {"orders", "returns", "stock"}
 AD_SYNC_MODULES = {"ad_campaign_daily", "ad_sku_daily"}
+PRE_PRICES_AUTO_SYNC_MODULES = {
+    "orders", "returns", "stock", "finance_transactions", "ad_campaign_daily", "ad_sku_daily",
+}
 LEGACY_AUTO_SYNC_MODULES = LEGACY_SYNC_MODULES | AD_SYNC_MODULES
 AUTO_SYNC_MODULES = SYNC_MODULES | AD_SYNC_MODULES
 PERFORMANCE_SYNC_MODULE = "ad_campaigns"
@@ -110,7 +113,8 @@ def _run_performance_statistics_sync(shop_id, start, end, module="all"):
 
 
 def save_auto_sync_settings(values):
-    if set(values) in (SYNC_MODULES, LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
+    if set(values) in (SYNC_MODULES, PRE_PRICES_AUTO_SYNC_MODULES,
+                       LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
         values = {str(shop_id): values for shop_id in (1, 2)}
     if set(values) != {"1", "2"}:
         raise ValueError("必须分别提交两个店铺的自动拉取设置")
@@ -122,7 +126,8 @@ def save_auto_sync_settings(values):
     settings = []
     for shop_id in (1, 2):
         submitted = dict(values[str(shop_id)])
-        if set(submitted) in (SYNC_MODULES, LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
+        if set(submitted) in (SYNC_MODULES, PRE_PRICES_AUTO_SYNC_MODULES,
+                              LEGACY_SYNC_MODULES, LEGACY_AUTO_SYNC_MODULES):
             submitted.update({module: {"enabled": row["enabled"], "interval_hours": row["interval_hours"],
                                        "range_days": row["range_days"]}
                               for module, row in current_optional[shop_id].items() if module not in submitted})
@@ -178,6 +183,7 @@ def _sync_ranges(module, start, end):
 
 def _run_sync_job(run_id, module, shop_id, ranges):
     records = 0
+    data_through = _utc_text(ranges[-1][1])
     with connect() as db:
         run_source = db.execute("SELECT run_source FROM sync_runs WHERE id=?", (run_id,)).fetchone()[0]
     try:
@@ -196,9 +202,10 @@ def _run_sync_job(run_id, module, shop_id, ranges):
             else:
                 result = sync_module(module, shop_id, start, end, include_existing_missing=run_source != "auto")
                 records += int(result.get("records") or 0)
+            data_through = result.get("snapshot_at") or _utc_text(end)
             with transaction() as db:
                 db.execute("UPDATE sync_runs SET progress_done=?,records=?,data_through=? WHERE id=?",
-                           (index, records, _utc_text(end), run_id))
+                           (index, records, data_through, run_id))
     except Exception as error:
         message = str(error)[:500]
         with transaction() as db:
@@ -213,7 +220,7 @@ def _run_sync_job(run_id, module, shop_id, ranges):
     with transaction() as db:
         db.execute("""UPDATE sync_runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%SZ','now'),
           data_through=?,status='success',current_from=NULL,current_to=NULL WHERE id=?""",
-                   (_utc_text(ranges[-1][1]), run_id))
+                   (data_through, run_id))
         _trim_sync_runs(db)
     _evaluate_alerts_after_sync(shop_id, module)
 

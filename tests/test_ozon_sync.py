@@ -104,20 +104,28 @@ class OzonSyncTest(DatabaseTestCase):
                           rows["201"]["price_indexes_json"]), (None, None, None, None, None, None))
         self.assertEqual((rows["202"]["price"], rows["202"]["payload_json"]), (None, "{\"product_id\":202}"))
 
-    def test_price_sync_keeps_shop_history_and_deduplicates_identical_records(self):
+    def test_price_sync_keeps_identical_snapshots_at_different_times(self):
         record = {"product_id": 301, "offer_id": "O-301", "price": {"price": 100, "currency_code": "RUB"}}
         response = {"items": [record, dict(record)], "total": 2}
-        with patch("app.ozon.client._post", return_value=response), \
+        with patch("app.ozon.client._post", side_effect=[response, response]), \
              patch("app.ozon.client._stamp", side_effect=["2026-09-02T02:00:00Z", "2026-09-02T03:00:00Z"]):
+            self.assertEqual(sync_prices(1)["records"], 1)
+            self.assertEqual(sync_prices(1)["records"], 1)
+        with db.connect() as connection:
+            history = [row[0] for row in connection.execute(
+                "SELECT observed_at FROM product_price_snapshots WHERE shop_id=1 ORDER BY observed_at")]
+        self.assertEqual(history, ["2026-09-02T02:00:00Z", "2026-09-02T03:00:00Z"])
+
+    def test_price_sync_isolated_between_shops(self):
+        record = {"product_id": 302, "offer_id": "O-302", "price": {"price": 100, "currency_code": "RUB"}}
+        with patch("app.ozon.client._post", return_value={"items": [record], "total": 1}), \
+             patch("app.ozon.client._stamp", side_effect=["2026-09-02T04:00:00Z", "2026-09-02T05:00:00Z"]):
             self.assertEqual(sync_prices(1)["records"], 1)
             self.assertEqual(sync_prices(2)["records"], 1)
         with db.connect() as connection:
             counts = dict(connection.execute(
                 "SELECT shop_id,COUNT(*) FROM product_price_snapshots GROUP BY shop_id"))
-            history = [row[0] for row in connection.execute(
-                "SELECT observed_at FROM product_price_snapshots WHERE shop_id=1 ORDER BY observed_at")]
         self.assertEqual(counts, {1: 1, 2: 1})
-        self.assertEqual(history, ["2026-09-02T02:00:00Z"])
 
     def test_price_sync_rejects_conflicting_duplicate_and_bad_pagination(self):
         record = {"product_id": 401, "price": {"price": 100}}

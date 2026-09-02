@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app import db
 from app.ozon.client import BEIJING
 from app.routers.sync import sync as start_sync
+from app.routers.common import _utc_text
 from app.sync_jobs import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_sync_runs,
                            auto_sync_slot, run_auto_sync_once, run_exchange_rate_auto_sync_once,
                            save_auto_sync_settings)
@@ -16,6 +17,8 @@ from tests.support import DatabaseTestCase, MockRequest
 
 
 MODULES = ("orders", "returns", "stock", "prices", "finance_transactions")
+PRE_PRICES_MODULES = ("orders", "returns", "stock", "finance_transactions",
+                      "ad_campaign_daily", "ad_sku_daily")
 
 
 def settings(enabled=(), interval=6, days=7):
@@ -173,6 +176,44 @@ class AutoSyncTest(DatabaseTestCase):
                 "WHERE module='prices' ORDER BY shop_id")]
         self.assertEqual(rows, [(1, 0, 6, 1), (2, 1, 12, 1)])
 
+    def test_pre_prices_payload_preserves_prices_and_updates_all_six_modules(self):
+        current = settings()
+        for shop in (1, 2):
+            current[str(shop)]["prices"] = {"enabled": True, "interval_hours": 12, "range_days": 1}
+        save_auto_sync_settings(current)
+
+        pre_prices = {str(shop): {module: {
+            "enabled": module in {"orders", "finance_transactions"},
+            "interval_hours": 6,
+            "range_days": 7,
+        } for module in PRE_PRICES_MODULES} for shop in (1, 2)}
+        save_auto_sync_settings(pre_prices)
+
+        with db.connect() as connection:
+            prices = [tuple(row) for row in connection.execute(
+                "SELECT shop_id,enabled,interval_hours,range_days FROM shop_auto_sync_settings "
+                "WHERE module='prices' ORDER BY shop_id")]
+            rows = connection.execute(
+                "SELECT module,enabled,interval_hours,range_days FROM shop_auto_sync_settings "
+                "WHERE shop_id=1 AND module!='prices'").fetchall()
+        self.assertEqual(prices, [(1, 1, 12, 1), (2, 1, 12, 1)])
+        self.assertEqual(
+            {row["module"]: tuple(row[1:]) for row in rows},
+            {module: (int(module in {"orders", "finance_transactions"}), 6,
+                      1 if module == "stock" else 7)
+             for module in PRE_PRICES_MODULES},
+        )
+
+    def test_unknown_or_incomplete_auto_sync_module_set_is_rejected(self):
+        invalid = settings()
+        for shop in (1, 2):
+            invalid[str(shop)].update({module: {
+                "enabled": False, "interval_hours": 6, "range_days": 7,
+            } for module in ("ad_campaign_daily", "ad_sku_daily")})
+        del invalid["1"]["ad_sku_daily"]
+        with self.assertRaisesRegex(ValueError, "七个"):
+            save_auto_sync_settings(invalid)
+
 
 class SyncProgressTest(DatabaseTestCase):
     def create_run(self, total):
@@ -193,8 +234,9 @@ class SyncProgressTest(DatabaseTestCase):
         with patch("app.sync_jobs.sync_module", return_value={"records": 4}):
             _run_sync_job(run_id, "orders", 1, ranges)
         with db.connect() as connection:
-            row = connection.execute("SELECT status,progress_done,progress_total,records FROM sync_runs").fetchone()
-        self.assertEqual(tuple(row), ("success", 3, 3, 12))
+            row = connection.execute(
+                "SELECT status,progress_done,progress_total,records,data_through FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 3, 3, 12, _utc_text(ranges[-1][1])))
 
     def test_finance_month_ranges_are_contiguous(self):
         start = datetime(2026, 7, 15, tzinfo=timezone.utc)
@@ -267,8 +309,22 @@ class SyncProgressTest(DatabaseTestCase):
             _run_sync_job(run_id, "prices", 1, [(start, end)])
         sync.assert_called_once_with("prices", 1, start, end, include_existing_missing=True)
         with db.connect() as connection:
-            row = connection.execute("SELECT status,progress_done,records FROM sync_runs").fetchone()
-        self.assertEqual(tuple(row), ("success", 1, 3))
+            row = connection.execute("SELECT status,progress_done,records,data_through FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 1, 3, "snapshot"))
+
+    def test_stock_snapshot_job_uses_snapshot_time(self):
+        start = datetime(2026, 8, 1, tzinfo=BEIJING)
+        end = datetime(2026, 8, 2, tzinfo=BEIJING)
+        with db.transaction() as connection:
+            run_id = connection.execute("""INSERT INTO sync_runs(
+              shop_id,module,range_from,range_to,status,progress_total)
+              VALUES(1,'stock','','','running',1)""").lastrowid
+        with patch("app.sync_jobs.sync_module", return_value={"records": 2, "snapshot_at": "stock-snapshot"}) as sync:
+            _run_sync_job(run_id, "stock", 1, [(start, end)])
+        sync.assert_called_once_with("stock", 1, start, end, include_existing_missing=True)
+        with db.connect() as connection:
+            row = connection.execute("SELECT status,progress_done,records,data_through FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 1, 2, "stock-snapshot"))
 
     def test_old_sync_logs_are_deleted_without_touching_pulled_data(self):
         with db.transaction() as connection:
