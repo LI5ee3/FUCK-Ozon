@@ -197,7 +197,7 @@ def _add_mapping(mapping, key, sku):
         mapping.setdefault(key, set()).add(sku)
 
 
-def _sku_maps(order_rows, erp_rows, stock_index, rules, shop_ids):
+def _sku_maps(order_rows, erp_rows, stock_index, rules):
     offers, products = {}, {}
     for row in order_rows:
         shop_id, sku, offer_id = row["shop_id"], _text(row["sku"]), _text(row["offer_id"])
@@ -515,7 +515,7 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
           WHERE e.shop_id IN ({marks})""", shop_ids).fetchall()
         stock_rows = db.execute(f"SELECT shop_id,record_key,observed_at,payload FROM stock_snapshots WHERE shop_id IN ({marks})", shop_ids).fetchall()
         stock_index = _stock_index(stock_rows)
-        sku_maps = _sku_maps(order_mapping_rows, erp_rows, stock_index, rules, shop_ids)
+        sku_maps = _sku_maps(order_mapping_rows, erp_rows, stock_index, rules)
         sales_rows = db.execute(f"""SELECT i.shop_id,i.offer_id,i.sku,i.quantity,i.unit_price,i.price_currency,
             o.channel,o.created_at
           FROM order_items i JOIN orders o USING(shop_id,posting_number)
