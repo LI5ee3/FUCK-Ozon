@@ -477,7 +477,7 @@ def _freshness(db, shop_ids, price_batches, price_rows, exchange_entries):
 
 
 def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
-                sort_by="", sort_order="desc", page=1, size=50, now=None):
+                sort_by="", sort_order="desc", page=1, size=50, now=None, _snapshot_key=None):
     shop_ids = _shop_ids(shop_id)
     channel = _channel(channel)
     health = _health_filter(health)
@@ -550,6 +550,8 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
 
     rows = []
     for raw in price_rows:
+        if _snapshot_key is not None and raw["snapshot_key"] != _snapshot_key:
+            continue
         shop = shop_rows.get(raw["shop_id"], {})
         product_id = _text(raw["product_id"]) or None
         offer_id = _text(raw["offer_id"]) or None
@@ -592,7 +594,8 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
             continue
         rows.append({
             "row_key": f"{raw['shop_id']}:{raw['snapshot_key']}", "shop_id": raw["shop_id"],
-            "shop_name": shop["name"], "product": product, "price": {key: value for key, value in price.items() if not key.startswith("_")},
+            "snapshot_key": raw["snapshot_key"], "shop_name": shop["name"], "product": product,
+            "price": {key: value for key, value in price.items() if not key.startswith("_")},
             "sales_30": sales, "cost_basis": cost, "economics": economics,
             "competitiveness": competitiveness, "stock": stock,
             "health_flags": flags, "primary_health": primary,

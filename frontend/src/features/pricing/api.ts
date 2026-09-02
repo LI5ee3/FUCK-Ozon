@@ -1,5 +1,5 @@
 import { request } from "../../shared/api/client";
-import type { PricingResponse, PricingQuery } from "./types";
+import type { PricingResponse, PricingQuery, PricingStrategyQuery, PricingStrategyResponse } from "./types";
 
 export function listPricing(values: PricingQuery): Promise<PricingResponse> {
   const query = new URLSearchParams({
@@ -14,4 +14,15 @@ export function listPricing(values: PricingQuery): Promise<PricingResponse> {
   if (values.sortBy) query.set("sort_by", values.sortBy);
   if (values.sortOrder) query.set("sort_order", values.sortOrder);
   return request<PricingResponse>(`/api/pricing?${query}`);
+}
+
+export function getPricingStrategy(values: PricingStrategyQuery): Promise<PricingStrategyResponse> {
+  const query = new URLSearchParams({
+    shop_id: String(values.shopId),
+    snapshot_key: values.snapshotKey,
+    channel: values.channel,
+    target_margin_pct: String(values.targetMarginPct),
+    history_days: String(values.historyDays),
+  });
+  return request<PricingStrategyResponse>(`/api/pricing/strategy?${query}`);
 }

@@ -6,7 +6,7 @@ import { useShop } from "../../shared/composables/useShop";
 import PricingView from "./PricingView.vue";
 import type { PricingItem, PricingResponse } from "./types";
 
-const api = vi.hoisted(() => ({ listPricing: vi.fn() }));
+const api = vi.hoisted(() => ({ listPricing: vi.fn(), getPricingStrategy: vi.fn() }));
 vi.mock("./api", () => api);
 
 type TestColumn = { key: string; render?: (row: PricingItem, index: number) => unknown };
@@ -102,7 +102,7 @@ const DataTableStub = defineComponent({
   },
 });
 
-const stubs: Record<string, Component> = {
+const stubs: Record<string, Component | false> = {
   NAlert: SlotStub,
   Alert: SlotStub,
   NButton: ButtonStub,
@@ -122,12 +122,14 @@ const stubs: Record<string, Component> = {
   EmptyState: EmptyStateStub,
   MorphIcon: SlotStub,
   SearchField: SearchFieldStub,
+  PricingStrategyDrawer: false,
 };
 
 function makeItem(overrides: Partial<PricingItem> = {}): PricingItem {
   return {
     row_key: "2:product_id:1",
     shop_id: 2,
+    snapshot_key: "product_id:1",
     shop_name: "店铺 2",
     product: {
       product_identity: "offer:O-1",
@@ -231,6 +233,7 @@ beforeEach(() => {
   selectedShopId.value = 0;
   vi.clearAllMocks();
   api.listPricing.mockResolvedValue(makeResponse([]));
+  api.getPricingStrategy.mockReturnValue(new Promise(() => undefined));
 });
 
 afterEach(() => {
@@ -282,5 +285,18 @@ describe("PricingView", () => {
     const { wrapper } = await mountPricing();
     expect(wrapper.find(".pricing-sku-link").exists()).toBe(false);
     expect(wrapper.text()).toContain("SKU 未明确");
+  });
+
+  it("opens strategy details with the row identity and current filters", async () => {
+    api.listPricing.mockResolvedValue(makeResponse([makeItem()]));
+    const { wrapper } = await mountPricing({ channel: "realFBS", target_margin_pct: "35" });
+    await wrapper.find(".pricing-test-cell--strategy button").trigger("click");
+    expect(api.getPricingStrategy).toHaveBeenCalledWith({
+      shopId: 2,
+      snapshotKey: "product_id:1",
+      channel: "realFBS",
+      targetMarginPct: 35,
+      historyDays: 90,
+    });
   });
 });

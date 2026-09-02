@@ -25,6 +25,7 @@ import type { Channel, ShopSelection } from "../../shared/types/common";
 import { formatBeijingDateTime, formatInteger } from "../../shared/utils/format";
 import { positiveInteger, queryMatches, queryValue, shopSelectionFromQuery } from "../../shared/utils/query";
 import { listPricing } from "./api";
+import PricingStrategyDrawer from "./PricingStrategyDrawer.vue";
 import type {
   PricingHealth,
   PricingHealthFilter,
@@ -54,6 +55,8 @@ const searchDraft = ref(filters.q);
 const response = ref<PricingResponse | null>(null);
 const loading = ref(false);
 const error = ref("");
+const strategyDrawerOpen = ref(false);
+const strategyItem = ref<PricingItem | null>(null);
 let requestId = 0;
 let routeReady = false;
 let ignoreNextShopChange = false;
@@ -373,6 +376,11 @@ function renderHealth(row: PricingItem): VNodeChild {
   ]);
 }
 
+function openStrategy(row: PricingItem): void {
+  strategyItem.value = row;
+  strategyDrawerOpen.value = true;
+}
+
 const columns: DataTableColumns<PricingItem> = [
   { key: "product", title: "商品", width: 260, fixed: "left", render: renderProduct },
   { key: "current_price", title: "当前测算售价", width: 190, align: "right", render: renderPrice },
@@ -385,6 +393,7 @@ const columns: DataTableColumns<PricingItem> = [
   { key: "sales_30", title: "30天销量", width: 110, align: "right", render: (row) => h("span", { class: "pricing-number" }, `${formatInteger(row.sales_30.units)} 件`) },
   { key: "effective_stock", title: "当前库存", width: 150, align: "right", render: renderStock },
   { key: "health", title: "状态", width: 180, render: renderHealth },
+  { key: "strategy", title: "策略", width: 110, align: "right", render: (row) => h(NButton, { size: "small", text: true, type: "primary", onClick: () => openStrategy(row) }, { default: () => "查看策略" }) },
 ];
 
 const summaryCards = computed<Array<{ icon: IconName; label: string; value: string; note: string; tone: string }>>(() => {
@@ -432,7 +441,7 @@ onMounted(() => {
   }
 });
 
-onBeforeUnmount(() => { requestId += 1; });
+onBeforeUnmount(() => { requestId += 1; strategyDrawerOpen.value = false; });
 </script>
 
 <template>
@@ -484,7 +493,7 @@ onBeforeUnmount(() => { requestId += 1; });
         :loading="loading"
         :pagination="false"
         :remote="true"
-        :scroll-x="1860"
+        :scroll-x="1980"
         table-layout="fixed"
         :row-key="(row: PricingItem) => row.row_key"
       >
@@ -496,5 +505,12 @@ onBeforeUnmount(() => { requestId += 1; });
         <NPagination :page="filters.page" :page-count="pageCount" :page-size="PAGE_SIZE" :disabled="loading" :page-slot="7" @update:page="changePage" />
       </div>
     </NCard>
+
+    <PricingStrategyDrawer
+      v-model:show="strategyDrawerOpen"
+      :item="strategyItem"
+      :channel="filters.channel"
+      :target-margin-pct="filters.targetMarginPct"
+    />
   </section>
 </template>

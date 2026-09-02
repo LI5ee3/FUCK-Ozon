@@ -81,6 +81,8 @@ class PricingTest(DatabaseTestCase):
         result = get_pricing(now=NOW, size=100)
         self.assertEqual([(item["shop_id"], item["product"]["offer_id"]) for item in result["items"]],
                          [(1, "A"), (2, "C")])
+        self.assertEqual([item["snapshot_key"] for item in result["items"]],
+                         ["product_id:1", "product_id:3"])
 
     def test_offer_sku_mapping_isolated_by_shop_and_does_not_guess_from_other_shop(self):
         observed = "2026-09-01T00:00:00Z"
