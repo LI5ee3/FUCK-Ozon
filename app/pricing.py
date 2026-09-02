@@ -219,11 +219,6 @@ def _sku_maps(order_rows, erp_rows, stock_index, rules, shop_ids):
             for sku in candidate["sku_values"]:
                 _add_mapping(products if key_type == "product_id" else offers,
                              (shop_id, key_value), sku)
-    for offer_sku, _name in rules.get("names", {}).items():
-        offer_id, sku = offer_sku
-        if offer_id and sku:
-            for shop_id in shop_ids:
-                offers.setdefault((shop_id, _text(offer_id)), set()).add(_text(sku))
     explicit = {}
     for (key_type, key_value), group_id in rules.get("members", {}).items():
         if key_type != "offer_id":
@@ -265,15 +260,18 @@ def _price_view(row):
 
 def _sales_view(rows):
     rows = rows or []
+    if not rows:
+        return {"units": 0, "revenue": None, "currency": None, "weighted_avg_price": None,
+                "sold_price_status": "no_sales"}
     units = sum(int(row["quantity"] or 0) for row in rows)
-    currencies = {_text(row["price_currency"]).upper() for row in rows if _text(row["price_currency"])}
+    if any(not _text(row["price_currency"]) for row in rows):
+        return {"units": units, "revenue": None, "currency": None, "weighted_avg_price": None,
+                "sold_price_status": "missing_currency"}
+    currencies = {_text(row["price_currency"]).upper() for row in rows}
     if len(currencies) > 1:
         return {"units": units, "revenue": None, "currency": None, "weighted_avg_price": None,
                 "sold_price_status": "currency_mismatch"}
     currency = next(iter(currencies), None)
-    if not rows:
-        return {"units": 0, "revenue": None, "currency": None, "weighted_avg_price": None,
-                "sold_price_status": "no_sales"}
     amounts = []
     for row in rows:
         unit_price = _decimal(row["unit_price"])
@@ -362,8 +360,8 @@ def _economics(price, settlement_currency, cost, sku_status, commission, commiss
     acquiring = _convert(acquiring_raw, price["currency"], settlement_currency, rates)
     if (price["_effective"] is not None and current is None) or (cost["status"] == "available" and unit_cost is None) or (acquiring_raw is not None and acquiring is None):
         reasons.append("missing_exchange_rate")
-    if sold_price_status == "currency_mismatch":
-        reasons.append("currency_mismatch")
+    if sold_price_status in {"currency_mismatch", "missing_currency"}:
+        reasons.append(sold_price_status)
     deduped = list(dict.fromkeys(reasons))
     projected = margin = acquiring_rate = break_even = target_price = None
     if current is not None and current > 0 and unit_cost is not None and commission is not None and acquiring is not None:
@@ -418,7 +416,18 @@ def _health_flags(economics, competitiveness, target_margin):
     return ordered, ordered[0]
 
 
-def _sort_value(row, field):
+def _sort_value(row, field, rates):
+    if field == "current_price":
+        return _convert(_decimal(row["price"]["effective_price"]), row["price"]["currency"], "CNY", rates)
+    if field == "sold_price_30":
+        sales = row["sales_30"]
+        return _convert(_decimal(sales["weighted_avg_price"]), sales["currency"], "CNY", rates)
+    if field == "break_even_price":
+        economics = row["economics"]
+        return _convert(_decimal(economics["break_even_price"]), economics["currency"], "CNY", rates)
+    if field == "target_margin_price":
+        economics = row["economics"]
+        return _convert(_decimal(economics["target_margin_price"]), economics["currency"], "CNY", rates)
     if field == "sales_30":
         return Decimal(row["sales_30"]["units"])
     if field == "effective_stock":
@@ -426,19 +435,11 @@ def _sort_value(row, field):
         return Decimal(value) if value is not None else None
     if field == "price_index":
         return _decimal(row["competitiveness"]["ozon"]["index"])
-    if field == "sold_price_30":
-        return _decimal(row["sales_30"]["weighted_avg_price"])
     if field == "price_vs_30d":
         return Decimal(str(row["sales_30"]["price_vs_30d_pct"])) if row["sales_30"]["price_vs_30d_pct"] is not None else None
     if field == "projected_margin":
         value = row["economics"]["projected_base_margin_pct"]
         return Decimal(str(value)) if value is not None else None
-    if field == "break_even_price":
-        return _decimal(row["economics"]["break_even_price"])
-    if field == "target_margin_price":
-        return _decimal(row["economics"]["target_margin_price"])
-    if field == "current_price":
-        return _decimal(row["economics"]["current_effective_price"]) or _decimal(row["price"]["effective_price"])
     return None
 
 
@@ -609,10 +610,11 @@ def get_pricing(shop_id=0, q="", channel="FBP", health="", target_margin_pct=20,
     if health:
         rows = [row for row in rows if health in row["health_flags"]]
     if sort_by:
-        present = [row for row in rows if _sort_value(row, sort_by) is not None]
-        missing = [row for row in rows if _sort_value(row, sort_by) is None]
-        present.sort(key=lambda row: _sort_value(row, sort_by), reverse=sort_order == "desc")
-        rows = present + missing
+        valued = [(row, _sort_value(row, sort_by, rates)) for row in rows]
+        present = [(row, value) for row, value in valued if value is not None]
+        missing = [row for row, value in valued if value is None]
+        present.sort(key=lambda item: item[1], reverse=sort_order == "desc")
+        rows = [row for row, _value in present] + missing
     else:
         rows.sort(key=lambda row: (row["shop_id"], row["row_key"]))
     total = len(rows)

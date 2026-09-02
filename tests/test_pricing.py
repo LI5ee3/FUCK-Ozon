@@ -82,6 +82,28 @@ class PricingTest(DatabaseTestCase):
         self.assertEqual([(item["shop_id"], item["product"]["offer_id"]) for item in result["items"]],
                          [(1, "A"), (2, "C")])
 
+    def test_offer_sku_mapping_isolated_by_shop_and_does_not_guess_from_other_shop(self):
+        observed = "2026-09-01T00:00:00Z"
+        with db.transaction() as connection:
+            add_price(connection, 1, observed, 71, "SAME-OFFER")
+            add_price(connection, 1, observed, 73, "ONLY-SHOP2")
+            add_price(connection, 2, observed, 72, "SAME-OFFER")
+            add_price(connection, 2, observed, 74, "ONLY-SHOP2")
+            add_successful_price_run(connection, 1, observed)
+            add_successful_price_run(connection, 2, observed)
+            add_order(connection, 1, "MAP-1", "FBP", stamp(date(2026, 8, 31)), "已签收", 1)
+            add_item(connection, 1, "MAP-1", "FBP", "SKU-A", offer_id="SAME-OFFER")
+            add_order(connection, 2, "MAP-2", "FBP", stamp(date(2026, 8, 31)), "已签收", 1)
+            add_item(connection, 2, "MAP-2", "FBP", "SKU-B", offer_id="SAME-OFFER")
+            add_order(connection, 2, "MAP-ONLY-2", "FBP", stamp(date(2026, 8, 31)), "已签收", 1)
+            add_item(connection, 2, "MAP-ONLY-2", "FBP", "SKU-B-ONLY", offer_id="ONLY-SHOP2")
+        result = get_pricing(0, now=NOW, size=100)
+        items = {(item["shop_id"], item["product"]["offer_id"]): item for item in result["items"]}
+        self.assertEqual(items[(1, "SAME-OFFER")]["product"]["sku"], "SKU-A")
+        self.assertEqual(items[(2, "SAME-OFFER")]["product"]["sku"], "SKU-B")
+        self.assertIsNone(items[(1, "ONLY-SHOP2")]["product"]["sku"])
+        self.assertIn("missing_sku_mapping", items[(1, "ONLY-SHOP2")]["economics"]["incomplete_reasons"])
+
     def test_weighted_sales_and_reference_channel(self):
         observed = "2026-09-01T00:00:00Z"
         with db.transaction() as connection:
@@ -152,6 +174,41 @@ class PricingTest(DatabaseTestCase):
         self.assertEqual(item["sales_30"]["sold_price_status"], "currency_mismatch")
         self.assertIsNone(item["sales_30"]["weighted_avg_price"])
         self.assertIn("currency_mismatch", item["economics"]["incomplete_reasons"])
+
+    def test_missing_currency_keeps_units_but_marks_sales_and_economics_incomplete(self):
+        observed = "2026-09-01T00:00:00Z"
+        with db.transaction() as connection:
+            add_price(connection, 2, observed, 41, "O-41", currency="CNY", price="100", commission=0)
+            add_successful_price_run(connection, 2, observed)
+            add_sale(connection, 2, "P-41-CNY", "FBP", "S-41", "O-41", 1, 100, "CNY", date(2026, 8, 30))
+            add_sale(connection, 2, "P-41-NONE", "FBP", "S-41", "O-41", 1, 200, None, date(2026, 8, 31))
+            add_erp(connection, 2, "P-41-CNY", "S-41", offer_id="O-41", unit_cost="20")
+            add_erp(connection, 2, "P-41-NONE", "S-41", offer_id="O-41", unit_cost="20",
+                    updated_at="2026-09-01T00:00:00Z")
+        item = get_pricing(2, now=NOW, size=100)["items"][0]
+        self.assertEqual(item["sales_30"], {
+            "units": 2, "revenue": None, "currency": None, "weighted_avg_price": None,
+            "sold_price_status": "missing_currency", "price_vs_30d_pct": None,
+        })
+        self.assertEqual(item["economics"]["status"], "incomplete")
+        self.assertIn("missing_currency", item["economics"]["incomplete_reasons"])
+        self.assertEqual(item["economics"]["projected_base_profit"], "80")
+
+    def test_current_price_sort_converts_shop_currencies_to_cny_and_keeps_missing_last(self):
+        observed = "2026-09-01T00:00:00Z"
+        with db.transaction() as connection:
+            add_price(connection, 1, observed, 81, "USD-10", currency="USD", price="10")
+            add_price(connection, 2, observed, 82, "CNY-40", currency="CNY", price="40")
+            add_successful_price_run(connection, 1, observed)
+            add_successful_price_run(connection, 2, observed)
+        with patch("app.pricing.current_exchange_rate_entries", return_value=self.rates()):
+            ascending = get_pricing(0, sort_by="current_price", sort_order="asc", now=NOW, size=100)
+            descending = get_pricing(0, sort_by="current_price", sort_order="desc", now=NOW, size=100)
+        self.assertEqual([item["product"]["offer_id"] for item in ascending["items"]], ["CNY-40", "USD-10"])
+        self.assertEqual([item["product"]["offer_id"] for item in descending["items"]], ["USD-10", "CNY-40"])
+        with patch("app.pricing.current_exchange_rate_entries", return_value={"USD": {"sales_exchange_rate": "10"}}):
+            missing_rate = get_pricing(0, sort_by="current_price", sort_order="asc", now=NOW, size=100)
+        self.assertEqual([item["product"]["offer_id"] for item in missing_rate["items"]], ["CNY-40", "USD-10"])
 
     def test_stock_uses_current_channel_snapshot_and_does_not_guess_ambiguous_sku(self):
         observed = "2026-09-01T00:00:00Z"

@@ -274,6 +274,7 @@ const reasonLabels: Record<string, string> = {
   missing_acquiring: "缺收单手续费",
   missing_exchange_rate: "缺汇率",
   currency_mismatch: "成交币种不一致",
+  missing_currency: "成交币种缺失",
   break_even_denominator_non_positive: "保本价无有效解",
   target_margin_denominator_non_positive: "目标毛利价无有效解",
 };
@@ -310,9 +311,16 @@ function renderPrice(row: PricingItem): VNodeChild {
 
 function renderSoldPrice(row: PricingItem): VNodeChild {
   const sales = row.sales_30;
+  const statusLabel = {
+    available: "最近30个完整销售日",
+    currency_mismatch: "币种不一致",
+    missing_currency: "币种缺失",
+    missing_price: "成交价缺失",
+    no_sales: "暂无成交",
+  }[sales.sold_price_status] ?? "销售价格状态未知";
   return h("div", { class: "pricing-metric-cell" }, [
     h("strong", formatDecimal(sales.weighted_avg_price, sales.currency)),
-    h("small", `${formatInteger(sales.units)} 件 · ${sales.sold_price_status === "currency_mismatch" ? "币种不一致" : "最近30个完整销售日"}`),
+    h("small", `${formatInteger(sales.units)} 件 · ${statusLabel}`),
   ]);
 }
 
