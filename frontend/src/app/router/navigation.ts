@@ -51,6 +51,7 @@ export const navigationGroups: NavigationGroup[] = [
     tone: "mint",
     items: [
       { name: "inventory", label: "销量与备货建议", path: "/inventory", icon: "stock", description: "销量与备货建议的 Vue 页面入口。" },
+      { name: "pricing", label: "价格分析中心", path: "/pricing", icon: "percent", description: "当前价格、成交、成本与价格竞争力的只读分析。" },
       { name: "profit", label: "实际利润", path: "/profit", icon: "trendingUp", description: "历史订单实际利润与数据完整性。" },
       { name: "transfer", label: "数据导入/导出", path: "/transfer", icon: "transfer", description: "数据导入与导出的 Vue 页面入口。" },
       { name: "sync", label: "数据同步中心", path: "/sync", icon: "sync", description: "数据同步中心的 Vue 页面入口。" },

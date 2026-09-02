@@ -28,6 +28,7 @@ from .routers.ozon_notifications import router as ozon_notifications_router
 from .routers.ozon_webhooks import router as ozon_webhooks_router
 from .routers.orders import router as orders_router
 from .routers.performance import router as performance_router
+from .routers.pricing import router as pricing_router
 from .routers.products import router as products_router
 from .routers.returns import router as returns_router
 from .routers.risk import router as risk_router
@@ -97,6 +98,7 @@ app.include_router(products_router)
 app.include_router(imports_router)
 app.include_router(erp_costs_router)
 app.include_router(actual_profit_router)
+app.include_router(pricing_router)
 app.include_router(exchange_router)
 app.include_router(sku_detail_router)
 

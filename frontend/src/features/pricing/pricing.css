@@ -1,0 +1,144 @@
+.pricing-view {
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.pricing-kpi-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.pricing-filter {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 150px 170px 170px auto;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.pricing-select-label,
+.pricing-number-label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--opanel-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pricing-filter > .n-input,
+.pricing-filter .n-base-selection,
+.pricing-filter .n-input-number {
+  min-width: 0;
+}
+
+.pricing-freshness {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 12px 4px 10px;
+  color: var(--opanel-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-freshness strong {
+  color: var(--opanel-text);
+}
+
+.pricing-model-note {
+  margin: 0 4px 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--opanel-primary);
+  border-radius: var(--opanel-radius-sm);
+  background: color-mix(in srgb, var(--opanel-primary) 6%, transparent);
+  color: var(--opanel-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.pricing-currency-note,
+.pricing-muted,
+.pricing-meta,
+.pricing-metric-cell small,
+.pricing-competitiveness-cell small,
+.pricing-health-cell small {
+  color: var(--opanel-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.pricing-product-cell,
+.pricing-metric-cell,
+.pricing-competitiveness-cell,
+.pricing-health-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pricing-product-name,
+.pricing-metric-cell strong,
+.pricing-number {
+  color: var(--opanel-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-product-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricing-sku-link {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--opanel-primary);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricing-sku-link:hover { text-decoration: underline; }
+.pricing-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pricing-metric-cell { align-items: flex-end; text-align: right; }
+.pricing-metric-cell strong { font-size: 13px; font-weight: 750; }
+.pricing-number { display: inline-block; white-space: nowrap; }
+.pricing-promotion { color: var(--opanel-tone-butter-text) !important; }
+.pricing-price-cell { gap: 3px; }
+.pricing-competitiveness-cell,
+.pricing-health-cell { align-items: flex-start; }
+.pricing-tone-tag--mint { background: var(--opanel-tone-mint-bg) !important; color: var(--opanel-tone-mint-text) !important; }
+.pricing-tone-tag--peach { background: var(--opanel-tone-peach-bg) !important; color: var(--opanel-tone-peach-text) !important; }
+.pricing-tone-tag--butter { background: var(--opanel-tone-butter-bg) !important; color: var(--opanel-tone-butter-text) !important; }
+.pricing-tone-tag--lavender { background: var(--opanel-tone-lavender-bg) !important; color: var(--opanel-tone-lavender-text) !important; }
+.pricing-reasons { max-width: 165px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.is-negative { color: var(--opanel-tone-peach-text) !important; }
+
+@media (max-width: 1280px) {
+  .pricing-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pricing-filter { grid-template-columns: minmax(220px, 1fr) 150px 170px; }
+  .pricing-filter > .n-button { grid-column: auto; }
+}
+
+@media (max-width: 800px) {
+  .pricing-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pricing-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pricing-filter > .n-input { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  .pricing-kpi-grid,
+  .pricing-filter { grid-template-columns: 1fr; }
+  .pricing-filter > .n-input,
+  .pricing-filter > .n-button { grid-column: auto; }
+  .pricing-filter > .n-button { width: 100%; }
+}

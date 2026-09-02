@@ -6,6 +6,7 @@ const migratedViews: Partial<Record<string, RouteRecordRaw["component"]>> = {
   overview: () => import("../../features/dashboard/DashboardView.vue"),
   orders: () => import("../../features/orders/OrdersView.vue"),
   inventory: () => import("../../features/inventory/InventoryView.vue"),
+  pricing: () => import("../../features/pricing/PricingView.vue"),
   analytics: () => import("../../features/analytics/AnalyticsView.vue"),
   timeliness: () => import("../../features/timeliness/TimelinessView.vue"),
   risk: () => import("../../features/risk/RiskView.vue"),
