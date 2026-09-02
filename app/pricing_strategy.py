@@ -252,14 +252,6 @@ def _attach_impacts(db, events, shop_id, channel, today):
                                 "weighted_avg_price_change_pct": None,
                                 "reason": "invalid_event_time"}
             continue
-        event_day = date.fromisoformat(event["event_day"])
-        if today < event_day + timedelta(days=8):
-            event["impact"] = {"status": "pending", "before": None, "after": None,
-                                "units_delta": None, "units_change_pct": None,
-                                "revenue_delta": None, "revenue_change_pct": None,
-                                "weighted_avg_price_change_pct": None,
-                                "reason": "after_window_incomplete"}
-            continue
         before_offer_id = pricing._text(event.get("before_offer_id"))
         after_offer_id = pricing._text(event.get("after_offer_id"))
         if not before_offer_id or not after_offer_id:
@@ -268,6 +260,14 @@ def _attach_impacts(db, events, shop_id, channel, today):
                                 "revenue_delta": None, "revenue_change_pct": None,
                                 "weighted_avg_price_change_pct": None,
                                 "reason": "missing_historical_product_match"}
+            continue
+        event_day = date.fromisoformat(event["event_day"])
+        if today < event_day + timedelta(days=8):
+            event["impact"] = {"status": "pending", "before": None, "after": None,
+                                "units_delta": None, "units_change_pct": None,
+                                "revenue_delta": None, "revenue_change_pct": None,
+                                "weighted_avg_price_change_pct": None,
+                                "reason": "after_window_incomplete"}
             continue
         before_rows = _sales_rows(
             db, shop_id, channel, event_day - timedelta(days=7), event_day - timedelta(days=1),

@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app import db
-from app.pricing_strategy import _market_reference, _strategy, get_pricing_strategy
+from app.pricing_strategy import _attach_impacts, _market_reference, _strategy, get_pricing_strategy
 from app.routers.pricing import pricing_strategy as pricing_strategy_route
 from app.ozon.client import BEIJING
 from tests.support import DatabaseTestCase, add_item, add_order
@@ -199,6 +199,18 @@ class PricingStrategyTest(DatabaseTestCase):
         self.assertEqual(event["price_change_status"], "currency_mismatch")
         self.assertIsNone(event["effective_price_change_pct"])
         json.dumps(changed, allow_nan=False)
+
+    def test_recent_event_with_missing_historical_offer_is_unavailable(self):
+        event = {
+            "types": ["effective_price_changed"],
+            "event_day": "2026-08-31",
+            "before_offer_id": None,
+            "after_offer_id": "NEW",
+        }
+        with db.transaction() as connection:
+            _attach_impacts(connection, [event], 2, "FBP", date(2026, 9, 2))
+        self.assertEqual(event["impact"]["status"], "unavailable")
+        self.assertEqual(event["impact"]["reason"], "missing_historical_product_match")
 
     def test_strategy_route_rejects_shop_zero_and_returns_404_for_stale_entity(self):
         with self.assertRaises(HTTPException) as error:
