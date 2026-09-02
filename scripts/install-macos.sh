@@ -69,6 +69,9 @@ prefix = Path(os.path.realpath(sys.prefix))
 executable = Path(os.path.abspath(sys.executable))
 executable_env = Path(os.path.realpath(os.path.dirname(os.path.dirname(executable))))
 
+if sys.version_info < (3, 12):
+    raise SystemExit(1)
+
 if sys.prefix == sys.base_prefix or prefix != expected or executable_env != expected:
     raise SystemExit(1)
 
