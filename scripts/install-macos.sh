@@ -56,8 +56,66 @@ if [ -z "$PYTHON" ]; then
 fi
 
 printf '使用 Python：%s\n' "$("$PYTHON" --version 2>&1)"
-"$PYTHON" -m venv "$VENV"
+
+venv_is_valid() {
+  [ -x "$VENV_PYTHON" ] || return 1
+  "$VENV_PYTHON" - "$VENV" <<'PY'
+from pathlib import Path
+import os
+import sys
+
+expected = Path(os.path.realpath(sys.argv[1]))
+prefix = Path(os.path.realpath(sys.prefix))
+executable = Path(os.path.abspath(sys.executable))
+executable_env = Path(os.path.realpath(os.path.dirname(os.path.dirname(executable))))
+
+if sys.prefix == sys.base_prefix or prefix != expected or executable_env != expected:
+    raise SystemExit(1)
+
+try:
+    config_lines = (expected / "pyvenv.cfg").read_text(encoding="utf-8").splitlines()
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+
+command = None
+for line in config_lines:
+    key, separator, value = line.partition("=")
+    if separator and key.strip() == "command":
+        command = value.strip()
+        break
+
+if command is None:
+    raise SystemExit(1)
+
+_, separator, recorded_path = command.partition(" -m venv ")
+if not separator or Path(os.path.realpath(recorded_path)) != expected:
+    raise SystemExit(1)
+PY
+}
+
+if [ -e "$VENV" ] || [ -L "$VENV" ]; then
+  if ! venv_is_valid; then
+    printf '%s\n' '检测到虚拟环境路径已失效或项目目录发生变化，正在重建 .venv。'
+    rm -rf "$VENV"
+  fi
+fi
+
+if [ ! -d "$VENV" ]; then
+  "$PYTHON" -m venv "$VENV"
+fi
+
+if ! venv_is_valid; then
+  printf '%s\n' '错误：.venv 创建后验证失败，拒绝继续安装。' >&2
+  exit 1
+fi
+
 "$VENV_PYTHON" -m pip install -r "$ROOT/requirements.txt"
+if [ -e "$VENV/bin/uvicorn" ] || [ -L "$VENV/bin/uvicorn" ]; then
+  if ! "$VENV/bin/uvicorn" --version >/dev/null 2>&1; then
+    printf '%s\n' '错误：uvicorn console script 验证失败，拒绝继续安装。' >&2
+    exit 1
+  fi
+fi
 "$ROOT/scripts/test.sh"
 "$ROOT/scripts/build-frontend.sh"
 
