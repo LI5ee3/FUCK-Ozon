@@ -10,7 +10,7 @@ from app.importer import import_csv
 from app.ozon import client
 from app.ozon.client import _cursor_pages, _post
 from app.ozon.sync import (_product_price, _sync_stock_snapshot, sync_module,
-                           sync_orders, sync_returns)
+                           sync_orders, sync_prices, sync_returns)
 from tests.support import DatabaseTestCase, table_fingerprints
 
 
@@ -26,6 +26,124 @@ class OzonSyncTest(DatabaseTestCase):
             sync_module("stock", 1)
         after = table_fingerprints()
         self.assertEqual({table for table in before if before[table] != after[table]}, {"stock_snapshots"})
+
+    def test_price_sync_saves_pages_core_fields_and_raw_payload(self):
+        first = {
+            "product_id": 101,
+            "offer_id": "O-101",
+            "acquiring": 1.25,
+            "commissions": {"sales_percent_fbo": 15},
+            "marketing_actions": {"actions": [], "ozon_actions_exist": True},
+            "price": {
+                "auto_action_enabled": True,
+                "currency_code": "RUB",
+                "marketing_seller_price": 2899.99,
+                "min_price": 2799.99,
+                "old_price": 3499.99,
+                "price": 2999.99,
+            },
+            "price_indexes": {
+                "color_index": "GREEN",
+                "ozon_index_data": {"min_price": 2899.99, "price_index_value": 0.95},
+                "external_index_data": {"min_price": 2799.99, "price_index_value": 0.93},
+                "self_marketplaces_index_data": {"min_price": 3000, "price_index_value": 1.01},
+            },
+            "volume_weight": 0.5,
+        }
+        second = {"product_id": 102, "offer_id": "O-102", "price": {"currency_code": "RUB", "price": 10}}
+        pages = [
+            {"items": [first], "cursor": "next-page", "total": 2},
+            {"items": [second], "cursor": "", "total": 2},
+        ]
+        with patch("app.ozon.client._post", side_effect=pages) as post, \
+             patch("app.ozon.client._stamp", return_value="2026-09-02T00:00:00Z"):
+            result = sync_prices(1)
+
+        self.assertEqual(result, {"records": 2, "snapshot_at": "2026-09-02T00:00:00Z"})
+        self.assertEqual(post.call_args_list[0].args[2], {"filter": {"visibility": "ALL"}, "limit": 1000})
+        self.assertEqual(post.call_args_list[1].args[2]["cursor"], "next-page")
+        with db.connect() as connection:
+            row = connection.execute("""SELECT * FROM product_price_snapshots
+              WHERE shop_id=1 AND product_id='101'""").fetchone()
+            count = connection.execute("SELECT COUNT(*) FROM product_price_snapshots WHERE shop_id=1").fetchone()[0]
+        self.assertEqual(count, 2)
+        self.assertEqual(row["offer_id"], "O-101")
+        self.assertEqual(row["observed_at"], "2026-09-02T00:00:00Z")
+        self.assertEqual((row["currency"], row["price"], row["old_price"], row["min_price"],
+                          row["marketing_seller_price"], row["auto_action_enabled"], row["acquiring"]),
+                         ("RUB", "2999.99", "3499.99", "2799.99", "2899.99", 1, "1.25"))
+        self.assertEqual((row["price_index_color"], row["ozon_min_price"], row["ozon_price_index"],
+                          row["external_min_price"], row["external_price_index"],
+                          row["self_marketplace_min_price"], row["self_marketplace_price_index"]),
+                         ("GREEN", "2899.99", "0.95", "2799.99", "0.93", "3000", "1.01"))
+        self.assertEqual(json.loads(row["commissions_json"]), {"sales_percent_fbo": 15})
+        self.assertTrue(json.loads(row["marketing_actions_json"])["ozon_actions_exist"])
+        self.assertEqual(json.loads(row["price_indexes_json"])["external_index_data"]["min_price"], 2799.99)
+        self.assertEqual(json.loads(row["payload_json"]), first)
+
+    def test_price_sync_allows_missing_optional_fields_and_zero_prices(self):
+        records = [
+            {"product_id": 201, "price": {
+                "auto_action_enabled": False, "currency_code": "", "marketing_seller_price": 0,
+                "min_price": None, "old_price": "", "price": 0,
+            }, "acquiring": 0},
+            {"product_id": 202},
+        ]
+        with patch("app.ozon.client._post", return_value={"items": records, "has_next": False}), \
+             patch("app.ozon.client._stamp", return_value="2026-09-02T01:00:00Z"):
+            sync_module("prices", 2)
+        with db.connect() as connection:
+            rows = {row["product_id"]: row for row in connection.execute(
+                "SELECT * FROM product_price_snapshots WHERE shop_id=2 ORDER BY product_id")}
+        self.assertIsNone(rows["201"]["offer_id"])
+        self.assertEqual((rows["201"]["price"], rows["201"]["marketing_seller_price"],
+                          rows["201"]["auto_action_enabled"], rows["201"]["acquiring"]),
+                         ("0", "0", 0, "0"))
+        self.assertEqual((rows["201"]["currency"], rows["201"]["old_price"], rows["201"]["min_price"],
+                          rows["201"]["commissions_json"], rows["201"]["marketing_actions_json"],
+                          rows["201"]["price_indexes_json"]), (None, None, None, None, None, None))
+        self.assertEqual((rows["202"]["price"], rows["202"]["payload_json"]), (None, "{\"product_id\":202}"))
+
+    def test_price_sync_keeps_shop_history_and_deduplicates_identical_records(self):
+        record = {"product_id": 301, "offer_id": "O-301", "price": {"price": 100, "currency_code": "RUB"}}
+        response = {"items": [record, dict(record)], "total": 2}
+        with patch("app.ozon.client._post", return_value=response), \
+             patch("app.ozon.client._stamp", side_effect=["2026-09-02T02:00:00Z", "2026-09-02T03:00:00Z"]):
+            self.assertEqual(sync_prices(1)["records"], 1)
+            self.assertEqual(sync_prices(2)["records"], 1)
+        with db.connect() as connection:
+            counts = dict(connection.execute(
+                "SELECT shop_id,COUNT(*) FROM product_price_snapshots GROUP BY shop_id"))
+            history = [row[0] for row in connection.execute(
+                "SELECT observed_at FROM product_price_snapshots WHERE shop_id=1 ORDER BY observed_at")]
+        self.assertEqual(counts, {1: 1, 2: 1})
+        self.assertEqual(history, ["2026-09-02T02:00:00Z"])
+
+    def test_price_sync_rejects_conflicting_duplicate_and_bad_pagination(self):
+        record = {"product_id": 401, "price": {"price": 100}}
+        conflict = {"product_id": 401, "price": {"price": 101}}
+        with patch("app.ozon.client._post", return_value={"items": [record, conflict], "total": 2}), \
+             patch("app.ozon.client._stamp", return_value="2026-09-02T04:00:00Z"):
+            with self.assertRaisesRegex(RuntimeError, "重复且内容冲突"):
+                sync_prices(1)
+        with db.connect() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM product_price_snapshots WHERE shop_id=1 AND product_id='401'"
+            ).fetchone()[0], 0)
+
+        with patch("app.ozon.client._post", return_value={
+            "items": [{"product_id": 402}], "has_next": True, "total": 2,
+        }), patch("app.ozon.client._stamp", return_value="2026-09-02T05:00:00Z"):
+            with self.assertRaisesRegex(RuntimeError, "分页游标缺失"):
+                sync_prices(1)
+        with patch("app.ozon.client._post", return_value={"items": [], "has_next": True}):
+            with self.assertRaisesRegex(RuntimeError, "分页结果为空"):
+                sync_prices(1)
+        with patch("app.ozon.client._post", return_value={
+            "items": [{"product_id": 403}], "has_next": False, "total": 2,
+        }):
+            with self.assertRaisesRegex(RuntimeError, "分页元数据冲突"):
+                sync_prices(1)
 
     def test_network_errors_are_retried(self):
         with patch("app.ozon.client.urllib.request.urlopen", side_effect=urllib.error.URLError("temporary")) as request, \

@@ -1,6 +1,6 @@
 import type { ShopId } from "../../shared/types/common";
 
-export type SyncModule = "orders" | "returns" | "stock" | "finance_transactions";
+export type SyncModule = "orders" | "returns" | "stock" | "prices" | "finance_transactions";
 export type ManualSyncModule = SyncModule | "ad_campaigns" | "ad_campaign_daily" | "ad_sku_daily";
 export type AutoSyncModule = SyncModule | "ad_campaign_daily" | "ad_sku_daily";
 

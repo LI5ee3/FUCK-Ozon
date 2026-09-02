@@ -2,6 +2,7 @@ import hashlib
 import json
 from calendar import monthrange
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
 from . import client
 from ..db import connect, transaction
@@ -315,11 +316,145 @@ def _sync_stock_snapshot(shop_id):
     return {"records": len(records), "snapshot_at": observed}
 
 
+def _price_decimal(value, field):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool) or isinstance(value, (dict, list)):
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是数字")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError, OverflowError) as error:
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是数字") from error
+    if not number.is_finite():
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是有限数字")
+    return format(number, "f")
+
+
+def _price_text(value, field):
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是字符串")
+    return value
+
+
+def _price_identifier(value, field):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool) or isinstance(value, (dict, list)):
+        raise RuntimeError(f"/v5/product/info/prices: {field} 结构无效")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise RuntimeError(f"/v5/product/info/prices: {field} 结构无效")
+        value = int(value)
+    text = str(value).strip()
+    return text or None
+
+
+def _price_object(value, field):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是对象")
+    return value
+
+
+def _price_json_object(value, field):
+    if value is None:
+        return None
+    return _json(_price_object(value, field))
+
+
+def _price_bool(value, field):
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        raise RuntimeError(f"/v5/product/info/prices: {field} 不是布尔值")
+    return int(value)
+
+
+def _price_snapshot_row(shop_id, record, observed_at):
+    if not isinstance(record, dict):
+        raise RuntimeError("/v5/product/info/prices: items 成员不是对象")
+    product_id = _price_identifier(record.get("product_id"), "product_id")
+    offer_id = _price_identifier(record.get("offer_id"), "offer_id")
+    payload_json = _json(record)
+    if product_id is not None:
+        snapshot_key = f"product_id:{product_id}"
+    elif offer_id is not None:
+        snapshot_key = f"offer_id:{offer_id}"
+    else:
+        snapshot_key = "payload:" + hashlib.sha256(
+            json.dumps(record, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()).hexdigest()
+
+    price = _price_object(record.get("price"), "price")
+    indexes = _price_object(record.get("price_indexes"), "price_indexes")
+    index_values = {}
+    for name, api_name in (("ozon", "ozon_index_data"),
+                           ("external", "external_index_data"),
+                           ("self_marketplace", "self_marketplaces_index_data")):
+        index_values[name] = _price_object(indexes.get(api_name), f"price_indexes.{api_name}")
+
+    return (
+        shop_id, product_id, offer_id, observed_at,
+        _price_text(price.get("currency_code"), "price.currency_code"),
+        _price_decimal(price.get("price"), "price.price"),
+        _price_decimal(price.get("old_price"), "price.old_price"),
+        _price_decimal(price.get("min_price"), "price.min_price"),
+        _price_decimal(price.get("marketing_seller_price"), "price.marketing_seller_price"),
+        _price_bool(price.get("auto_action_enabled"), "price.auto_action_enabled"),
+        _price_decimal(record.get("acquiring"), "acquiring"),
+        _price_text(indexes.get("color_index"), "price_indexes.color_index"),
+        _price_decimal(index_values["ozon"].get("min_price"), "price_indexes.ozon_index_data.min_price"),
+        _price_decimal(index_values["ozon"].get("price_index_value"),
+                       "price_indexes.ozon_index_data.price_index_value"),
+        _price_decimal(index_values["external"].get("min_price"),
+                       "price_indexes.external_index_data.min_price"),
+        _price_decimal(index_values["external"].get("price_index_value"),
+                       "price_indexes.external_index_data.price_index_value"),
+        _price_decimal(index_values["self_marketplace"].get("min_price"),
+                       "price_indexes.self_marketplaces_index_data.min_price"),
+        _price_decimal(index_values["self_marketplace"].get("price_index_value"),
+                       "price_indexes.self_marketplaces_index_data.price_index_value"),
+        _price_json_object(record.get("commissions"), "commissions"),
+        _price_json_object(record.get("marketing_actions"), "marketing_actions"),
+        _price_json_object(record.get("price_indexes"), "price_indexes"),
+        payload_json, snapshot_key,
+    ), snapshot_key, json.dumps(record, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def sync_prices(shop_id):
+    records = client._cursor_pages(
+        shop_id, "/v5/product/info/prices", {"filter": {"visibility": "ALL"}, "limit": 1000},
+        "items", fallback_key=None)
+    observed = client._stamp()
+    rows, seen = [], {}
+    for record in records:
+        row, snapshot_key, canonical = _price_snapshot_row(shop_id, record, observed)
+        previous = seen.get(snapshot_key)
+        if previous is not None:
+            if previous != canonical:
+                raise RuntimeError(f"/v5/product/info/prices: 商品 {snapshot_key} 重复且内容冲突")
+            continue
+        seen[snapshot_key] = canonical
+        rows.append(row)
+    with transaction() as db:
+        db.executemany("""INSERT INTO product_price_snapshots(
+          shop_id,product_id,offer_id,observed_at,currency,price,old_price,min_price,
+          marketing_seller_price,auto_action_enabled,acquiring,price_index_color,
+          ozon_min_price,ozon_price_index,external_min_price,external_price_index,
+          self_marketplace_min_price,self_marketplace_price_index,commissions_json,
+          marketing_actions_json,price_indexes_json,payload_json,snapshot_key)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", rows)
+    return {"records": len(rows), "snapshot_at": observed}
+
+
 def sync_module(module, shop_id, start=None, end=None, include_existing_missing=True):
     start, end = (start, end) if start and end else default_range()
     functions = {"orders": sync_orders,
                  "returns": lambda s, a, b: sync_returns(s, a, b, include_existing_missing),
-                 "stock": lambda s, _a, _b: _sync_stock_snapshot(s)}
+                 "stock": lambda s, _a, _b: _sync_stock_snapshot(s),
+                 "prices": lambda s, _a, _b: sync_prices(s)}
     if module not in functions:
         raise ValueError("未知同步模块")
     return functions[module](shop_id, start, end)

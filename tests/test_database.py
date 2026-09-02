@@ -22,22 +22,38 @@ class DatabaseSchemaTest(DatabaseTestCase):
             auto = connection.execute("SELECT COUNT(*) FROM shop_auto_sync_settings").fetchone()[0]
             finance_setting = connection.execute(
                 "SELECT 1 FROM shop_auto_sync_settings WHERE shop_id=1 AND module='finance_transactions'").fetchone()
+            price_settings = {tuple(row) for row in connection.execute(
+                "SELECT shop_id,enabled,interval_hours,range_days FROM shop_auto_sync_settings WHERE module='prices'"
+            )}
             finance_columns = [row[1] for row in connection.execute(
                 "PRAGMA table_info(ozon_finance_transactions)")]
+            price_columns = [row[1] for row in connection.execute(
+                "PRAGMA table_info(product_price_snapshots)")]
             exchange_info = {row[1]: row for row in connection.execute("PRAGMA table_info(exchange_rates)")}
             item_pk = [row[1] for row in sorted(
                 connection.execute("PRAGMA table_info(order_items)"), key=lambda row: row[5]) if row[5]]
-        self.assertEqual(SCHEMA_VERSION, 13)
+        self.assertEqual(SCHEMA_VERSION, 14)
         self.assertEqual(schema_version, SCHEMA_VERSION)
         self.assertNotIn("product_forecast_costs", tables)
         self.assertNotIn("product_forecast_cost_history", tables)
         self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
         self.assertIn("idx_auto_sync_once", indexes)
         self.assertIn("idx_sync_one_running", indexes)
+        self.assertIn("product_price_snapshots", tables)
+        self.assertIn("idx_product_price_snapshots_product_time", indexes)
+        self.assertIn("idx_product_price_snapshots_offer_time", indexes)
+        self.assertEqual(price_columns, [
+            "shop_id", "product_id", "offer_id", "observed_at", "currency", "price", "old_price",
+            "min_price", "marketing_seller_price", "auto_action_enabled", "acquiring", "price_index_color",
+            "ozon_min_price", "ozon_price_index", "external_min_price", "external_price_index",
+            "self_marketplace_min_price", "self_marketplace_price_index", "commissions_json",
+            "marketing_actions_json", "price_indexes_json", "payload_json", "snapshot_key",
+        ])
         self.assertEqual(shops, [(1, "店铺1", "USD"), (2, "店铺2", "CNY")])
         self.assertEqual(settings, (1, 0, "09:00", "1,2,3,4,5,6,7", DEFAULT_DAILY_TEMPLATE))
-        self.assertEqual(auto, 12)
+        self.assertEqual(auto, 14)
         self.assertIsNotNone(finance_setting)
+        self.assertEqual(price_settings, {(1, 0, 24, 1), (2, 0, 24, 1)})
         self.assertEqual(finance_columns, [
             "shop_id", "operation_id", "operation_type", "operation_type_name", "transaction_type",
             "operation_date", "posting_number", "order_date", "delivery_schema", "warehouse_id",
@@ -99,6 +115,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
     def test_v1_database_migrates_without_rebuilding_existing_data(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("""INSERT INTO orders(
@@ -127,6 +144,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
     def test_v10_database_migrates_finance_tables_and_module_without_losing_orders(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("""INSERT INTO orders(
               shop_id,posting_number,channel,status_raw,shipped,source)
               VALUES(1,'V10-ORDER','realFBS','运输中',1,'test')""")
@@ -154,6 +172,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
     def test_v7_database_migrates_forecast_tables_then_removes_them(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("""INSERT INTO orders(
@@ -257,7 +276,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
                      (SELECT COUNT(*) FROM erp_cost_import_batches WHERE filename='v12.xlsx'),
                      (SELECT COUNT(*) FROM erp_order_item_costs WHERE erp_order_number='V12-ERP')
             """).fetchone())
-        self.assertEqual(version, 13)
+        self.assertEqual(version, SCHEMA_VERSION)
         self.assertNotIn("product_forecast_costs", tables)
         self.assertNotIn("product_forecast_cost_history", tables)
         self.assertNotIn("idx_product_forecast_cost_history_identity_time", indexes)
@@ -265,8 +284,53 @@ class DatabaseSchemaTest(DatabaseTestCase):
                          "ozon_finance_transactions"} <= tables)
         self.assertEqual(counts, (1, 1, 1, 1, 1))
 
+    def test_v13_database_migration_adds_price_snapshots_and_preserves_settings(self):
+        with db.transaction() as connection:
+            connection.execute("""UPDATE shop_auto_sync_settings
+              SET enabled=1,interval_hours=6,range_days=9
+              WHERE shop_id=1 AND module='orders'""")
+            connection.execute("ALTER TABLE shop_auto_sync_settings RENAME TO shop_auto_sync_settings_v13_test")
+            connection.execute("""CREATE TABLE shop_auto_sync_settings (
+              shop_id INTEGER NOT NULL REFERENCES shops(id),
+              module TEXT NOT NULL CHECK(module IN (
+                'orders','returns','stock','ad_campaign_daily','ad_sku_daily','finance_transactions')),
+              enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+              interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
+              range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module))""")
+            connection.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+              SELECT shop_id,module,enabled,interval_hours,range_days
+              FROM shop_auto_sync_settings_v13_test WHERE module!='prices'""")
+            connection.execute("DROP TABLE shop_auto_sync_settings_v13_test")
+            connection.execute("DROP TABLE product_price_snapshots")
+            connection.execute("PRAGMA user_version=13")
+
+        init_db()
+        with db.connect() as connection:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            prices = [tuple(row) for row in connection.execute(
+                "SELECT shop_id,enabled,interval_hours,range_days FROM shop_auto_sync_settings WHERE module='prices'"
+            )]
+            orders = tuple(connection.execute(
+                "SELECT enabled,interval_hours,range_days FROM shop_auto_sync_settings "
+                "WHERE shop_id=1 AND module='orders'"
+            ).fetchone())
+            indexes = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_product_price_snapshots_%'"
+            )}
+            table = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='product_price_snapshots'"
+            ).fetchone()
+        self.assertEqual(version, SCHEMA_VERSION)
+        self.assertEqual(orders, (1, 6, 9))
+        self.assertEqual(prices, [(1, 0, 24, 1), (2, 0, 24, 1)])
+        self.assertEqual(indexes, {
+            "idx_product_price_snapshots_product_time", "idx_product_price_snapshots_offer_time",
+        })
+        self.assertIsNotNone(table)
+
     def test_v6_migration_keeps_duplicate_running_history_and_adds_unique_index(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("DROP INDEX idx_sync_one_running")
@@ -283,6 +347,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
     def test_v8_exchange_rate_migration_preserves_missing_sales_rate(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN service_penalty_exchange_rate TO base_rate")
             connection.execute("ALTER TABLE exchange_rates RENAME COLUMN sales_exchange_rate TO rate_with_adjustment")
             connection.execute("""INSERT INTO exchange_rates VALUES(
@@ -315,6 +380,7 @@ class DatabaseSchemaTest(DatabaseTestCase):
 
     def test_v9_not_null_exchange_rate_migration_rebuilds_nullable_column(self):
         with db.transaction() as connection:
+            connection.execute("DELETE FROM shop_auto_sync_settings WHERE module='prices'")
             connection.execute("""CREATE TABLE exchange_rates_v9 (
               from_currency TEXT NOT NULL CHECK(from_currency IN ('USD','CNY')),
               to_currency TEXT NOT NULL CHECK(to_currency='RUB'), valid_from_utc TEXT NOT NULL,

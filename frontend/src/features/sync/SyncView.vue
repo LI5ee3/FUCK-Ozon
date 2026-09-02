@@ -77,6 +77,7 @@ const autoModules: ReadonlyArray<{ module: AutoSyncModule; label: string; icon: 
   { module: "orders", label: "订单", icon: "shoppingBag" },
   { module: "returns", label: "退货", icon: "rotateCcw" },
   { module: "stock", label: "库存", icon: "stock" },
+  { module: "prices", label: "商品价格", icon: "tag" },
   { module: "finance_transactions", label: "财务流水", icon: "wallet" },
   { module: "ad_campaign_daily", label: "广告日统计", icon: "barChart" },
   { module: "ad_sku_daily", label: "SKU 广告统计", icon: "tag" },
@@ -91,6 +92,7 @@ const manualModules: ReadonlyArray<{
   { module: "orders", label: "订单数据", description: "拉取订单、商品明细及订单状态数据", hint: "受顶部时间范围影响", icon: "shoppingBag" },
   { module: "returns", label: "退货数据", description: "拉取退货与客户售后申请记录", hint: "受顶部时间范围影响", icon: "rotateCcw" },
   { module: "stock", label: "实时库存", description: "拉取当前全量现货与快照数据", hint: "全量快照 · 实时", icon: "stock" },
+  { module: "prices", label: "商品价格", description: "拉取 Ozon 当前商品售价、促销价格与价格指数", hint: "全量快照 · 当前价格", icon: "tag" },
   { module: "finance_transactions", label: "财务流水", description: "拉取 Ozon Finance 实际财务流水及对账快照", hint: "按自然月分段 · 事实层", icon: "wallet" },
   { module: "ad_campaigns", label: "广告 Campaign", description: "读取 Performance API Campaign 元数据并同步到本地", hint: "Performance API · 只读", icon: "barChart" },
   { module: "ad_campaign_daily", label: "广告日统计", description: "同步 Campaign × 日期的曝光、点击、花费与订单", hint: "建议最近 7 天 · 只读", icon: "barChart" },
@@ -100,6 +102,7 @@ const syncNames: Record<ManualSyncModule, string> = {
   orders: "订单",
   returns: "退货",
   stock: "库存",
+  prices: "商品价格",
   finance_transactions: "财务流水",
   ad_campaigns: "广告 Campaign",
   ad_campaign_daily: "广告日统计",
@@ -126,6 +129,7 @@ const manualSyncing = reactive<Record<ManualSyncModule, boolean>>({
   orders: false,
   returns: false,
   stock: false,
+  prices: false,
   finance_transactions: false,
   ad_campaigns: false,
   ad_campaign_daily: false,
@@ -163,8 +167,8 @@ const summaryCards = computed<Array<{ icon: IconName; label: string; value: stri
   {
     icon: "sync",
     label: "自动拉取配置",
-    value: `${enabledCount.value} / 12 项启用`,
-    note: "两店铺六大模块独立定时调度",
+    value: `${enabledCount.value} / 14 项启用`,
+    note: "两店铺七大模块独立定时调度",
     tone: "azure" as SummaryTone,
   },
   {
@@ -254,6 +258,7 @@ function createAutoDraft(): Record<AutoSyncModule, AutoDraft> {
     orders: { enabled: false, interval_hours: 24, range_days: 1 },
     returns: { enabled: false, interval_hours: 24, range_days: 1 },
     stock: { enabled: false, interval_hours: 24, range_days: 1 },
+    prices: { enabled: false, interval_hours: 24, range_days: 1 },
     finance_transactions: { enabled: false, interval_hours: 24, range_days: 31 },
     ad_campaign_daily: { enabled: false, interval_hours: 24, range_days: 1 },
     ad_sku_daily: { enabled: false, interval_hours: 24, range_days: 1 },
@@ -415,7 +420,8 @@ function buildAutoPayload(): AutoSyncSettingsPayload {
       return [module, {
         enabled: draft.enabled,
         interval_hours: draft.interval_hours,
-        range_days: module === "stock" ? 1 : Math.min(365, Math.max(1, Math.trunc(draft.range_days || 1))),
+        range_days: module === "stock" || module === "prices"
+          ? 1 : Math.min(365, Math.max(1, Math.trunc(draft.range_days || 1))),
       }];
     })),
   ])) as AutoSyncSettingsPayload;
@@ -621,7 +627,7 @@ onBeforeUnmount(() => {
           />
           <DatePresetPills class="sync-date-presets" aria-label="手动同步日期快捷范围" :options="datePresets" :active-key="manualActivePreset" @select="selectManualPreset" />
         </div>
-        <p class="sync-date-note"><morph-icon icon="clock" size="14" stroke-width="1.8" />手动订单、退货日期按 Europe/Moscow 计算；库存、财务与广告接口按后端规则执行。</p>
+        <p class="sync-date-note"><morph-icon icon="clock" size="14" stroke-width="1.8" />手动订单、退货日期按 Europe/Moscow 计算；库存、价格、财务与广告接口按后端规则执行。</p>
         <NAlert v-if="selectedShopId === 0" type="warning" :bordered="false" class="sync-shop-alert">
           请先在右上角选择一个店铺，店铺合并视图不可直接发起手动同步。
         </NAlert>
@@ -741,7 +747,7 @@ onBeforeUnmount(() => {
               <span class="sync-section-kicker">SHOP {{ shopId }}</span>
               <h3><morph-icon icon="store" size="16" stroke-width="1.8" />{{ shopName(shopId) }}</h3>
             </div>
-            <NTag size="small" :bordered="false" class="sync-tone-tag--azure">6 个模块</NTag>
+            <NTag size="small" :bordered="false" class="sync-tone-tag--azure">7 个模块</NTag>
           </div>
           <div class="sync-auto-list">
             <article v-for="item in autoModules" :key="item.module" class="sync-auto-row">
@@ -763,7 +769,7 @@ onBeforeUnmount(() => {
                 class="sync-auto-interval"
                 @update:value="updateAutoInterval(shopId, item.module, $event)"
               />
-              <div v-if="item.module === 'stock'" class="sync-auto-realtime">实时快照</div>
+              <div v-if="item.module === 'stock' || item.module === 'prices'" class="sync-auto-realtime">实时快照</div>
               <NInputNumber
                 v-else
                 :value="autoDraft[shopId][item.module].range_days"
@@ -777,7 +783,7 @@ onBeforeUnmount(() => {
                 @update:value="updateAutoRange(shopId, item.module, $event)"
                 @blur="saveAutoSettings"
               />
-              <span v-if="item.module !== 'stock'" class="sync-auto-unit">天范围</span>
+              <span v-if="item.module !== 'stock' && item.module !== 'prices'" class="sync-auto-unit">天范围</span>
             </article>
           </div>
         </section>

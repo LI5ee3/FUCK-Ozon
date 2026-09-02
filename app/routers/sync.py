@@ -36,7 +36,8 @@ def auto_sync_settings():
         return [dict(row) for row in db.execute(
             "SELECT * FROM shop_auto_sync_settings ORDER BY shop_id,CASE module "
             "WHEN 'orders' THEN 1 WHEN 'returns' THEN 2 WHEN 'stock' THEN 3 "
-            "WHEN 'finance_transactions' THEN 4 WHEN 'ad_campaign_daily' THEN 5 ELSE 6 END")]
+            "WHEN 'prices' THEN 4 WHEN 'finance_transactions' THEN 5 "
+            "WHEN 'ad_campaign_daily' THEN 6 ELSE 7 END")]
 
 
 @router.put("/api/auto-sync-settings")

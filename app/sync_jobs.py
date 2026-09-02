@@ -16,7 +16,7 @@ from .routers.common import _utc_text
 logger = logging.getLogger(__name__)
 
 
-SYNC_MODULES = {"orders", "returns", "stock", "finance_transactions"}
+SYNC_MODULES = {"orders", "returns", "stock", "prices", "finance_transactions"}
 LEGACY_SYNC_MODULES = {"orders", "returns", "stock"}
 AD_SYNC_MODULES = {"ad_campaign_daily", "ad_sku_daily"}
 LEGACY_AUTO_SYNC_MODULES = LEGACY_SYNC_MODULES | AD_SYNC_MODULES
@@ -116,7 +116,8 @@ def save_auto_sync_settings(values):
         raise ValueError("必须分别提交两个店铺的自动拉取设置")
     with connect() as db:
         current_optional = {shop_id: {row["module"]: dict(row) for row in db.execute(
-            "SELECT * FROM shop_auto_sync_settings WHERE shop_id=? AND module IN ('ad_campaign_daily','ad_sku_daily','finance_transactions')",
+            """SELECT * FROM shop_auto_sync_settings WHERE shop_id=? AND module IN (
+              'prices','ad_campaign_daily','ad_sku_daily','finance_transactions')""",
             (shop_id,))} for shop_id in (1, 2)}
     settings = []
     for shop_id in (1, 2):
@@ -126,8 +127,9 @@ def save_auto_sync_settings(values):
                                        "range_days": row["range_days"]}
                               for module, row in current_optional[shop_id].items() if module not in submitted})
         if set(submitted) != AUTO_SYNC_MODULES:
-            raise ValueError("必须分别提交两个店铺的六个模块设置")
-        for module in ("orders", "returns", "stock", "finance_transactions", "ad_campaign_daily", "ad_sku_daily"):
+            raise ValueError("必须分别提交两个店铺的七个模块设置")
+        for module in ("orders", "returns", "stock", "prices", "finance_transactions",
+                       "ad_campaign_daily", "ad_sku_daily"):
             value = submitted[module]
             if "run_time" in value:
                 raise ValueError("run_time 已停用，请提交 interval_hours")
@@ -141,7 +143,7 @@ def save_auto_sync_settings(values):
             if not 1 <= range_days <= 365:
                 raise ValueError("自动拉取范围必须为 1 至 365 天")
             settings.append((int(bool(value.get("enabled"))), interval_hours,
-                             1 if module == "stock" else range_days, shop_id, module))
+                             1 if module in ("stock", "prices") else range_days, shop_id, module))
     with transaction() as db:
         db.executemany("""UPDATE shop_auto_sync_settings SET enabled=?,interval_hours=?,range_days=?
           WHERE shop_id=? AND module=?""",
@@ -149,7 +151,7 @@ def save_auto_sync_settings(values):
 
 
 def _sync_ranges(module, start, end):
-    if module == "stock" or module in AD_SYNC_MODULES:
+    if module in ("stock", "prices") or module in AD_SYNC_MODULES:
         return [(start, end)]
     if module == "finance_transactions":
         ranges, current = [], start

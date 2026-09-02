@@ -2,7 +2,7 @@ import json
 
 from .db import DEFAULT_ALERT_RULE_CONFIGS, transaction
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def _create_webhook_events(db):
@@ -58,6 +58,40 @@ def _create_ad_statistics(db):
       ON ad_sku_daily(shop_id,sku,stat_date);
     CREATE INDEX IF NOT EXISTS idx_ad_sku_daily_campaign
       ON ad_sku_daily(shop_id,campaign_id,stat_date);
+    """)
+
+
+def _create_product_price_snapshots(db):
+    db.executescript("""
+    CREATE TABLE IF NOT EXISTS product_price_snapshots (
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      product_id TEXT,
+      offer_id TEXT,
+      observed_at TEXT NOT NULL,
+      currency TEXT,
+      price TEXT,
+      old_price TEXT,
+      min_price TEXT,
+      marketing_seller_price TEXT,
+      auto_action_enabled INTEGER CHECK(auto_action_enabled IN (0,1) OR auto_action_enabled IS NULL),
+      acquiring TEXT,
+      price_index_color TEXT,
+      ozon_min_price TEXT,
+      ozon_price_index TEXT,
+      external_min_price TEXT,
+      external_price_index TEXT,
+      self_marketplace_min_price TEXT,
+      self_marketplace_price_index TEXT,
+      commissions_json TEXT,
+      marketing_actions_json TEXT,
+      price_indexes_json TEXT,
+      payload_json TEXT NOT NULL,
+      snapshot_key TEXT NOT NULL,
+      PRIMARY KEY(shop_id,snapshot_key,observed_at));
+    CREATE INDEX IF NOT EXISTS idx_product_price_snapshots_product_time
+      ON product_price_snapshots(shop_id,product_id,observed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_product_price_snapshots_offer_time
+      ON product_price_snapshots(shop_id,offer_id,observed_at DESC);
     """)
 
 
@@ -321,6 +355,26 @@ def _migrate_v12_to_v13(db):
     db.execute("PRAGMA user_version=13")
 
 
+def _migrate_v13_to_v14(db):
+    _create_product_price_snapshots(db)
+    db.execute("ALTER TABLE shop_auto_sync_settings RENAME TO shop_auto_sync_settings_v13")
+    db.execute("""CREATE TABLE shop_auto_sync_settings (
+      shop_id INTEGER NOT NULL REFERENCES shops(id),
+      module TEXT NOT NULL CHECK(module IN (
+        'orders','returns','stock','prices','finance_transactions','ad_campaign_daily','ad_sku_daily')),
+      enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+      interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
+      range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module))""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      SELECT shop_id,module,enabled,interval_hours,range_days FROM shop_auto_sync_settings_v13""")
+    db.execute("""INSERT INTO shop_auto_sync_settings(shop_id,module,enabled,interval_hours,range_days)
+      SELECT id,'prices',0,24,1 FROM shops
+      WHERE NOT EXISTS (SELECT 1 FROM shop_auto_sync_settings s
+                        WHERE s.shop_id=shops.id AND s.module='prices')""")
+    db.execute("DROP TABLE shop_auto_sync_settings_v13")
+    db.execute("PRAGMA user_version=14")
+
+
 def init_db():
     with transaction() as db:
         version = db.execute("PRAGMA user_version").fetchone()[0]
@@ -363,6 +417,9 @@ def init_db():
             if version == 12:
                 _migrate_v12_to_v13(db)
                 version = 13
+            if version == 13:
+                _migrate_v13_to_v14(db)
+                version = 14
             if version != SCHEMA_VERSION:
                 raise RuntimeError(f"数据库结构版本不兼容（当前 {version}，需要 {SCHEMA_VERSION}）；请备份后重建数据库")
             return
@@ -481,16 +538,16 @@ def init_db():
         CREATE TABLE shop_auto_sync_settings (
           shop_id INTEGER NOT NULL REFERENCES shops(id),
           module TEXT NOT NULL CHECK(module IN (
-            'orders','returns','stock','ad_campaign_daily','ad_sku_daily','finance_transactions')),
+            'orders','returns','stock','prices','finance_transactions','ad_campaign_daily','ad_sku_daily')),
           enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
           interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours IN (1,2,3,4,6,8,12,24)),
           range_days INTEGER NOT NULL CHECK(range_days BETWEEN 1 AND 365), PRIMARY KEY(shop_id,module));
         INSERT INTO shop_auto_sync_settings VALUES
-          (1,'orders',0,24,3),(1,'returns',0,24,3),(1,'stock',0,24,1),
-          (2,'orders',0,24,3),(2,'returns',0,24,3),(2,'stock',0,24,1),
+          (1,'orders',0,24,3),(1,'returns',0,24,3),(1,'stock',0,24,1),(1,'prices',0,24,1),
+          (2,'orders',0,24,3),(2,'returns',0,24,3),(2,'stock',0,24,1),(2,'prices',0,24,1),
+          (1,'finance_transactions',0,24,31),(2,'finance_transactions',0,24,31),
           (1,'ad_campaign_daily',0,24,7),(1,'ad_sku_daily',0,24,7),
-          (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7),
-          (1,'finance_transactions',0,24,31),(2,'finance_transactions',0,24,31);
+          (2,'ad_campaign_daily',0,24,7),(2,'ad_sku_daily',0,24,7);
         CREATE TABLE stock_history (
           id INTEGER PRIMARY KEY AUTOINCREMENT, shop_id INTEGER NOT NULL REFERENCES shops(id),
           source TEXT NOT NULL, warehouse_id TEXT, sku TEXT NOT NULL, present INTEGER NOT NULL,
@@ -528,3 +585,4 @@ def init_db():
         _create_alert_tables(db)
         _create_finance_tables(db)
         _create_erp_cost_tables(db)
+        _create_product_price_snapshots(db)

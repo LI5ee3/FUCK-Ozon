@@ -85,22 +85,48 @@ def _post(shop_id, path, payload):
             raise RuntimeError(f"{path}: 网络请求失败: {error}") from error
 
 
-def _cursor_pages(shop_id, path, payload, list_key, request_cursor="cursor", response_cursor="cursor"):
+def _cursor_pages(shop_id, path, payload, list_key, request_cursor="cursor", response_cursor="cursor",
+                  fallback_key="id"):
     records, cursor = [], ""
     for _ in range(200):
         request = dict(payload)
         if cursor:
             request[request_cursor] = cursor
         body = _post(shop_id, path, request)
+        if not isinstance(body, dict):
+            raise RuntimeError(f"{path}: 响应结构无效")
         container = body.get("result") if isinstance(body.get("result"), dict) else body
-        batch = container.get(list_key) or []
+        batch = container.get(list_key)
+        if batch is None:
+            batch = []
+        if not isinstance(batch, list):
+            raise RuntimeError(f"{path}: {list_key} 不是数组")
         records.extend(batch)
         total = container.get("total")
-        if not batch or ("has_next" in container and not container.get("has_next")):
+        if total is not None:
+            try:
+                total = int(total)
+            except (TypeError, ValueError, OverflowError) as error:
+                raise RuntimeError(f"{path}: total 无效") from error
+            if total < 0:
+                raise RuntimeError(f"{path}: total 无效")
+        has_next = container.get("has_next")
+        if has_next is False:
+            if total is not None and len(records) != total:
+                raise RuntimeError(f"{path}: 分页元数据冲突")
             return records
-        if total is not None and len(records) >= int(total):
+        if has_next is True and total is not None and len(records) >= total:
+            raise RuntimeError(f"{path}: 分页元数据冲突")
+        if total is not None and len(records) > total:
+            raise RuntimeError(f"{path}: 分页元数据冲突")
+        if total is not None and len(records) == total:
             return records
-        next_cursor = str(container.get(response_cursor) or body.get(response_cursor) or batch[-1].get("id") or "")
+        if not batch:
+            if has_next is True or total is not None:
+                raise RuntimeError(f"{path}: 分页结果为空但仍有未读取数据")
+            return records
+        fallback = batch[-1].get(fallback_key) if fallback_key and isinstance(batch[-1], dict) else None
+        next_cursor = str(container.get(response_cursor) or body.get(response_cursor) or fallback or "")
         if not next_cursor:
             raise RuntimeError(f"{path}: 分页游标缺失")
         if next_cursor == cursor:

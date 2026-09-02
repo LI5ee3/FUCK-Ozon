@@ -15,7 +15,7 @@ from app.sync_jobs import (_create_sync_job, _run_sync_job, _sync_ranges, _trim_
 from tests.support import DatabaseTestCase, MockRequest
 
 
-MODULES = ("orders", "returns", "stock", "finance_transactions")
+MODULES = ("orders", "returns", "stock", "prices", "finance_transactions")
 
 
 def settings(enabled=(), interval=6, days=7):
@@ -143,6 +143,7 @@ class AutoSyncTest(DatabaseTestCase):
         self.assertEqual({row["module"]: (row["interval_hours"], row["range_days"])
                           for row in rows},
                          {"orders": (6, 7), "returns": (6, 7), "stock": (6, 1),
+                          "prices": (6, 1),
                           "finance_transactions": (6, 7),
                           "ad_campaign_daily": (24, 7), "ad_sku_daily": (24, 7)})
         for invalid in (0, 5, 7, 25):
@@ -156,6 +157,21 @@ class AutoSyncTest(DatabaseTestCase):
         values["1"]["returns"]["range_days"] = 366
         with self.assertRaisesRegex(ValueError, "1 至 365"):
             save_auto_sync_settings(values)
+
+    def test_price_setting_is_independent_and_legacy_payload_preserves_it(self):
+        values = settings()
+        values["2"]["prices"] = {"enabled": True, "interval_hours": 12, "range_days": 99}
+        save_auto_sync_settings(values)
+
+        legacy = {str(shop): {module: {
+            "enabled": False, "interval_hours": 6, "range_days": 7,
+        } for module in ("orders", "returns", "stock")} for shop in (1, 2)}
+        save_auto_sync_settings(legacy)
+        with db.connect() as connection:
+            rows = [tuple(row) for row in connection.execute(
+                "SELECT shop_id,enabled,interval_hours,range_days FROM shop_auto_sync_settings "
+                "WHERE module='prices' ORDER BY shop_id")]
+        self.assertEqual(rows, [(1, 0, 6, 1), (2, 1, 12, 1)])
 
 
 class SyncProgressTest(DatabaseTestCase):
@@ -200,6 +216,7 @@ class SyncProgressTest(DatabaseTestCase):
         start, end = datetime(2026, 1, 1, tzinfo=timezone), datetime(2026, 3, 31, tzinfo=timezone)
         ranges = _sync_ranges("orders", start, end)
         self.assertEqual(len(_sync_ranges("stock", start, end)), 1)
+        self.assertEqual(len(_sync_ranges("prices", start, end)), 1)
         run_id = self.create_run(len(ranges))
         with patch("app.sync_jobs.sync_module", side_effect=({"records": 2}, RuntimeError("第二段失败"))) as sync_call, \
              patch("app.sync_jobs.send_sync_failure"):
@@ -238,6 +255,20 @@ class SyncProgressTest(DatabaseTestCase):
         with db.connect() as connection:
             row = connection.execute("SELECT status,progress_done,records FROM sync_runs").fetchone()
         self.assertEqual(tuple(row), ("success", 1, 4))
+
+    def test_price_sync_job_uses_snapshot_dispatcher_and_records_success(self):
+        start = datetime(2026, 8, 1, tzinfo=BEIJING)
+        end = datetime(2026, 8, 2, tzinfo=BEIJING)
+        with db.transaction() as connection:
+            run_id = connection.execute("""INSERT INTO sync_runs(
+              shop_id,module,range_from,range_to,status,progress_total)
+              VALUES(1,'prices','','','running',1)""").lastrowid
+        with patch("app.sync_jobs.sync_module", return_value={"records": 3, "snapshot_at": "snapshot"}) as sync:
+            _run_sync_job(run_id, "prices", 1, [(start, end)])
+        sync.assert_called_once_with("prices", 1, start, end, include_existing_missing=True)
+        with db.connect() as connection:
+            row = connection.execute("SELECT status,progress_done,records FROM sync_runs").fetchone()
+        self.assertEqual(tuple(row), ("success", 1, 3))
 
     def test_old_sync_logs_are_deleted_without_touching_pulled_data(self):
         with db.transaction() as connection:
